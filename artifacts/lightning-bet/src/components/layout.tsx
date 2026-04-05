@@ -1,9 +1,7 @@
-import { Link, useLocation } from "wouter";
+import { NavLink } from "react-router-dom";
 import { Activity, History, BarChart3, Zap } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
-
   const links = [
     { href: "/", label: "Live", icon: Activity },
     { href: "/history", label: "History", icon: History },
@@ -18,17 +16,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Zap className="h-6 w-6 text-yellow-400 fill-yellow-400" />
             <span>LIGHTNING<span className="text-yellow-400">BET</span></span>
           </div>
-          
+
           <nav className="flex items-center gap-6 ml-10">
             {links.map(({ href, label, icon: Icon }) => (
-              <Link 
-                key={href} 
-                href={href} 
-                className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${location === href ? "text-primary" : "text-muted-foreground"}`}
+              <NavLink
+                key={href}
+                to={href}
+                end={href === "/"}
+                className={({ isActive }) =>
+                  `flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${isActive ? "text-primary" : "text-muted-foreground"}`
+                }
               >
                 <Icon className="h-4 w-4" />
                 {label}
-              </Link>
+              </NavLink>
             ))}
           </nav>
         </div>

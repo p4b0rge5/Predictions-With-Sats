@@ -75,6 +75,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "qrcode.react": "^4.2.0"
+    "qrcode.react": "^4.2.0",
+    "react-router-dom": "^7.14.0"
   }
 }
