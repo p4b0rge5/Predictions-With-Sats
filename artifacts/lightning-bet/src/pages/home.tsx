@@ -1,4 +1,4 @@
-import { useGetCurrentMarket } from "@workspace/api-client-react";
+import { useGetCurrentMarket, getGetCurrentMarketQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowUpCircle, ArrowDownCircle, AlertCircle, Clock } from "lucide-react";
@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Progress } from "@/components/ui/progress";
 
 export function Home() {
-  const { data: market, isLoading } = useGetCurrentMarket({ query: { refetchInterval: 10000 } });
+  const { data: market, isLoading } = useGetCurrentMarket({ query: { refetchInterval: 10000, queryKey: getGetCurrentMarketQueryKey() } });
   const [betDirection, setBetDirection] = useState<"up" | "down" | null>(null);
 
   if (isLoading || !market) {
@@ -143,7 +143,7 @@ export function Home() {
               <div className="flex justify-between font-mono text-sm mb-2">
                 <span className="text-green-500">{upPercent.toFixed(1)}% UP</span>
                 <span className="text-muted-foreground">Total Pool: {formatSats(totalSats)} sats</span>
-                <span className="text-red-500">{100 - upPercent.toFixed(1)}% DOWN</span>
+                <span className="text-red-500">{(100 - upPercent).toFixed(1)}% DOWN</span>
               </div>
               <div className="h-4 w-full bg-red-500/20 rounded overflow-hidden flex">
                 <div 

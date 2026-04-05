@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useCreateBet, useGetBetStatus, getGetBetStatusQueryKey } from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,6 @@ interface BetModalProps {
 export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: BetModalProps) {
   const [amountUsd, setAmountUsd] = useState<string>("5");
   const { toast } = useToast();
-  const queryClient = useQueryClient();
-  
   const createBet = useCreateBet();
   
   const [paymentHash, setPaymentHash] = useState<string | null>(null);
@@ -29,7 +27,6 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
   const amountNum = parseFloat(amountUsd);
   const satsAmount = !isNaN(amountNum) && amountNum > 0 ? Math.floor((amountNum / btcPriceUsd) * 100000000) : 0;
   
-  // Use enabled carefully
   const { data: betStatus } = useGetBetStatus(paymentHash || "", {
     query: {
       enabled: !!paymentHash,
@@ -59,7 +56,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
       onError: (err) => {
         toast({ 
           title: "Error creating bet", 
-          description: err.error?.error || "Unknown error occurred", 
+          description: err.message || "Unknown error occurred", 
           variant: "destructive" 
         });
       }

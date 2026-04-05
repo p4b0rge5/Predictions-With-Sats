@@ -1,11 +1,11 @@
-import { useGetMarketHistory } from "@workspace/api-client-react";
+import { useGetMarketHistory, getGetMarketHistoryQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 import { ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 
 export function History() {
-  const { data: history, isLoading } = useGetMarketHistory({ limit: 50 }, { query: { refetchInterval: 15000 } });
+  const { data: history, isLoading } = useGetMarketHistory({ limit: 50 }, { query: { refetchInterval: 15000, queryKey: getGetMarketHistoryQueryKey({ limit: 50 }) } });
 
   const formatSats = (sats: number) => new Intl.NumberFormat().format(sats);
 

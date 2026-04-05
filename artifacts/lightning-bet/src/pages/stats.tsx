@@ -1,9 +1,9 @@
-import { useGetPlatformStats } from "@workspace/api-client-react";
+import { useGetPlatformStats, getGetPlatformStatsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, Hash, Zap, TrendingUp } from "lucide-react";
 
 export function Stats() {
-  const { data: stats, isLoading } = useGetPlatformStats({ query: { refetchInterval: 60000 } });
+  const { data: stats, isLoading } = useGetPlatformStats({ query: { refetchInterval: 60000, queryKey: getGetPlatformStatsQueryKey() } });
 
   if (isLoading || !stats) {
     return (
