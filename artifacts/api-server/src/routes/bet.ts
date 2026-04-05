@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
+import { randomUUID } from "node:crypto";
 import {
   CreateBetBody,
   GetBetStatusParams,
   GetBetStatusResponse,
 } from "@workspace/api-zod";
 import { db, betsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getActiveWindow, getWindowClosesAt } from "../lib/market";
 import { getCachedBtcPrice } from "../lib/price";
 import { createInvoice } from "../lib/alby";
@@ -53,37 +54,48 @@ router.post("/bet", async (req, res): Promise<void> => {
     return;
   }
 
-  const memo = `Lightning Bet — ${direction.toUpperCase()} on BTC (window #${win.id})`;
-
-  let invoice: { paymentHash: string; paymentRequest: string; expiresAt: string };
-  try {
-    invoice = await createInvoice(amountSats, memo);
-  } catch (err) {
-    req.log.error({ err }, "Failed to create Alby invoice");
-    res.status(502).json({ error: "Payment provider unavailable. Please try again." });
-    return;
-  }
-
+  const tempPaymentHash = `pending_${randomUUID()}`;
   const [bet] = await db
     .insert(betsTable)
     .values({
       windowId: win.id,
       direction,
       amountSats,
-      paymentHash: invoice.paymentHash,
-      paymentRequest: invoice.paymentRequest,
+      paymentHash: tempPaymentHash,
+      paymentRequest: "pending",
       status: "pending",
     })
     .returning();
 
+  const memo = `Lightning Bet — ${direction.toUpperCase()} on BTC (window #${win.id})`;
+
+  let invoice: { paymentHash: string; paymentRequest: string; expiresAt: string };
+  try {
+    invoice = await createInvoice(amountSats, memo);
+  } catch (err) {
+    req.log.error({ err, betId: bet.id }, "Failed to create Alby invoice — expiring orphan bet");
+    await db
+      .update(betsTable)
+      .set({ status: "expired" })
+      .where(and(eq(betsTable.id, bet.id), eq(betsTable.paymentHash, tempPaymentHash)));
+    res.status(502).json({ error: "Payment provider unavailable. Please try again." });
+    return;
+  }
+
+  const [updatedBet] = await db
+    .update(betsTable)
+    .set({ paymentHash: invoice.paymentHash, paymentRequest: invoice.paymentRequest })
+    .where(eq(betsTable.id, bet.id))
+    .returning();
+
   res.status(201).json({
-    id: bet.id,
-    paymentHash: bet.paymentHash,
-    paymentRequest: bet.paymentRequest,
-    amountSats: bet.amountSats,
-    direction: bet.direction,
+    id: updatedBet.id,
+    paymentHash: updatedBet.paymentHash,
+    paymentRequest: updatedBet.paymentRequest,
+    amountSats: updatedBet.amountSats,
+    direction: updatedBet.direction,
     expiresAt: invoice.expiresAt,
-    windowId: bet.windowId,
+    windowId: updatedBet.windowId,
   });
 });
 

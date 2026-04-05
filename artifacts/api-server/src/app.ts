@@ -47,8 +47,16 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
-app.use((_err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  logger.error({ err: _err }, "Unhandled error");
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  if (
+    err instanceof SyntaxError &&
+    "body" in err &&
+    (err as SyntaxError & { status?: number }).status === 400
+  ) {
+    res.status(400).json({ error: "Invalid JSON in request body" });
+    return;
+  }
+  logger.error({ err }, "Unhandled error");
   res.status(500).json({ error: "Internal server error" });
 });
 
