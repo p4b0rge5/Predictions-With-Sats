@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startMarketEngine } from "./lib/market";
+import { initConfig } from "./lib/config";
 
 const rawPort = process.env["PORT"];
 
@@ -15,6 +16,9 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+initConfig();
+logger.info("Configuration validated");
 
 app.listen(port, (err) => {
   if (err) {
