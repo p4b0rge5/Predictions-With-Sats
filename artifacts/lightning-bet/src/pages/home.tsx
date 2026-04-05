@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowUpCircle, ArrowDownCircle, AlertCircle, TrendingUp, TrendingDown } from "lucide-react";
 import { BetModal } from "@/components/bet-modal";
 import { useState, useEffect, useRef } from "react";
+import { SiBitcoin } from "react-icons/si";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -20,14 +21,6 @@ interface PricePoint {
   price: number;
 }
 
-function BitcoinIcon() {
-  return (
-    <div className="w-12 h-12 rounded-lg bg-orange-500 flex items-center justify-center shrink-0">
-      <span className="text-white font-bold text-xl font-mono">₿</span>
-    </div>
-  );
-}
-
 interface CustomDotProps {
   cx?: number;
   cy?: number;
@@ -37,9 +30,7 @@ interface CustomDotProps {
 
 function CurrentPriceDot({ cx, cy, index, dataLength }: CustomDotProps) {
   if (index !== (dataLength ?? 0) - 1 || cx === undefined || cy === undefined) return null;
-  return (
-    <circle cx={cx} cy={cy} r={5} fill="#f97316" stroke="#fff" strokeWidth={2} />
-  );
+  return <circle cx={cx} cy={cy} r={5} fill="#f97316" stroke="#fff" strokeWidth={2} />;
 }
 
 export function Home() {
@@ -61,10 +52,7 @@ export function Home() {
 
     const last = priceHistory.current[priceHistory.current.length - 1];
     if (!last || last.price !== market.btcPriceUsd) {
-      priceHistory.current = [
-        ...priceHistory.current,
-        { time: Date.now(), price: market.btcPriceUsd },
-      ];
+      priceHistory.current = [...priceHistory.current, { time: Date.now(), price: market.btcPriceUsd }];
       setPricePoints([...priceHistory.current]);
     }
   }, [market]);
@@ -80,15 +68,7 @@ export function Home() {
     );
   }
 
-  const {
-    status,
-    btcPriceUsd,
-    openPrice,
-    secondsRemaining,
-    totalUpSats,
-    totalDownSats,
-    closesAt,
-  } = market;
+  const { status, btcPriceUsd, openPrice, secondsRemaining, totalUpSats, totalDownSats, closesAt } = market;
 
   const isClosed = status === "closed" || secondsRemaining < 30;
   const isNone = status === "none";
@@ -112,26 +92,19 @@ export function Home() {
     if (!closesAt) return "";
     const closeDate = new Date(closesAt);
     const openDate = new Date(closeDate.getTime() - 5 * 60 * 1000);
-    const fmt = (d: Date) => format(d, "HH:mm");
-    return `${format(openDate, "MMM d")}, ${fmt(openDate)}–${fmt(closeDate)} ET`;
+    return `${format(openDate, "MMM d")}, ${format(openDate, "HH:mm")}–${format(closeDate, "HH:mm")} ET`;
   })();
 
-  const chartData = pricePoints.map((p) => ({
-    time: p.time,
-    price: p.price,
-  }));
+  const chartData = pricePoints.map((p) => ({ time: p.time, price: p.price }));
 
-  const allPrices = [
-    ...chartData.map((d) => d.price),
-    ...(openPrice ? [openPrice] : []),
-  ];
+  const allPrices = [...chartData.map((d) => d.price), ...(openPrice ? [openPrice] : [])];
   const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : btcPriceUsd - 50;
   const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) : btcPriceUsd + 50;
-  const padding = Math.max((maxPrice - minPrice) * 0.2, 20);
-  const yDomain = [minPrice - padding, maxPrice + padding];
+  const pad = Math.max((maxPrice - minPrice) * 0.2, 20);
+  const yDomain = [minPrice - pad, maxPrice + pad];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
+    <div className="max-w-3xl mx-auto space-y-4 px-0">
       {isNone ? (
         <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
           <AlertCircle className="h-12 w-12 text-muted-foreground" />
@@ -141,61 +114,87 @@ export function Home() {
       ) : (
         <>
           {/* ── Header ── */}
-          <div className="flex items-center gap-4 pb-2 border-b border-border/40">
-            <BitcoinIcon />
-            <div>
-              <h1 className="text-xl font-bold leading-tight">Bitcoin UP or DOWN — 5 minutes</h1>
-              <p className="text-sm text-muted-foreground font-mono mt-0.5">{windowTimeLabel}</p>
+          <div className="flex items-center gap-3 pb-3 border-b border-border/40">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-orange-500 flex items-center justify-center shrink-0">
+              <SiBitcoin className="text-white w-5 h-5 sm:w-6 sm:h-6" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-xl font-bold leading-tight truncate">
+                Bitcoin UP or DOWN — 5 minutes
+              </h1>
+              <p className="text-xs text-muted-foreground font-mono mt-0.5">{windowTimeLabel}</p>
             </div>
           </div>
 
-          {/* ── Stats Row (Polymarket style) ── */}
-          <div className="flex items-center justify-between">
+          {/* ── Stats Row — responsive ── */}
+          {/* Mobile: 2×2 grid. Desktop: 3-column flex */}
+          <div className="grid grid-cols-2 sm:flex sm:items-start sm:justify-between gap-3">
+            {/* Price to beat */}
             <div className="space-y-0.5">
-              <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Price to beat</p>
-              <p className="text-2xl font-mono font-bold" data-testid="text-open-price">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-mono uppercase tracking-wider">
+                Price to beat
+              </p>
+              <p className="text-lg sm:text-2xl font-mono font-bold" data-testid="text-open-price">
                 ${openPrice ? formatUsd(openPrice) : "—"}
               </p>
             </div>
 
-            <div className="space-y-0.5 text-center">
-              <div className="flex items-center gap-1.5 justify-center">
-                <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Current Price</p>
+            {/* Countdown — top-right on mobile */}
+            <div className="text-right sm:order-last space-y-0.5">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-mono uppercase tracking-wider">
+                Time left
+              </p>
+              <div
+                className={`flex items-end gap-2 sm:gap-3 justify-end font-mono font-bold ${
+                  secondsRemaining < 30 ? "text-red-500 animate-pulse" : "text-red-400"
+                }`}
+                data-testid="text-countdown"
+              >
+                <div className="text-center">
+                  <div className="text-3xl sm:text-4xl leading-none">{String(mins).padStart(2, "0")}</div>
+                  <div className="text-[9px] sm:text-[10px] tracking-widest text-muted-foreground mt-0.5">MIN</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl sm:text-4xl leading-none">{String(secs).padStart(2, "0")}</div>
+                  <div className="text-[9px] sm:text-[10px] tracking-widest text-muted-foreground mt-0.5">SECS</div>
+                </div>
+              </div>
+              <p className="text-[10px] font-mono text-muted-foreground uppercase">
+                {isClosed ? "Betting closed" : "Accepting bets"}
+              </p>
+            </div>
+
+            {/* Current price — spans both columns on mobile */}
+            <div className="col-span-2 sm:col-span-1 space-y-0.5 sm:text-center">
+              <div className="flex items-center gap-1.5 sm:justify-center">
+                <p className="text-[10px] sm:text-xs text-muted-foreground font-mono uppercase tracking-wider">
+                  Current price
+                </p>
                 {openPrice && (
-                  <span className={`flex items-center gap-0.5 text-xs font-mono font-bold ${priceUp ? "text-green-400" : priceDown ? "text-red-400" : "text-muted-foreground"}`}>
+                  <span
+                    className={`flex items-center gap-0.5 text-[10px] sm:text-xs font-mono font-bold ${
+                      priceUp ? "text-green-400" : priceDown ? "text-red-400" : "text-muted-foreground"
+                    }`}
+                  >
                     {priceUp ? <TrendingUp className="h-3 w-3" /> : priceDown ? <TrendingDown className="h-3 w-3" /> : null}
                     ${formatUsd(priceChangeAbs)}
                   </span>
                 )}
               </div>
-              <p className={`text-2xl font-mono font-bold ${priceUp ? "text-orange-400" : priceDown ? "text-orange-400" : ""}`} data-testid="text-btc-price">
+              <p
+                className="text-lg sm:text-2xl font-mono font-bold text-orange-400"
+                data-testid="text-btc-price"
+              >
                 ${formatUsd(btcPriceUsd)}
-              </p>
-            </div>
-
-            <div className="text-right space-y-0.5">
-              <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Time left</p>
-              <div className={`flex items-end gap-3 justify-end font-mono font-bold ${secondsRemaining < 30 ? "text-red-500 animate-pulse" : "text-red-400"}`} data-testid="text-countdown">
-                <div className="text-center">
-                  <div className="text-4xl leading-none">{String(mins).padStart(2, "0")}</div>
-                  <div className="text-[10px] tracking-widest text-muted-foreground mt-0.5">MIN</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-4xl leading-none">{String(secs).padStart(2, "0")}</div>
-                  <div className="text-[10px] tracking-widest text-muted-foreground mt-0.5">SECS</div>
-                </div>
-              </div>
-              <p className="text-xs font-mono text-muted-foreground uppercase">
-                {isClosed ? "Betting closed" : "Accepting bets"}
               </p>
             </div>
           </div>
 
           {/* ── Price Chart ── */}
           <div className="border border-border/40 rounded-xl overflow-hidden bg-card/30 pb-2">
-            <div className="h-56 w-full">
+            <div className="h-48 sm:h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
+                <AreaChart data={chartData} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#f97316" stopOpacity={0.25} />
@@ -207,23 +206,31 @@ export function Home() {
                     dataKey="time"
                     type="number"
                     domain={["dataMin", "dataMax"]}
-                    tickFormatter={(t) => format(new Date(t), "HH:mm:ss")}
-                    tick={{ fontSize: 10, fill: "#6b7280", fontFamily: "monospace" }}
+                    tickFormatter={(t) => format(new Date(t), "HH:mm")}
+                    tick={{ fontSize: 9, fill: "#6b7280", fontFamily: "monospace" }}
                     tickLine={false}
                     axisLine={false}
-                    minTickGap={60}
+                    minTickGap={50}
                   />
                   <YAxis
                     domain={yDomain}
-                    tickFormatter={(v) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-                    tick={{ fontSize: 10, fill: "#6b7280", fontFamily: "monospace" }}
+                    tickFormatter={(v) =>
+                      `$${v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                    }
+                    tick={{ fontSize: 9, fill: "#6b7280", fontFamily: "monospace" }}
                     tickLine={false}
                     axisLine={false}
-                    width={70}
+                    width={62}
                     orientation="right"
                   />
                   <Tooltip
-                    contentStyle={{ background: "#111", border: "1px solid #333", borderRadius: 8, fontFamily: "monospace", fontSize: 12 }}
+                    contentStyle={{
+                      background: "#111",
+                      border: "1px solid #333",
+                      borderRadius: 8,
+                      fontFamily: "monospace",
+                      fontSize: 11,
+                    }}
                     labelFormatter={(t) => format(new Date(t), "HH:mm:ss")}
                     formatter={(v: number) => [`$${formatUsd(v)}`, "BTC"]}
                     cursor={{ stroke: "rgba(249,115,22,0.3)", strokeWidth: 1 }}
@@ -238,7 +245,7 @@ export function Home() {
                         value: "Target",
                         position: "insideBottomRight",
                         fill: "#f59e0b",
-                        fontSize: 10,
+                        fontSize: 9,
                         fontFamily: "monospace",
                       }}
                     />
@@ -258,22 +265,25 @@ export function Home() {
                         dataLength={chartData.length}
                       />
                     )}
-                    activeDot={{ r: 5, fill: "#f97316", stroke: "#fff", strokeWidth: 2 }}
+                    activeDot={{ r: 4, fill: "#f97316", stroke: "#fff", strokeWidth: 2 }}
                     isAnimationActive={false}
                   />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
 
-            {/* Current price badge over chart */}
             {chartData.length > 0 && (
-              <div className="px-4 pt-1 flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                <span className="text-xs font-mono text-orange-400">
+              <div className="px-3 pt-1 flex items-center gap-2 flex-wrap">
+                <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shrink-0" />
+                <span className="text-[10px] sm:text-xs font-mono text-orange-400">
                   Live: ${formatUsd(btcPriceUsd)}
                 </span>
                 {openPrice && (
-                  <span className={`text-xs font-mono ml-1 ${priceUp ? "text-green-400" : priceDown ? "text-red-400" : "text-muted-foreground"}`}>
+                  <span
+                    className={`text-[10px] sm:text-xs font-mono ${
+                      priceUp ? "text-green-400" : priceDown ? "text-red-400" : "text-muted-foreground"
+                    }`}
+                  >
                     {priceUp ? "▲" : priceDown ? "▼" : "—"} ${formatUsd(priceChangeAbs)} from open
                   </span>
                 )}
@@ -282,39 +292,43 @@ export function Home() {
           </div>
 
           {/* ── UP / DOWN Buttons ── */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <Button
               onClick={() => setBetDirection("up")}
               disabled={isClosed}
-              className="h-24 text-xl font-mono font-bold bg-green-500/10 text-green-500 border-2 border-green-500/40 hover:bg-green-500/20 hover:border-green-500 transition-all flex flex-col gap-1"
+              className="h-20 sm:h-24 text-lg sm:text-xl font-mono font-bold bg-green-500/10 text-green-500 border-2 border-green-500/40 hover:bg-green-500/20 hover:border-green-500 transition-all flex flex-col gap-1"
               data-testid="button-bet-up"
             >
               <div className="flex items-center gap-2">
-                <ArrowUpCircle className="h-6 w-6" />
+                <ArrowUpCircle className="h-5 w-5 sm:h-6 sm:w-6" />
                 BET UP
               </div>
-              <span className="text-xs font-normal opacity-70">{formatSats(totalUpSats)} sats in pool</span>
+              <span className="text-[10px] sm:text-xs font-normal opacity-70">
+                {formatSats(totalUpSats)} sats in pool
+              </span>
             </Button>
 
             <Button
               onClick={() => setBetDirection("down")}
               disabled={isClosed}
-              className="h-24 text-xl font-mono font-bold bg-red-500/10 text-red-500 border-2 border-red-500/40 hover:bg-red-500/20 hover:border-red-500 transition-all flex flex-col gap-1"
+              className="h-20 sm:h-24 text-lg sm:text-xl font-mono font-bold bg-red-500/10 text-red-500 border-2 border-red-500/40 hover:bg-red-500/20 hover:border-red-500 transition-all flex flex-col gap-1"
               data-testid="button-bet-down"
             >
               <div className="flex items-center gap-2">
-                <ArrowDownCircle className="h-6 w-6" />
+                <ArrowDownCircle className="h-5 w-5 sm:h-6 sm:w-6" />
                 BET DOWN
               </div>
-              <span className="text-xs font-normal opacity-70">{formatSats(totalDownSats)} sats in pool</span>
+              <span className="text-[10px] sm:text-xs font-normal opacity-70">
+                {formatSats(totalDownSats)} sats in pool
+              </span>
             </Button>
           </div>
 
           {/* ── Pool Bar ── */}
-          <div className="rounded-xl bg-card/30 border border-border/40 px-4 py-3">
-            <div className="flex justify-between font-mono text-sm mb-2">
+          <div className="rounded-xl bg-card/30 border border-border/40 px-3 sm:px-4 py-3">
+            <div className="flex justify-between font-mono text-xs sm:text-sm mb-2">
               <span className="text-green-500 font-bold">{upPercent.toFixed(1)}% UP</span>
-              <span className="text-muted-foreground text-xs">Pool: {formatSats(totalSats)} sats</span>
+              <span className="text-muted-foreground text-[10px] sm:text-xs">Pool: {formatSats(totalSats)} sats</span>
               <span className="text-red-500 font-bold">{(100 - upPercent).toFixed(1)}% DOWN</span>
             </div>
             <div className="h-2 w-full bg-red-500/20 rounded-full overflow-hidden flex">
