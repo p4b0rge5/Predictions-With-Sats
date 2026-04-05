@@ -118,7 +118,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
 
             <Button 
               type="submit" 
-              className={`w-full h-14 text-lg font-bold uppercase tracking-wider ${isUp ? 'bg-green-500 hover:bg-green-600 text-black' : 'bg-red-500 hover:bg-red-600 text-black'}`}
+              className={`w-full h-14 text-lg font-bold uppercase tracking-wider text-white ${isUp ? 'bg-green-600 hover:bg-green-700 disabled:bg-green-900' : 'bg-red-600 hover:bg-red-700 disabled:bg-red-900'}`}
               disabled={createBet.isPending || !satsAmount}
               data-testid="button-submit-bet"
             >

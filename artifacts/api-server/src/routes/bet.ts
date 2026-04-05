@@ -78,7 +78,14 @@ router.post("/bet", async (req, res): Promise<void> => {
       .update(betsTable)
       .set({ status: "expired" })
       .where(and(eq(betsTable.id, bet.id), eq(betsTable.paymentHash, tempPaymentHash)));
-    res.status(502).json({ error: "Payment provider unavailable. Please try again." });
+
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const isFundingSource = errMsg.includes("configure your funding source");
+    res.status(502).json({
+      error: isFundingSource
+        ? "Lightning wallet not configured. Connect a funding source at getalby.com/node to enable payments."
+        : "Payment provider unavailable. Please try again.",
+    });
     return;
   }
 
