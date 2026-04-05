@@ -1,3 +1,4 @@
+import cron from "node-cron";
 import { db, marketWindowsTable, betsTable } from "@workspace/db";
 import { eq, and, desc, ne } from "drizzle-orm";
 import { fetchAndStoreBtcPrice } from "./price";
@@ -5,7 +6,6 @@ import { logger } from "./logger";
 
 const WINDOW_DURATION_MS = 5 * 60 * 1000;
 const SETTLEMENT_BUFFER_MS = 30 * 1000;
-const WATCHDOG_INTERVAL_MS = 5_000;
 
 export function getWindowClosesAt(openedAt: Date): Date {
   return new Date(openedAt.getTime() + WINDOW_DURATION_MS);
@@ -41,26 +41,29 @@ async function createNewWindow(): Promise<void> {
 }
 
 async function closeWindow(windowId: number): Promise<void> {
-  logger.info({ windowId }, "Closing market window");
-  await db
+  const result = await db
     .update(marketWindowsTable)
     .set({ status: "closed", closedAt: new Date() })
-    .where(eq(marketWindowsTable.id, windowId));
+    .where(and(eq(marketWindowsTable.id, windowId), eq(marketWindowsTable.status, "open")))
+    .returning();
+  if (result.length > 0) {
+    logger.info({ windowId }, "Market window closed");
+  }
 }
 
 async function settleWindow(windowId: number): Promise<void> {
-  logger.info({ windowId }, "Settling market window");
-
   const [win] = await db
     .select()
     .from(marketWindowsTable)
-    .where(eq(marketWindowsTable.id, windowId))
+    .where(and(eq(marketWindowsTable.id, windowId), eq(marketWindowsTable.status, "closed")))
     .limit(1);
 
   if (!win) {
-    logger.error({ windowId }, "Window not found for settlement");
+    logger.warn({ windowId }, "Window not found or not in closed state — skipping settlement");
     return;
   }
+
+  logger.info({ windowId }, "Settling market window");
 
   const closePrice = await fetchAndStoreBtcPrice(windowId, true);
   const openPriceNum = parseFloat(win.openPrice ?? "0");
@@ -81,13 +84,11 @@ async function settleWindow(windowId: number): Promise<void> {
 
   const totalPool = paidBets.reduce((sum, b) => sum + b.amountSats, 0);
   const payablePool = Math.floor(totalPool * 0.99);
-
   const winners = outcome === "draw" ? paidBets : paidBets.filter(b => b.direction === outcome);
   const totalWinnerStake = winners.reduce((sum, b) => sum + b.amountSats, 0);
 
   for (const bet of paidBets) {
     const isWinner = outcome === "draw" || bet.direction === outcome;
-
     let payoutSats: number | null = null;
     if (isWinner) {
       payoutSats =
@@ -95,7 +96,6 @@ async function settleWindow(windowId: number): Promise<void> {
           ? Math.floor((bet.amountSats / totalWinnerStake) * payablePool)
           : bet.amountSats;
     }
-
     await db
       .update(betsTable)
       .set({ status: isWinner ? "won" : "lost", payoutSats })
@@ -115,45 +115,58 @@ async function settleWindow(windowId: number): Promise<void> {
       status: "settled",
       settledAt: new Date(),
     })
-    .where(eq(marketWindowsTable.id, windowId));
+    .where(and(eq(marketWindowsTable.id, windowId), eq(marketWindowsTable.status, "closed")));
 
   logger.info(
-    { windowId, outcome, openPrice: openPriceNum, closePrice, totalPool, winners: winners.length },
+    { windowId, outcome, openPrice: openPriceNum, closePrice, totalPool },
     "Window settled",
   );
 }
 
+let cycleRunning = false;
+
 async function runMarketCycle(): Promise<void> {
-  const win = await getLatestWindow();
-
-  if (!win || win.status === "settled") {
-    await createNewWindow();
+  if (cycleRunning) {
+    logger.debug("Market cycle already running — skipping");
     return;
   }
+  cycleRunning = true;
+  try {
+    const win = await getLatestWindow();
 
-  if (win.status === "open") {
-    const closesAt = getWindowClosesAt(win.openedAt);
-    if (Date.now() >= closesAt.getTime()) {
-      await closeWindow(win.id);
-    }
-    return;
-  }
-
-  if (win.status === "closed" && win.closedAt) {
-    const settleAt = new Date(win.closedAt.getTime() + SETTLEMENT_BUFFER_MS);
-    if (Date.now() >= settleAt.getTime()) {
-      await settleWindow(win.id);
+    if (!win || win.status === "settled") {
       await createNewWindow();
+      return;
     }
-    return;
+
+    if (win.status === "open") {
+      const closesAt = getWindowClosesAt(win.openedAt);
+      if (Date.now() >= closesAt.getTime()) {
+        await closeWindow(win.id);
+      }
+      return;
+    }
+
+    if (win.status === "closed" && win.closedAt) {
+      const settleAt = new Date(win.closedAt.getTime() + SETTLEMENT_BUFFER_MS);
+      if (Date.now() >= settleAt.getTime()) {
+        await settleWindow(win.id);
+        await createNewWindow();
+      }
+      return;
+    }
+  } catch (err) {
+    logger.error({ err }, "Market cycle error");
+  } finally {
+    cycleRunning = false;
   }
 }
 
-let engineRunning = false;
+let engineStarted = false;
 
 export function startMarketEngine(): void {
-  if (engineRunning) return;
-  engineRunning = true;
+  if (engineStarted) return;
+  engineStarted = true;
 
   logger.info("Market engine starting");
 
@@ -161,11 +174,11 @@ export function startMarketEngine(): void {
     logger.error({ err }, "Initial market cycle failed"),
   );
 
-  setInterval(() => {
+  cron.schedule("*/10 * * * * *", () => {
     runMarketCycle().catch(err =>
-      logger.error({ err }, "Market watchdog cycle error"),
+      logger.error({ err }, "Scheduled market cycle error"),
     );
-  }, WATCHDOG_INTERVAL_MS);
+  });
 }
 
 export async function getSettledWindows(limit: number) {
