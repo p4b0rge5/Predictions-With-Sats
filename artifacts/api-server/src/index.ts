@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startMarketEngine } from "./lib/market";
 import { initConfig } from "./lib/config";
+import { ensureWebhookRegistered } from "./lib/alby";
 
 const rawPort = process.env["PORT"];
 
@@ -17,8 +18,8 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-initConfig();
-logger.info("Configuration validated");
+const config = initConfig();
+logger.info({ lightningAddress: config.lightningAddress }, "Configuration validated");
 
 app.listen(port, (err) => {
   if (err) {
@@ -28,4 +29,16 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
   startMarketEngine();
+
+  if (config.webhookUrl) {
+    ensureWebhookRegistered(config.webhookUrl).catch((e) =>
+      logger.error({ err: e }, "Webhook registration failed"),
+    );
+  } else {
+    logger.warn(
+      "WEBHOOK_URL not set — Alby payment notifications will not be auto-registered. " +
+      "Add your webhook manually at https://getalby.com/developer/webhooks → " +
+      "URL: https://<your-domain>/api/webhook/alby",
+    );
+  }
 });

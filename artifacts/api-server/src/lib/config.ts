@@ -8,15 +8,31 @@ function requireEnv(key: string): string {
   return val;
 }
 
+function optionalEnv(key: string): string | undefined {
+  return process.env[key] || undefined;
+}
+
 export interface AppConfig {
+  /** Bearer token for the Alby REST API (used for webhook management only). */
   albyApiToken: string;
+  /** Lightning Address that receives bets, e.g. yourname@getalby.com */
+  lightningAddress: string;
+  /** HMAC secret used to verify Alby webhook signatures. */
   webhookSecret: string;
+  /**
+   * Full public URL of this server's Alby webhook endpoint.
+   * When set, the server will auto-register the webhook with Alby on startup.
+   * Example: https://my-repl.replit.app/api/webhook/alby
+   */
+  webhookUrl: string | undefined;
 }
 
 export function loadConfig(): AppConfig {
   return {
     albyApiToken: requireEnv("ALBY_API_TOKEN"),
+    lightningAddress: requireEnv("LIGHTNING_ADDRESS"),
     webhookSecret: requireEnv("WEBHOOK_SECRET"),
+    webhookUrl: optionalEnv("WEBHOOK_URL"),
   };
 }
 

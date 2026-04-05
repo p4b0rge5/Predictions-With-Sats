@@ -80,10 +80,10 @@ router.post("/bet", async (req, res): Promise<void> => {
       .where(and(eq(betsTable.id, bet.id), eq(betsTable.paymentHash, tempPaymentHash)));
 
     const errMsg = err instanceof Error ? err.message : String(err);
-    const isFundingSource = errMsg.includes("configure your funding source");
+    const isAddressError = errMsg.includes("LNURL-Pay") || errMsg.includes("Lightning Address");
     res.status(502).json({
-      error: isFundingSource
-        ? "Lightning wallet not configured. Connect a funding source at getalby.com/node to enable payments."
+      error: isAddressError
+        ? `Payment provider error: ${errMsg}`
         : "Payment provider unavailable. Please try again.",
     });
     return;
