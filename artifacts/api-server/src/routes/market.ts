@@ -7,6 +7,7 @@ import {
 import {
   getLatestWindow,
   getSettledWindows,
+  getWindowBetTotals,
   getWindowClosesAt,
 } from "../lib/market";
 import { getCachedBtcPrice, getLastKnownPrice } from "../lib/price";
@@ -41,10 +42,12 @@ router.get("/market/current", async (req, res): Promise<void> => {
     windowId = win.id;
     status = win.status;
     openPrice = win.openPrice !== null ? parseFloat(win.openPrice) : null;
-    totalUpSats = win.totalUpSats;
-    totalDownSats = win.totalDownSats;
     closesAt = getWindowClosesAt(win.openedAt);
     secondsRemaining = Math.max(0, Math.floor((closesAt.getTime() - Date.now()) / 1000));
+
+    const totals = await getWindowBetTotals(win.id);
+    totalUpSats = totals.totalUpSats;
+    totalDownSats = totals.totalDownSats;
   }
 
   const data = GetCurrentMarketResponse.parse({

@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { db, marketWindowsTable, betsTable } from "@workspace/db";
 import { eq, and, desc, ne } from "drizzle-orm";
-import { fetchAndStoreBtcPrice } from "./price";
+import { fetchAndStoreBtcPrice, fetchPricesRaw, storePriceSnapshots } from "./price";
 import { logger } from "./logger";
 
 const WINDOW_DURATION_MS = 5 * 60 * 1000;
@@ -32,11 +32,12 @@ export async function getActiveWindow() {
 
 async function createNewWindow(): Promise<void> {
   logger.info("Creating new market window");
-  const openPrice = await fetchAndStoreBtcPrice(null, false);
+  const { sources, price: openPrice } = await fetchPricesRaw();
   const [win] = await db
     .insert(marketWindowsTable)
     .values({ openPrice: openPrice.toFixed(2), status: "open" })
     .returning();
+  await storePriceSnapshots(win.id, false, sources);
   logger.info({ windowId: win.id, openPrice }, "Market window opened");
 }
 
@@ -179,6 +180,16 @@ export function startMarketEngine(): void {
       logger.error({ err }, "Scheduled market cycle error"),
     );
   });
+}
+
+export async function getWindowBetTotals(windowId: number): Promise<{ totalUpSats: number; totalDownSats: number }> {
+  const bets = await db
+    .select()
+    .from(betsTable)
+    .where(and(eq(betsTable.windowId, windowId), eq(betsTable.status, "paid")));
+  const totalUpSats = bets.filter(b => b.direction === "up").reduce((s, b) => s + b.amountSats, 0);
+  const totalDownSats = bets.filter(b => b.direction === "down").reduce((s, b) => s + b.amountSats, 0);
+  return { totalUpSats, totalDownSats };
 }
 
 export async function getSettledWindows(limit: number) {

@@ -1,7 +1,7 @@
 import { db, priceSnapshotsTable } from "@workspace/db";
 import { logger } from "./logger";
 
-interface SourceResult {
+export interface SourceResult {
   name: string;
   price: number;
 }
@@ -51,47 +51,33 @@ export function getLastKnownPrice(): number | null {
   return cachedPrice;
 }
 
-async function fetchFromSources(): Promise<SourceResult[]> {
+export async function fetchPricesRaw(): Promise<{ sources: SourceResult[]; price: number }> {
   const settled = await Promise.allSettled(priceSources.map(s => s.fn()));
-  const results: SourceResult[] = [];
+  const sources: SourceResult[] = [];
   for (let i = 0; i < settled.length; i++) {
     const r = settled[i];
     if (r.status === "fulfilled") {
-      results.push({ name: priceSources[i].name, price: r.value });
+      sources.push({ name: priceSources[i].name, price: r.value });
     } else {
       logger.warn({ source: priceSources[i].name, reason: String(r.reason) }, "Price source failed");
     }
   }
-  return results;
-}
-
-export async function getCachedBtcPrice(): Promise<number> {
-  if (cachedPrice !== null && Date.now() - cachedAt < CACHE_TTL_MS) {
-    return cachedPrice;
-  }
-  const sources = await fetchFromSources();
   if (sources.length === 0) {
-    if (cachedPrice !== null) return cachedPrice;
+    if (cachedPrice !== null) return { sources: [], price: cachedPrice };
     throw new Error("All price sources failed and no cached price available");
   }
   const price = median(sources.map(s => s.price));
   cachedPrice = price;
   cachedAt = Date.now();
-  return price;
+  return { sources, price };
 }
 
-export async function fetchAndStoreBtcPrice(
-  windowId: number | null,
+export async function storePriceSnapshots(
+  windowId: number,
   isClose: boolean,
-): Promise<number> {
-  const sources = await fetchFromSources();
-  if (sources.length === 0) {
-    throw new Error("All price sources failed");
-  }
-  const price = median(sources.map(s => s.price));
-  cachedPrice = price;
-  cachedAt = Date.now();
-
+  sources: SourceResult[],
+): Promise<void> {
+  if (sources.length === 0) return;
   await db.insert(priceSnapshotsTable).values(
     sources.map(s => ({
       windowId,
@@ -100,7 +86,22 @@ export async function fetchAndStoreBtcPrice(
       isClose,
     })),
   );
+}
 
+export async function getCachedBtcPrice(): Promise<number> {
+  if (cachedPrice !== null && Date.now() - cachedAt < CACHE_TTL_MS) {
+    return cachedPrice;
+  }
+  const { price } = await fetchPricesRaw();
+  return price;
+}
+
+export async function fetchAndStoreBtcPrice(
+  windowId: number,
+  isClose: boolean,
+): Promise<number> {
+  const { sources, price } = await fetchPricesRaw();
+  await storePriceSnapshots(windowId, isClose, sources);
   logger.info({ windowId, isClose, price, sources: sources.length }, "BTC price fetched");
   return price;
 }
