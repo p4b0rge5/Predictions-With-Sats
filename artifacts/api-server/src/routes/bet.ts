@@ -8,26 +8,43 @@ import {
 const router: IRouter = Router();
 
 router.post("/bet", async (req, res): Promise<void> => {
-  req.log.info("POST /bet");
   const parsed = CreateBetBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  res.status(400).json({ error: "No active market window" });
+  req.log.info({ direction: parsed.data.direction }, "POST /bet stub");
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  res.status(201).json({
+    id: 1,
+    paymentHash: "stub_payment_hash_000000000000000000000000000000000000000000000000",
+    paymentRequest: "lnbc1stub",
+    amountSats: Math.round((parsed.data.amountUsd / 95000) * 100_000_000),
+    direction: parsed.data.direction,
+    expiresAt,
+    windowId: 1,
+  });
 });
 
 router.get("/bet/:paymentHash", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.paymentHash)
-    ? req.params.paymentHash[0]
-    : req.params.paymentHash;
-  const params = GetBetStatusParams.safeParse({ paymentHash: raw });
+  const params = GetBetStatusParams.safeParse({ paymentHash: req.params.paymentHash });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  req.log.info({ paymentHash: params.data.paymentHash }, "GET /bet/:paymentHash");
-  res.status(404).json({ error: "Bet not found" });
+  req.log.info({ paymentHash: params.data.paymentHash }, "GET /bet/:paymentHash stub");
+  const data = GetBetStatusResponse.parse({
+    id: 1,
+    paymentHash: params.data.paymentHash,
+    direction: "up",
+    amountSats: 1000,
+    status: "pending",
+    payoutSats: null,
+    windowId: 1,
+    createdAt: new Date().toISOString(),
+    paidAt: null,
+  });
+  res.json(data);
 });
 
 export default router;
