@@ -65,8 +65,8 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
     if (betStatus?.status === "paid" && paymentHash) {
       saveBetHash(paymentHash);
       toast({
-        title: "Pagamento confirmado!",
-        description: "Sua aposta está confirmada. Acompanhe o resultado na página inicial.",
+        title: "Payment confirmed!",
+        description: "Your bet is confirmed. Check the result on the home page.",
         duration: 4000,
       });
     }
@@ -77,7 +77,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!amountNum || amountNum < 0.05) {
-      toast({ title: "Valor inválido", description: "Aposta mínima é $0.05", variant: "destructive" });
+      toast({ title: "Invalid amount", description: "Minimum bet is $0.05", variant: "destructive" });
       return;
     }
     createBet.mutate(
@@ -88,7 +88,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
           setPaymentRequest(data.paymentRequest);
         },
         onError: (err) => {
-          toast({ title: "Erro ao criar aposta", description: err.message || "Erro desconhecido", variant: "destructive" });
+          toast({ title: "Error creating bet", description: err.message || "Unknown error", variant: "destructive" });
         },
       }
     );
@@ -102,9 +102,9 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
       const result = await window.webln.sendPayment(paymentRequest);
       await submitPreimage(result.preimage);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Pagamento falhou";
+      const msg = err instanceof Error ? err.message : "Payment failed";
       if (!msg.toLowerCase().includes("user rejected") && !msg.toLowerCase().includes("cancelled")) {
-        toast({ title: "Pagamento falhou", description: msg, variant: "destructive" });
+        toast({ title: "Payment failed", description: msg, variant: "destructive" });
       }
     } finally {
       setWeblnPaying(false);
@@ -120,7 +120,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
     });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(body.error || "Servidor não conseguiu verificar o preimage");
+      throw new Error(body.error || "Server could not verify the preimage");
     }
     await queryClient.invalidateQueries({ queryKey: getGetBetStatusQueryKey(paymentHash) });
   };
@@ -128,7 +128,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
   const handleManualVerify = async () => {
     const trimmed = preimageInput.trim().toLowerCase();
     if (!trimmed || trimmed.length !== 64) {
-      toast({ title: "Preimage inválido", description: "Deve ter 64 caracteres hexadecimais.", variant: "destructive" });
+      toast({ title: "Invalid preimage", description: "Must be 64 hexadecimal characters.", variant: "destructive" });
       return;
     }
     setVerifyingPreimage(true);
@@ -137,8 +137,8 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
       setShowPreimageInput(false);
       setPreimageInput("");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Verificação falhou";
-      toast({ title: "Verificação falhou", description: msg, variant: "destructive" });
+      const msg = err instanceof Error ? err.message : "Verification failed";
+      toast({ title: "Verification failed", description: msg, variant: "destructive" });
     } finally {
       setVerifyingPreimage(false);
     }
@@ -147,13 +147,13 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
   const copyToClipboard = () => {
     if (paymentRequest) {
       navigator.clipboard.writeText(paymentRequest);
-      toast({ title: "Copiado!", duration: 2000 });
+      toast({ title: "Copied!", duration: 2000 });
     }
   };
 
   const handleClose = () => {
     if (betStatus?.status === "pending") {
-      toast({ title: "Invoice pendente", description: "Você ainda pode pagar essa invoice na sua carteira." });
+      toast({ title: "Pending invoice", description: "You can still pay this invoice from your wallet." });
     }
     setPaymentHash(null);
     setPaymentRequest(null);
@@ -168,10 +168,10 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
       <DialogContent className="sm:max-w-md border-2 border-primary/20 bg-background/95 backdrop-blur font-mono max-h-[85dvh] overflow-y-auto w-[calc(100vw-2rem)] sm:w-auto p-4 sm:p-6">
         <DialogHeader className="pb-1">
           <DialogTitle className="text-lg font-bold uppercase tracking-wider flex items-center gap-2">
-            Apostar <span className={isUp ? "text-green-500" : "text-red-500"}>{isUp ? "ALTA ↑" : "BAIXA ↓"}</span>
+            Bet <span className={isUp ? "text-green-500" : "text-red-500"}>{isUp ? "UP ↑" : "DOWN ↓"}</span>
           </DialogTitle>
           <DialogDescription className="font-mono uppercase text-xs tracking-wider">
-            Janela #{windowId}
+            Window #{windowId}
           </DialogDescription>
         </DialogHeader>
 
@@ -180,7 +180,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
           <form onSubmit={handleSubmit} className="space-y-4 pt-2">
             <div className="space-y-1.5">
               <Label htmlFor="amount" className="text-muted-foreground uppercase text-xs tracking-wider">
-                Valor (USD)
+                Amount (USD)
               </Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
@@ -209,7 +209,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
               disabled={createBet.isPending || !satsAmount}
               data-testid="button-submit-bet"
             >
-              {createBet.isPending ? "Gerando invoice..." : "Gerar Invoice"}
+              {createBet.isPending ? "Generating invoice..." : "Generate Invoice"}
             </Button>
           </form>
         ) : (
@@ -220,7 +220,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                 {/* 1 — Amount info (above QR) */}
                 <div className="text-center">
                   <p className="text-xl font-bold text-yellow-400 leading-tight">
-                    Pagar {new Intl.NumberFormat().format(satsAmount)} sats
+                    Pay {new Intl.NumberFormat().format(satsAmount)} sats
                   </p>
                   <p className="text-sm text-muted-foreground mt-0.5">≈ ${amountUsd} USD</p>
                 </div>
@@ -230,7 +230,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                   <div
                     className="bg-white p-2.5 rounded-xl shadow-lg cursor-pointer relative group"
                     onClick={copyToClipboard}
-                    title="Clique para copiar"
+                    title="Click to copy"
                   >
                     <QRCodeSVG value={paymentRequest} size={180} level="M" includeMargin={false} />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
@@ -250,14 +250,14 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                   </span>
                   <span className="shrink-0 flex items-center gap-1.5 text-xs text-primary font-bold uppercase tracking-wider">
                     <Copy className="h-3.5 w-3.5" />
-                    Copiar
+                    Copy
                   </span>
                 </button>
 
                 {/* 4 — Waiting status */}
                 <div className="flex items-center justify-center gap-2 text-yellow-500 text-sm animate-pulse uppercase tracking-wider font-bold">
                   <Clock className="h-4 w-4 shrink-0" />
-                  Aguardando pagamento...
+                  Waiting for payment...
                 </div>
 
                 {/* WebLN */}
@@ -269,7 +269,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                     data-testid="button-webln-pay"
                   >
                     <Zap className="h-4 w-4 mr-2" />
-                    {weblnPaying ? "Pagando..." : "Pagar com WebLN"}
+                    {weblnPaying ? "Paying..." : "Pay with WebLN"}
                   </Button>
                 )}
 
@@ -283,7 +283,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                   >
                     <span className="flex items-center gap-2">
                       <ShieldCheck className="h-3.5 w-3.5" />
-                      Já paguei? Verificar manualmente
+                      Already paid? Verify manually
                     </span>
                     {showPreimageInput ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                   </button>
@@ -291,10 +291,10 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                   {showPreimageInput && (
                     <div className="px-3 pb-3 space-y-2 bg-muted/10 border-t border-muted">
                       <p className="text-xs text-muted-foreground pt-2 text-left leading-relaxed">
-                        Cole o <strong className="text-foreground">preimage</strong> (hex de 64 caracteres) da sua carteira.
+                        After payment, your wallet shows a <strong className="text-foreground">preimage</strong> (proof of payment). Paste the 64-char hex below.
                       </p>
                       <Input
-                        placeholder="Cole o preimage de 64 caracteres..."
+                        placeholder="Paste 64-char preimage..."
                         value={preimageInput}
                         onChange={(e) => setPreimageInput(e.target.value)}
                         className="font-mono text-xs bg-background"
@@ -309,7 +309,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                         data-testid="button-verify-preimage"
                       >
                         <ShieldCheck className="h-4 w-4 mr-2" />
-                        {verifyingPreimage ? "Verificando..." : "Confirmar Pagamento"}
+                        {verifyingPreimage ? "Verifying..." : "Confirm Payment"}
                       </Button>
                     </div>
                   )}
@@ -318,18 +318,18 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
             ) : betStatus.status === "paid" ? (
               <div className="space-y-4 py-4 flex flex-col items-center">
                 <CheckCircle2 className="h-14 w-14 text-green-500" />
-                <div className="text-xl font-bold uppercase tracking-wider text-green-500">Pagamento Recebido!</div>
-                <p className="text-muted-foreground text-sm text-center">Sua aposta está confirmada. Boa sorte!</p>
+                <div className="text-xl font-bold uppercase tracking-wider text-green-500">Payment Received!</div>
+                <p className="text-muted-foreground text-sm text-center">Your bet is confirmed. Good luck!</p>
                 <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">
-                  Fechar
+                  Close
                 </Button>
               </div>
             ) : (
               <div className="space-y-4 py-4 flex flex-col items-center">
                 <XCircle className="h-14 w-14 text-red-500" />
-                <div className="text-xl font-bold uppercase tracking-wider text-red-500">Pagamento Falhou ou Expirou</div>
+                <div className="text-xl font-bold uppercase tracking-wider text-red-500">Payment Failed or Expired</div>
                 <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">
-                  Fechar
+                  Close
                 </Button>
               </div>
             )}

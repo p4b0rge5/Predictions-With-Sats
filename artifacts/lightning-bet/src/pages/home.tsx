@@ -399,7 +399,7 @@ export function Home() {
         </>
       )}
 
-      {/* ── Minhas Apostas — lista cronológica de todas as apostas ── */}
+      {/* ── My Bets — chronological list of all bets ── */}
       <MyBetsList
         hashes={betHashes}
         onDismiss={(hash) => {
@@ -408,21 +408,21 @@ export function Home() {
         }}
       />
 
-      {/* ── Busca manual de aposta por hash ── */}
+      {/* ── Manual bet lookup by hash ── */}
       <div className="rounded-xl border border-border/40 bg-card/20 font-mono overflow-hidden">
         <button
           onClick={() => setShowLookup(v => !v)}
           className="w-full px-4 py-3 flex items-center justify-between text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           <span className="flex items-center gap-1.5">
-            <Search className="h-3 w-3" /> Buscar aposta por hash
+            <Search className="h-3 w-3" /> Look up bet by hash
           </span>
           {showLookup ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         </button>
         {showLookup && (
           <div className="px-4 pb-4 space-y-2">
             <p className="text-[10px] text-muted-foreground">
-              Cole o payment hash de 64 caracteres para buscar o resultado de uma aposta.
+              Paste a 64-char payment hash to look up a bet result.
             </p>
             <div className="flex gap-2">
               <Input
@@ -441,7 +441,7 @@ export function Home() {
                   setLookupHash("");
                 }}
               >
-                Buscar
+                Search
               </Button>
             </div>
           </div>
