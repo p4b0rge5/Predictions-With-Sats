@@ -1,23 +1,54 @@
 import { useGetBetStatus, getGetBetStatusQueryKey } from "@workspace/api-client-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, Clock, Trophy, Copy, X, Gift } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Trophy, Copy, X, Gift, ArrowUp, ArrowDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
-const STORAGE_KEY = "lightning_bet_last_hash";
+const STORAGE_KEY = "lightning_bet_hashes_v2";
+const MAX_STORED = 30;
 
+// ── Storage helpers ────────────────────────────────────────────────────────────
+
+export function saveBetHash(paymentHash: string) {
+  const existing = getBetHashes();
+  if (existing.includes(paymentHash)) return;
+  const updated = [paymentHash, ...existing].slice(0, MAX_STORED);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+}
+
+/** @deprecated use saveBetHash */
 export function saveLastBetHash(paymentHash: string) {
-  localStorage.setItem(STORAGE_KEY, paymentHash);
+  saveBetHash(paymentHash);
+}
+
+export function getBetHashes(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** @deprecated use getBetHashes */
+export function getLastBetHash(): string | null {
+  const hashes = getBetHashes();
+  return hashes[0] ?? null;
+}
+
+export function removeBetHash(paymentHash: string) {
+  const updated = getBetHashes().filter((h) => h !== paymentHash);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 }
 
 export function clearLastBetHash() {
   localStorage.removeItem(STORAGE_KEY);
 }
 
-export function getLastBetHash(): string | null {
-  return localStorage.getItem(STORAGE_KEY);
-}
+// ── Single bet card ────────────────────────────────────────────────────────────
 
 interface MyBetWidgetProps {
   paymentHash: string;
@@ -44,21 +75,37 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
 
   const handleCopyLnurl = (lnurl: string) => {
     navigator.clipboard.writeText(lnurl);
-    toast({ title: "LNURL copied!", description: "Paste into your Lightning wallet.", duration: 3000 });
+    toast({ title: "LNURL copiado!", description: "Cole na sua carteira Lightning.", duration: 3000 });
   };
 
   const handleClaimSuccess = async () => {
     await queryClient.invalidateQueries({ queryKey: getGetBetStatusQueryKey(paymentHash) });
-    toast({ title: "Payout on its way!", description: "Your winnings are being sent.", duration: 4000 });
+    toast({ title: "Saque enviado!", description: "Seus ganhos estão a caminho.", duration: 4000 });
   };
 
   if (!bet) return null;
 
   const isUp = bet.direction === "up";
   const dirColor = isUp ? "text-green-500" : "text-red-500";
+  const dirBg = isUp ? "bg-green-500/10 border-green-500/30" : "bg-red-500/10 border-red-500/30";
+
+  const statusInfo = (() => {
+    if (bet.status === "pending")
+      return { label: "Aguardando pagamento...", color: "text-yellow-500", pulse: true, icon: Clock };
+    if (bet.status === "paid")
+      return { label: "Aposta confirmada — aguardando resultado...", color: "text-blue-400", pulse: false, icon: CheckCircle2 };
+    if (bet.status === "lost")
+      return { label: "Não foi dessa vez!", color: "text-red-500", pulse: false, icon: XCircle };
+    if (bet.status === "expired")
+      return { label: "Aposta expirada", color: "text-muted-foreground", pulse: false, icon: XCircle };
+    if (bet.status === "won" && bet.withdrawStatus === "claimed")
+      return { label: "Prêmio resgatado! 🎉", color: "text-green-500", pulse: false, icon: CheckCircle2 };
+    return null;
+  })();
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card/40 backdrop-blur p-4 font-mono relative">
+    <div className={`rounded-xl border ${dirBg} bg-card/40 backdrop-blur p-4 font-mono relative`}>
+      {/* Dismiss */}
       <button
         onClick={onDismiss}
         className="absolute top-3 right-3 text-muted-foreground hover:text-foreground transition-colors"
@@ -67,67 +114,47 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
         <X className="h-4 w-4" />
       </button>
 
-      <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
-        <Clock className="h-3 w-3" />
-        My Last Bet — Window #{bet.windowId}
+      {/* Header row */}
+      <div className="flex items-center gap-2 mb-3 pr-6">
+        <span className={`flex items-center gap-1 font-bold text-sm px-2 py-0.5 rounded border ${dirBg} ${dirColor}`}>
+          {isUp ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+          {bet.direction.toUpperCase()}
+        </span>
+        <span className="text-muted-foreground text-xs">
+          {new Intl.NumberFormat().format(bet.amountSats)} sats
+        </span>
+        <span className="text-[10px] text-muted-foreground ml-auto">
+          Janela #{bet.windowId}
+        </span>
       </div>
 
-      <div className="flex items-center gap-3 mb-3">
-        <span className={`font-bold text-lg ${dirColor}`}>{bet.direction.toUpperCase()}</span>
-        <span className="text-muted-foreground text-sm">{new Intl.NumberFormat().format(bet.amountSats)} sats</span>
-        {bet.status === "won" && bet.payoutSats && (
-          <span className="text-green-400 text-sm ml-auto">+{new Intl.NumberFormat().format(bet.payoutSats)} sats</span>
-        )}
-      </div>
-
-      {/* Status badge */}
-      {bet.status === "pending" && (
-        <div className="flex items-center gap-2 text-yellow-500 text-xs animate-pulse">
-          <Clock className="h-3.5 w-3.5" />
-          Awaiting payment confirmation...
+      {/* Payout line */}
+      {bet.status === "won" && bet.payoutSats && (
+        <div className="text-green-400 text-sm font-bold mb-3">
+          +{new Intl.NumberFormat().format(bet.payoutSats)} sats ganhos
         </div>
       )}
 
-      {bet.status === "paid" && (
-        <div className="flex items-center gap-2 text-blue-400 text-xs">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          Bet confirmed — waiting for window to settle...
+      {/* Status */}
+      {statusInfo && (
+        <div className={`flex items-center gap-2 text-xs ${statusInfo.color} ${statusInfo.pulse ? "animate-pulse" : ""}`}>
+          <statusInfo.icon className="h-3.5 w-3.5 shrink-0" />
+          {statusInfo.label}
         </div>
       )}
 
-      {bet.status === "lost" && (
-        <div className="flex items-center gap-2 text-red-500 text-xs">
-          <XCircle className="h-3.5 w-3.5" />
-          Better luck next round!
-        </div>
-      )}
-
-      {bet.status === "expired" && (
-        <div className="flex items-center gap-2 text-muted-foreground text-xs">
-          <XCircle className="h-3.5 w-3.5" />
-          Bet expired
-        </div>
-      )}
-
-      {bet.status === "won" && bet.withdrawStatus === "claimed" && (
-        <div className="flex items-center gap-2 text-green-500 text-xs">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          Payout claimed! 🎉
-        </div>
-      )}
-
-      {/* CLAIM WINNINGS — show QR for unclaimed wins */}
+      {/* CLAIM WINNINGS */}
       {bet.status === "won" && bet.withdrawStatus === "unclaimed" && bet.withdrawLnurl && (
         <div className="mt-3 space-y-3">
           <div className="flex items-center gap-2 text-yellow-400 text-xs font-bold uppercase tracking-wider animate-pulse">
             <Trophy className="h-3.5 w-3.5" />
-            You won! Scan to claim your payout
+            Você ganhou! Escaneie para receber
           </div>
           <div className="flex flex-col items-center gap-3 pt-1">
             <div
               className="bg-white p-3 rounded-lg cursor-pointer relative group"
               onClick={() => handleCopyLnurl(bet.withdrawLnurl!)}
-              title="Click to copy LNURL"
+              title="Clique para copiar LNURL"
             >
               <QRCodeSVG value={bet.withdrawLnurl} size={160} level="M" includeMargin={false} />
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
@@ -142,7 +169,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
                 onClick={() => handleCopyLnurl(bet.withdrawLnurl!)}
               >
                 <Copy className="h-3.5 w-3.5 mr-1.5" />
-                Copy LNURL
+                Copiar LNURL
               </Button>
               <Button
                 variant="default"
@@ -151,11 +178,11 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
                 onClick={handleClaimSuccess}
               >
                 <Gift className="h-3.5 w-3.5 mr-1.5" />
-                I've claimed!
+                Já resgatei!
               </Button>
             </div>
             <p className="text-[10px] text-muted-foreground text-center leading-relaxed">
-              Open your Lightning wallet → Scan QR or paste LNURL → Receive {new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats
+              Abra sua carteira Lightning → Escaneie o QR ou cole o LNURL → Receba {new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats
             </p>
           </div>
         </div>
@@ -164,9 +191,32 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
       {bet.status === "won" && bet.withdrawStatus === "unclaimed" && !bet.withdrawLnurl && (
         <div className="flex items-center gap-2 text-yellow-400 text-xs animate-pulse mt-1">
           <Trophy className="h-3.5 w-3.5" />
-          You won {new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats — generating payout link...
+          Você ganhou {new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats — gerando link de saque...
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Multi-bet list ─────────────────────────────────────────────────────────────
+
+interface MyBetsListProps {
+  hashes: string[];
+  onDismiss: (hash: string) => void;
+}
+
+export function MyBetsList({ hashes, onDismiss }: MyBetsListProps) {
+  if (hashes.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+        <Clock className="h-3 w-3" />
+        Minhas apostas ({hashes.length})
+      </p>
+      {hashes.map((hash) => (
+        <MyBetWidget key={hash} paymentHash={hash} onDismiss={() => onDismiss(hash)} />
+      ))}
     </div>
   );
 }

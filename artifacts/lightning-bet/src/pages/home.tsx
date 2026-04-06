@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowUpCircle, ArrowDownCircle, AlertCircle, TrendingUp, TrendingDown, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { BetModal } from "@/components/bet-modal";
-import { MyBetWidget, getLastBetHash, clearLastBetHash } from "@/components/my-bet-widget";
+import { MyBetsList, getBetHashes, removeBetHash } from "@/components/my-bet-widget";
 import { useState, useEffect, useRef } from "react";
 import { SiBitcoin } from "react-icons/si";
 import {
@@ -43,13 +43,13 @@ export function Home() {
   const [pricePoints, setPricePoints] = useState<PricePoint[]>([]);
   const priceHistory = useRef<PricePoint[]>([]);
   const lastWindowId = useRef<number | null>(null);
-  const [lastBetHash, setLastBetHash] = useState<string | null>(null);
+  const [betHashes, setBetHashes] = useState<string[]>([]);
   const [lookupHash, setLookupHash] = useState("");
   const [lookedUpHash, setLookedUpHash] = useState<string | null>(null);
   const [showLookup, setShowLookup] = useState(false);
 
   useEffect(() => {
-    setLastBetHash(getLastBetHash());
+    setBetHashes(getBetHashes());
   }, []);
 
   useEffect(() => {
@@ -346,61 +346,61 @@ export function Home() {
         </>
       )}
 
-      {/* My Last Bet widget — auto-tracked */}
-      {lastBetHash && (
-        <MyBetWidget
-          paymentHash={lastBetHash}
-          onDismiss={() => {
-            clearLastBetHash();
-            setLastBetHash(null);
-          }}
-        />
-      )}
+      {/* ── Minhas Apostas — lista cronológica de todas as apostas ── */}
+      <MyBetsList
+        hashes={betHashes}
+        onDismiss={(hash) => {
+          removeBetHash(hash);
+          setBetHashes(getBetHashes());
+        }}
+      />
 
-      {/* Manual bet lookup — for when modal was closed before auto-save */}
-      {!lastBetHash && (
-        <div className="rounded-xl border border-border/40 bg-card/20 font-mono overflow-hidden">
-          <button
-            onClick={() => setShowLookup(v => !v)}
-            className="w-full px-4 py-3 flex items-center justify-between text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <span className="flex items-center gap-1.5"><Search className="h-3 w-3" /> Check a previous bet</span>
-            {showLookup ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          </button>
-          {showLookup && (
-            <div className="px-4 pb-4 space-y-2">
-              <p className="text-[10px] text-muted-foreground">Paste your 64-character payment hash to look up a bet result.</p>
-              <div className="flex gap-2">
-                <Input
-                  value={lookupHash}
-                  onChange={e => setLookupHash(e.target.value.trim().toLowerCase())}
-                  placeholder="payment hash (64 hex chars)"
-                  className="font-mono text-xs h-8"
-                />
-                <Button
-                  size="sm"
-                  className="h-8 text-xs"
-                  disabled={lookupHash.length !== 64}
-                  onClick={() => {
-                    setLookedUpHash(lookupHash);
-                    setShowLookup(false);
-                  }}
-                >
-                  Look up
-                </Button>
-              </div>
+      {/* ── Busca manual de aposta por hash ── */}
+      <div className="rounded-xl border border-border/40 bg-card/20 font-mono overflow-hidden">
+        <button
+          onClick={() => setShowLookup(v => !v)}
+          className="w-full px-4 py-3 flex items-center justify-between text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <span className="flex items-center gap-1.5">
+            <Search className="h-3 w-3" /> Buscar aposta por hash
+          </span>
+          {showLookup ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
+        {showLookup && (
+          <div className="px-4 pb-4 space-y-2">
+            <p className="text-[10px] text-muted-foreground">
+              Cole o payment hash de 64 caracteres para buscar o resultado de uma aposta.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                value={lookupHash}
+                onChange={e => setLookupHash(e.target.value.trim().toLowerCase())}
+                placeholder="payment hash (64 hex chars)"
+                className="font-mono text-xs h-8"
+              />
+              <Button
+                size="sm"
+                className="h-8 text-xs shrink-0"
+                disabled={lookupHash.length !== 64}
+                onClick={() => {
+                  setLookedUpHash(lookupHash);
+                  setShowLookup(false);
+                  setLookupHash("");
+                }}
+              >
+                Buscar
+              </Button>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
-      {/* Show looked-up bet result */}
+      {/* Resultado da busca manual */}
       {lookedUpHash && (
-        <MyBetWidget
-          paymentHash={lookedUpHash}
+        <MyBetsList
+          hashes={[lookedUpHash]}
           onDismiss={() => {
             setLookedUpHash(null);
-            setLookupHash("");
           }}
         />
       )}
@@ -410,7 +410,7 @@ export function Home() {
           isOpen={true}
           onClose={() => {
             setBetDirection(null);
-            setLastBetHash(getLastBetHash());
+            setBetHashes(getBetHashes());
           }}
           direction={betDirection}
           btcPriceUsd={btcPriceUsd}
