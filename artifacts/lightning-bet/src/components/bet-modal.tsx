@@ -187,7 +187,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                 <Input
                   id="amount"
                   type="number"
-                  min="0.50"
+                  min="0"
                   step="any"
                   value={amountUsd}
                   onChange={(e) => setAmountUsd(e.target.value)}
