@@ -8,6 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Copy, XCircle, Clock, Zap, ChevronDown, ChevronUp, ShieldCheck } from "lucide-react";
+import { saveLastBetHash } from "@/components/my-bet-widget";
 
 interface BetModalProps {
   isOpen: boolean;
@@ -119,6 +120,9 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
     await queryClient.invalidateQueries({
       queryKey: getGetBetStatusQueryKey(paymentHash),
     });
+
+    // Persist payment hash so user can check result later (even after closing modal)
+    saveLastBetHash(paymentHash);
 
     toast({ title: "Payment confirmed!", description: "Your bet is locked in.", duration: 3000 });
   };

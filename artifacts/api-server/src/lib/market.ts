@@ -1,4 +1,5 @@
 import cron from "node-cron";
+import { randomUUID } from "node:crypto";
 import { db, marketWindowsTable, betsTable } from "@workspace/db";
 import { eq, and, desc, ne } from "drizzle-orm";
 import { fetchAndStoreBtcPrice, fetchPricesRaw, storePriceSnapshots } from "./price";
@@ -99,7 +100,12 @@ async function settleWindow(windowId: number): Promise<void> {
     }
     await db
       .update(betsTable)
-      .set({ status: isWinner ? "won" : "lost", payoutSats })
+      .set({
+        status: isWinner ? "won" : "lost",
+        payoutSats,
+        // Generate a unique withdraw token for winners so they can claim via LNURL-Withdraw
+        ...(isWinner ? { withdrawToken: randomUUID(), withdrawStatus: "unclaimed" } : {}),
+      })
       .where(eq(betsTable.id, bet.id));
   }
 

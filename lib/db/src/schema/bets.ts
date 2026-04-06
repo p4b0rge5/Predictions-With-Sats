@@ -21,6 +21,15 @@ export const betsTable = pgTable("bets", {
   payoutSats: integer("payout_sats"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   paidAt: timestamp("paid_at", { withTimezone: true }),
+  /**
+   * LNURL-Withdraw token for winner payout.
+   * Generated when a bet is marked "won".
+   * Acts as both the URL token and the LUD-03 k1 parameter.
+   */
+  withdrawToken: text("withdraw_token").unique(),
+  /** "unclaimed" | "claimed" — only present when status="won" */
+  withdrawStatus: text("withdraw_status"),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }),
 });
 
 export const insertBetSchema = createInsertSchema(betsTable).omit({

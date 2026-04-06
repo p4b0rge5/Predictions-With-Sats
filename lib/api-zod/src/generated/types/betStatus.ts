@@ -20,4 +20,8 @@ export interface BetStatus {
   createdAt: Date;
   /** @nullable */
   paidAt: Date | null;
+  /** @nullable - LNURL-Withdraw token, present when status="won" */
+  withdrawToken?: string | null;
+  /** @nullable - "unclaimed" | "claimed" */
+  withdrawStatus?: string | null;
 }

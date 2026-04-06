@@ -10,6 +10,7 @@ import { eq, and } from "drizzle-orm";
 import { getActiveWindow, getWindowClosesAt } from "../lib/market";
 import { getCachedBtcPrice } from "../lib/price";
 import { createInvoice } from "../lib/alby";
+import { encodeLnurl } from "./withdraw";
 
 const router: IRouter = Router();
 
@@ -128,6 +129,15 @@ router.get("/bet/:paymentHash", async (req, res): Promise<void> => {
     return;
   }
 
+  // Build the LNURL-Withdraw encoded string if the bet has a withdrawToken
+  let withdrawLnurl: string | null = null;
+  if (bet.withdrawToken && bet.withdrawStatus === "unclaimed") {
+    const host = req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost";
+    const proto = req.headers["x-forwarded-proto"] ?? (req.secure ? "https" : "http");
+    const withdrawUrl = `${proto}://${host}/api/withdraw/${bet.withdrawToken}`;
+    withdrawLnurl = encodeLnurl(withdrawUrl);
+  }
+
   const data = GetBetStatusResponse.parse({
     id: bet.id,
     paymentHash: bet.paymentHash,
@@ -138,6 +148,9 @@ router.get("/bet/:paymentHash", async (req, res): Promise<void> => {
     windowId: bet.windowId,
     createdAt: bet.createdAt.toISOString(),
     paidAt: bet.paidAt?.toISOString() ?? null,
+    withdrawToken: bet.withdrawToken ?? null,
+    withdrawStatus: bet.withdrawStatus ?? null,
+    withdrawLnurl,
   });
 
   res.json(data);

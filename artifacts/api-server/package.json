@@ -12,6 +12,7 @@
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
+    "bech32": "^2.0.0",
     "bolt11": "^1.4.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2",

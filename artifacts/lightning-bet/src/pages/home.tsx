@@ -2,6 +2,7 @@ import { useGetCurrentMarket, getGetCurrentMarketQueryKey } from "@workspace/api
 import { Button } from "@/components/ui/button";
 import { ArrowUpCircle, ArrowDownCircle, AlertCircle, TrendingUp, TrendingDown } from "lucide-react";
 import { BetModal } from "@/components/bet-modal";
+import { MyBetWidget, getLastBetHash, clearLastBetHash } from "@/components/my-bet-widget";
 import { useState, useEffect, useRef } from "react";
 import { SiBitcoin } from "react-icons/si";
 import {
@@ -41,6 +42,11 @@ export function Home() {
   const [pricePoints, setPricePoints] = useState<PricePoint[]>([]);
   const priceHistory = useRef<PricePoint[]>([]);
   const lastWindowId = useRef<number | null>(null);
+  const [lastBetHash, setLastBetHash] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLastBetHash(getLastBetHash());
+  }, []);
 
   useEffect(() => {
     if (!market || !market.btcPriceUsd || market.status === "none") return;
@@ -341,10 +347,24 @@ export function Home() {
         </>
       )}
 
+      {/* My Last Bet widget */}
+      {lastBetHash && (
+        <MyBetWidget
+          paymentHash={lastBetHash}
+          onDismiss={() => {
+            clearLastBetHash();
+            setLastBetHash(null);
+          }}
+        />
+      )}
+
       {betDirection && market.windowId && (
         <BetModal
           isOpen={true}
-          onClose={() => setBetDirection(null)}
+          onClose={() => {
+            setBetDirection(null);
+            setLastBetHash(getLastBetHash());
+          }}
           direction={betDirection}
           btcPriceUsd={btcPriceUsd}
           windowId={market.windowId}
