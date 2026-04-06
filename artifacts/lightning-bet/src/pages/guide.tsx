@@ -45,7 +45,7 @@ const STEPS = [
     iconBg: "bg-orange-400/10 border-orange-400/30",
     title: "Enter Your Amount",
     subtitle: "Step 2 of betting",
-    body: "Enter how much you want to bet in USD (minimum $0.05). The server converts it to satoshis at the live BTC price. A Lightning invoice is generated instantly — you see the exact sats amount before confirming.",
+    body: "Enter how much you want to bet in USD (minimum $0.50). The server converts it to satoshis at the live BTC price. A Lightning invoice is generated instantly — you see the exact sats amount before confirming.",
     visual: <AmountVisual />,
   },
   {
@@ -354,7 +354,7 @@ function AmountVisual() {
       <div className="rounded-lg bg-green-600 py-2.5 text-center text-xs font-bold text-white uppercase tracking-wider">
         Generate Invoice
       </div>
-      <div className="text-center text-[10px] text-muted-foreground">Minimum: $0.05 — Maximum: any amount</div>
+      <div className="text-center text-[10px] text-muted-foreground">Minimum: $0.50 — Maximum: any amount</div>
     </div>
   );
 }

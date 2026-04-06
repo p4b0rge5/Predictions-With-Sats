@@ -76,8 +76,8 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amountNum || amountNum < 0.05) {
-      toast({ title: "Invalid amount", description: "Minimum bet is $0.05", variant: "destructive" });
+    if (!amountNum || amountNum < 0.5) {
+      toast({ title: "Invalid amount", description: "Minimum bet is $0.50", variant: "destructive" });
       return;
     }
     createBet.mutate(
@@ -187,7 +187,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                 <Input
                   id="amount"
                   type="number"
-                  min="0.05"
+                  min="0.50"
                   step="any"
                   value={amountUsd}
                   onChange={(e) => setAmountUsd(e.target.value)}

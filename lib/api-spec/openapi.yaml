@@ -216,7 +216,7 @@ components:
         amountUsd:
           type: number
           description: Bet amount in USD (converted to sats by server)
-          minimum: 1
+          minimum: 0.5
         direction:
           type: string
           enum: [up, down]

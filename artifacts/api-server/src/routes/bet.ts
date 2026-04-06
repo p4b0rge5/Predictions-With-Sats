@@ -15,6 +15,7 @@ import { encodeLnurl } from "./withdraw";
 const router: IRouter = Router();
 
 const WINDOW_CLOSE_BUFFER_MS = 30 * 1000;
+const MIN_AMOUNT_USD = 0.5;
 const MIN_AMOUNT_SATS = 10;
 
 router.post("/bet", async (req, res): Promise<void> => {
@@ -47,6 +48,13 @@ router.post("/bet", async (req, res): Promise<void> => {
   }
 
   const amountSats = Math.round((amountUsd / btcPriceUsd) * 100_000_000);
+
+  if (amountUsd < MIN_AMOUNT_USD) {
+    res.status(400).json({
+      error: `Minimum bet is $${MIN_AMOUNT_USD.toFixed(2)} USD.`,
+    });
+    return;
+  }
 
   if (amountSats < MIN_AMOUNT_SATS) {
     res.status(400).json({
