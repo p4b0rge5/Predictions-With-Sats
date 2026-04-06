@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Activity, History, BarChart3, Zap, Sun, Moon } from "lucide-react";
+import { Activity, History, BarChart3, Zap, Sun, Moon, HelpCircle } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 import { Button } from "@/components/ui/button";
 
@@ -10,6 +10,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/", label: "Live", icon: Activity },
     { href: "/history", label: "History", icon: History },
     { href: "/stats", label: "Stats", icon: BarChart3 },
+    { href: "/guide", label: "Guide", icon: HelpCircle },
   ];
 
   return (
