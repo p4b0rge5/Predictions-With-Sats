@@ -41,6 +41,12 @@ export function History() {
           <Minus className="h-3.5 w-3.5 mr-0.5" /> DRAW
         </span>
       );
+    if (outcome === "no_liquidity")
+      return (
+        <span className="inline-flex items-center text-blue-400 font-bold bg-blue-400/10 px-2 py-0.5 rounded text-xs font-mono">
+          <Minus className="h-3.5 w-3.5 mr-0.5" /> REFUND
+        </span>
+      );
     return <span className="text-muted-foreground text-xs font-mono">PENDING</span>;
   };
 
