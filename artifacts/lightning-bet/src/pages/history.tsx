@@ -80,9 +80,12 @@ export function History() {
                 >
                   {/* Row 1: date + outcome badge */}
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">
-                      {format(new Date(w.openedAt), "MMM d, HH:mm")}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground">
+                        {format(new Date(w.openedAt), "MMM d, HH:mm")}–{format(new Date(new Date(w.openedAt).getTime() + 5 * 60 * 1000), "HH:mm")}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/50 font-mono">Window #{w.id}</span>
+                    </div>
                     <OutcomeBadge outcome={w.outcome} />
                   </div>
 
@@ -124,7 +127,7 @@ export function History() {
               <Table>
                 <TableHeader>
                   <TableRow className="font-mono text-xs uppercase hover:bg-transparent">
-                    <TableHead>Time</TableHead>
+                    <TableHead>Window</TableHead>
                     <TableHead>Outcome</TableHead>
                     <TableHead className="text-right">Open</TableHead>
                     <TableHead className="text-right">Close</TableHead>
@@ -141,7 +144,10 @@ export function History() {
                     return (
                       <TableRow key={w.id} className="font-mono text-sm" data-testid={`row-history-${w.id}`}>
                         <TableCell className="text-muted-foreground">
-                          {format(new Date(w.openedAt), "MMM d, HH:mm")}
+                          <div className="flex flex-col">
+                            <span>{format(new Date(w.openedAt), "MMM d, HH:mm")}–{format(new Date(new Date(w.openedAt).getTime() + 5 * 60 * 1000), "HH:mm")}</span>
+                            <span className="text-[10px] opacity-50">#{w.id}</span>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <OutcomeBadge outcome={w.outcome} />

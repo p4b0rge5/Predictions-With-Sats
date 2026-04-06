@@ -118,7 +118,7 @@ export function Home() {
     );
   }
 
-  const { status, btcPriceUsd, openPrice, totalUpSats, totalDownSats, closesAt } = market;
+  const { status, btcPriceUsd, openPrice, totalUpSats, totalDownSats, closesAt, windowId } = market;
 
   // When the window ends (secsLeft = 0), show the last price before freeze.
   // Resumes live updates once the next window opens.
@@ -177,7 +177,10 @@ export function Home() {
               <h1 className="text-base sm:text-xl font-bold leading-tight truncate">
                 Bitcoin UP or DOWN — 5 minutes
               </h1>
-              <p className="text-xs text-muted-foreground font-mono mt-0.5">{windowTimeLabel}</p>
+              <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                {windowTimeLabel}
+                {windowId && <span className="ml-2 opacity-50">· Window #{windowId}</span>}
+              </p>
             </div>
           </div>
 
