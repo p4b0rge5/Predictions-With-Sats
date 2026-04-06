@@ -89,6 +89,8 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
   const dirColor = isUp ? "text-green-500" : "text-red-500";
   const dirBg = isUp ? "bg-green-500/10 border-green-500/30" : "bg-red-500/10 border-red-500/30";
 
+  const isRefund = bet.windowOutcome === "no_liquidity";
+
   const statusInfo = (() => {
     if (bet.status === "pending")
       return { label: "Waiting for payment...", color: "text-yellow-500", pulse: true, icon: Clock };
@@ -99,7 +101,12 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
     if (bet.status === "expired")
       return { label: "Bet expired", color: "text-muted-foreground", pulse: false, icon: XCircle };
     if (bet.status === "won" && bet.withdrawStatus === "claimed")
-      return { label: "Prize claimed! 🎉", color: "text-green-500", pulse: false, icon: CheckCircle2 };
+      return {
+        label: isRefund ? "Refund claimed ✓" : "Prize claimed! 🎉",
+        color: "text-green-500",
+        pulse: false,
+        icon: CheckCircle2,
+      };
     return null;
   })();
 
@@ -131,7 +138,9 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
       {/* Payout line */}
       {bet.status === "won" && bet.payoutSats && (
         <div className="text-green-400 text-sm font-bold mb-3">
-          +{new Intl.NumberFormat().format(bet.payoutSats)} sats won
+          {isRefund
+            ? `${new Intl.NumberFormat().format(bet.payoutSats)} sats refunded (2% fee)`
+            : `+${new Intl.NumberFormat().format(bet.payoutSats)} sats won`}
         </div>
       )}
 
@@ -143,13 +152,18 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
         </div>
       )}
 
-      {/* CLAIM WINNINGS */}
+      {/* CLAIM WINNINGS / REFUND */}
       {bet.status === "won" && bet.withdrawStatus === "unclaimed" && bet.withdrawLnurl && (
         <div className="mt-3 space-y-3">
           <div className="flex items-center gap-2 text-yellow-400 text-xs font-bold uppercase tracking-wider animate-pulse">
             <Trophy className="h-3.5 w-3.5" />
-            You won! Scan to claim
+            {isRefund ? "Refund ready — scan to claim" : "You won! Scan to claim"}
           </div>
+          {isRefund && (
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              No bets were placed on the opposing side — your stake is being returned minus the 2% platform fee.
+            </p>
+          )}
           <div className="flex flex-col items-center gap-3 pt-1">
             <div
               className="bg-white p-3 rounded-lg cursor-pointer relative group"
@@ -191,7 +205,9 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
       {bet.status === "won" && bet.withdrawStatus === "unclaimed" && !bet.withdrawLnurl && (
         <div className="flex items-center gap-2 text-yellow-400 text-xs animate-pulse mt-1">
           <Trophy className="h-3.5 w-3.5" />
-          You won {new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats — generating withdrawal link...
+          {isRefund
+            ? `Refund of ${new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats ready — generating link...`
+            : `You won ${new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats — generating withdrawal link...`}
         </div>
       )}
     </div>

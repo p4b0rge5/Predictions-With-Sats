@@ -10,6 +10,9 @@ import { logger } from "./logger";
 const WINDOW_DURATION_MS = 5 * 60 * 1000; // 300 000 ms — 5 minutes
 const SETTLEMENT_BUFFER_MS = 20 * 1000;    // 20 s — fetch close price + settle bets
 
+// Platform fee: 2% taken from every settled window (winners or refunds).
+const PLATFORM_FEE = 0.02;
+
 // ── Epoch helpers ──────────────────────────────────────────────────────────────
 // Windows are aligned to UTC 5-minute boundaries: :00, :05, :10, … :55
 // This mirrors the approach used by high-frequency prediction markets (Polymarket,
@@ -98,40 +101,76 @@ async function settleWindow(windowId: number): Promise<void> {
   const closePrice = await fetchAndStoreBtcPrice(windowId, true);
   const openPriceNum = parseFloat(win.openPrice ?? "0");
 
-  let outcome: "up" | "down" | "draw";
-  if (closePrice > openPriceNum) outcome = "up";
-  else if (closePrice < openPriceNum) outcome = "down";
-  else outcome = "draw";
-
   const paidBets = await db
     .select()
     .from(betsTable)
     .where(and(eq(betsTable.windowId, windowId), eq(betsTable.status, "paid")));
 
-  const totalPool = paidBets.reduce((sum, b) => sum + b.amountSats, 0);
-  const payablePool = Math.floor(totalPool * 0.99);
-  const winners =
-    outcome === "draw" ? paidBets : paidBets.filter((b) => b.direction === outcome);
-  const totalWinnerStake = winners.reduce((sum, b) => sum + b.amountSats, 0);
+  const upBets = paidBets.filter((b) => b.direction === "up");
+  const downBets = paidBets.filter((b) => b.direction === "down");
 
-  for (const bet of paidBets) {
-    const isWinner = outcome === "draw" || bet.direction === outcome;
-    const payoutSats: number | null = isWinner
-      ? totalWinnerStake > 0
-        ? Math.floor((bet.amountSats / totalWinnerStake) * payablePool)
-        : bet.amountSats
-      : null;
+  // ── No-liquidity: one side has zero bets — refund everyone at (1 - fee) ─────
+  const hasNoLiquidity =
+    paidBets.length > 0 && (upBets.length === 0 || downBets.length === 0);
 
-    await db
-      .update(betsTable)
-      .set({
-        status: isWinner ? "won" : "lost",
-        payoutSats,
-        ...(isWinner
-          ? { withdrawToken: randomUUID(), withdrawStatus: "unclaimed" }
-          : {}),
-      })
-      .where(eq(betsTable.id, bet.id));
+  let outcome: "up" | "down" | "draw" | "no_liquidity";
+
+  if (hasNoLiquidity) {
+    outcome = "no_liquidity";
+
+    for (const bet of paidBets) {
+      const refundSats = Math.floor(bet.amountSats * (1 - PLATFORM_FEE));
+      await db
+        .update(betsTable)
+        .set({
+          status: "won",
+          payoutSats: refundSats,
+          withdrawToken: randomUUID(),
+          withdrawStatus: "unclaimed",
+        })
+        .where(eq(betsTable.id, bet.id));
+    }
+
+    logger.info(
+      { windowId, refundedBets: paidBets.length },
+      "No-liquidity window — all bets refunded at 98%",
+    );
+  } else {
+    // ── Normal settlement ──────────────────────────────────────────────────────
+    if (closePrice > openPriceNum) outcome = "up";
+    else if (closePrice < openPriceNum) outcome = "down";
+    else outcome = "draw";
+
+    const totalPool = paidBets.reduce((sum, b) => sum + b.amountSats, 0);
+    const payablePool = Math.floor(totalPool * (1 - PLATFORM_FEE)); // 2% fee
+    const winners =
+      outcome === "draw" ? paidBets : paidBets.filter((b) => b.direction === outcome);
+    const totalWinnerStake = winners.reduce((sum, b) => sum + b.amountSats, 0);
+
+    for (const bet of paidBets) {
+      const isWinner = outcome === "draw" || bet.direction === outcome;
+      const payoutSats: number | null = isWinner
+        ? totalWinnerStake > 0
+          ? Math.floor((bet.amountSats / totalWinnerStake) * payablePool)
+          : bet.amountSats
+        : null;
+
+      await db
+        .update(betsTable)
+        .set({
+          status: isWinner ? "won" : "lost",
+          payoutSats,
+          ...(isWinner
+            ? { withdrawToken: randomUUID(), withdrawStatus: "unclaimed" }
+            : {}),
+        })
+        .where(eq(betsTable.id, bet.id));
+    }
+
+    logger.info(
+      { windowId, outcome, openPrice: openPriceNum, closePrice, totalPool },
+      "Window settled",
+    );
   }
 
   // Expire any bets that were never paid (invoice unpaid when window settled)
@@ -156,11 +195,6 @@ async function settleWindow(windowId: number): Promise<void> {
         eq(marketWindowsTable.status, "closed"),
       ),
     );
-
-  logger.info(
-    { windowId, outcome, openPrice: openPriceNum, closePrice, totalPool },
-    "Window settled",
-  );
 }
 
 // ── Market cycle (epoch-aligned) ───────────────────────────────────────────────

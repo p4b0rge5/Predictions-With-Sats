@@ -14,7 +14,7 @@
 
 import { Router, type IRouter } from "express";
 import { bech32 } from "bech32";
-import { db, betsTable } from "@workspace/db";
+import { db, betsTable, marketWindowsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { coinosPayInvoice } from "../lib/coinos";
 import { logger } from "../lib/logger";
@@ -62,6 +62,18 @@ router.get("/withdraw/:token", async (req, res): Promise<void> => {
     return;
   }
 
+  // Look up the window to check if this is a no-liquidity refund
+  const [win] = await db
+    .select({ outcome: marketWindowsTable.outcome })
+    .from(marketWindowsTable)
+    .where(eq(marketWindowsTable.id, bet.windowId))
+    .limit(1);
+
+  const isRefund = win?.outcome === "no_liquidity";
+  const description = isRefund
+    ? `Lightning Bet refund — no opposing bets in window #${bet.windowId} — ${bet.payoutSats} sats (2% fee applied)`
+    : `Lightning Bet payout — ${bet.payoutSats} sats (window #${bet.windowId})`;
+
   const base = getPublicBase(req);
   const callbackUrl = `${base}/api/withdraw/${token}/callback`;
 
@@ -74,7 +86,7 @@ router.get("/withdraw/:token", async (req, res): Promise<void> => {
     k1: token,
     minWithdrawable: minMsats,
     maxWithdrawable: maxMsats,
-    defaultDescription: `Lightning Bet payout — ${bet.payoutSats} sats (window #${bet.windowId})`,
+    defaultDescription: description,
   });
 });
 

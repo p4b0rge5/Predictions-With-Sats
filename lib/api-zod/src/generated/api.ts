@@ -87,6 +87,7 @@ export const GetBetStatusResponse = zod.object({
   withdrawToken: zod.string().nullable().optional(),
   withdrawStatus: zod.string().nullable().optional(),
   withdrawLnurl: zod.string().nullable().optional(),
+  windowOutcome: zod.string().nullable().optional(),
 });
 
 /**

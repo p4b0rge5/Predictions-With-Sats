@@ -5,7 +5,7 @@ import {
   GetBetStatusParams,
   GetBetStatusResponse,
 } from "@workspace/api-zod";
-import { db, betsTable } from "@workspace/db";
+import { db, betsTable, marketWindowsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getActiveWindow, getWindowClosesAt } from "../lib/market";
 import { getCachedBtcPrice } from "../lib/price";
@@ -138,6 +138,13 @@ router.get("/bet/:paymentHash", async (req, res): Promise<void> => {
     withdrawLnurl = encodeLnurl(withdrawUrl);
   }
 
+  // Look up the window outcome so the client can detect no-liquidity refunds
+  const [window] = await db
+    .select({ outcome: marketWindowsTable.outcome })
+    .from(marketWindowsTable)
+    .where(eq(marketWindowsTable.id, bet.windowId))
+    .limit(1);
+
   const data = GetBetStatusResponse.parse({
     id: bet.id,
     paymentHash: bet.paymentHash,
@@ -151,6 +158,7 @@ router.get("/bet/:paymentHash", async (req, res): Promise<void> => {
     withdrawToken: bet.withdrawToken ?? null,
     withdrawStatus: bet.withdrawStatus ?? null,
     withdrawLnurl,
+    windowOutcome: window?.outcome ?? null,
   });
 
   res.json(data);
