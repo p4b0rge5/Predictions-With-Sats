@@ -15,7 +15,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="px-3 sm:px-6 flex h-14 sm:h-16 items-center justify-between">
+        <div className="px-3 sm:px-6 flex h-14 sm:h-16 items-center justify-between max-w-5xl mx-auto w-full">
           {/* Logo */}
           <div className="flex items-center gap-1.5 font-mono font-bold tracking-tight text-base sm:text-xl shrink-0">
             <Zap className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400 fill-yellow-400" />
@@ -31,7 +31,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   to={href}
                   end={href === "/"}
                   className={({ isActive }) =>
-                    `flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+                    `flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
                       isActive
                         ? "text-yellow-400 bg-yellow-400/10"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -48,20 +48,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
               variant="ghost"
               size="icon"
               onClick={toggleTheme}
-              className="h-8 w-8 sm:h-9 sm:w-9 shrink-0 text-muted-foreground hover:text-foreground"
+              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
               aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             >
-              {theme === "dark" ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 px-3 sm:px-6 py-4 sm:py-6">
+      <main
+        className="flex-1 px-3 sm:px-6 py-4 sm:py-6 max-w-5xl mx-auto w-full"
+        style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+      >
         {children}
       </main>
     </div>

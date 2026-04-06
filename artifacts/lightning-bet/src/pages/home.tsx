@@ -136,66 +136,61 @@ export function Home() {
             </div>
           </div>
 
-          {/* ── Stats Row — responsive ── */}
-          {/* Mobile: 2×2 grid. Desktop: 3-column flex */}
-          <div className="grid grid-cols-2 sm:flex sm:items-start sm:justify-between gap-3">
+          {/* ── Stats Row — 3-column grid on all screen sizes ── */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 rounded-xl bg-card/30 border border-border/40 px-3 py-3 sm:px-5 sm:py-4">
             {/* Price to beat */}
-            <div className="space-y-0.5">
-              <p className="text-[10px] sm:text-xs text-muted-foreground font-mono uppercase tracking-wider">
+            <div className="space-y-1 min-w-0">
+              <p className="text-[9px] sm:text-xs text-muted-foreground font-mono uppercase tracking-wider truncate">
                 Price to beat
               </p>
-              <p className="text-lg sm:text-2xl font-mono font-bold" data-testid="text-open-price">
+              <p className="text-sm sm:text-xl font-mono font-bold leading-tight truncate" data-testid="text-open-price">
                 ${openPrice ? formatUsd(openPrice) : "—"}
               </p>
             </div>
 
-            {/* Countdown — top-right on mobile */}
-            <div className="text-right sm:order-last space-y-0.5">
-              <p className="text-[10px] sm:text-xs text-muted-foreground font-mono uppercase tracking-wider">
-                Time left
-              </p>
-              <div
-                className={`flex items-end gap-2 sm:gap-3 justify-end font-mono font-bold ${
-                  secondsRemaining < 30 ? "text-red-500 animate-pulse" : "text-red-400"
-                }`}
-                data-testid="text-countdown"
-              >
-                <div className="text-center">
-                  <div className="text-3xl sm:text-4xl leading-none">{String(mins).padStart(2, "0")}</div>
-                  <div className="text-[9px] sm:text-[10px] tracking-widest text-muted-foreground mt-0.5">MIN</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-3xl sm:text-4xl leading-none">{String(secs).padStart(2, "0")}</div>
-                  <div className="text-[9px] sm:text-[10px] tracking-widest text-muted-foreground mt-0.5">SECS</div>
-                </div>
-              </div>
-              <p className="text-[10px] font-mono text-muted-foreground uppercase">
-                {isClosed ? "Betting closed" : "Accepting bets"}
-              </p>
-            </div>
-
-            {/* Current price — spans both columns on mobile */}
-            <div className="col-span-2 sm:col-span-1 space-y-0.5 sm:text-center">
-              <div className="flex items-center gap-1.5 sm:justify-center">
-                <p className="text-[10px] sm:text-xs text-muted-foreground font-mono uppercase tracking-wider">
-                  Current price
+            {/* Current price — center column */}
+            <div className="space-y-1 text-center min-w-0">
+              <div className="flex items-center justify-center gap-1">
+                <p className="text-[9px] sm:text-xs text-muted-foreground font-mono uppercase tracking-wider">
+                  Now
                 </p>
                 {openPrice && (
                   <span
-                    className={`flex items-center gap-0.5 text-[10px] sm:text-xs font-mono font-bold ${
+                    className={`flex items-center gap-0.5 text-[9px] sm:text-xs font-mono font-bold ${
                       priceUp ? "text-green-400" : priceDown ? "text-red-400" : "text-muted-foreground"
                     }`}
                   >
-                    {priceUp ? <TrendingUp className="h-3 w-3" /> : priceDown ? <TrendingDown className="h-3 w-3" /> : null}
+                    {priceUp ? <TrendingUp className="h-2.5 w-2.5" /> : priceDown ? <TrendingDown className="h-2.5 w-2.5" /> : null}
                     ${formatUsd(priceChangeAbs)}
                   </span>
                 )}
               </div>
               <p
-                className="text-lg sm:text-2xl font-mono font-bold text-orange-400"
+                className="text-sm sm:text-xl font-mono font-bold text-orange-400 leading-tight truncate"
                 data-testid="text-btc-price"
               >
                 ${formatUsd(btcPriceUsd)}
+              </p>
+            </div>
+
+            {/* Countdown — right column */}
+            <div className="space-y-1 text-right min-w-0">
+              <p className="text-[9px] sm:text-xs text-muted-foreground font-mono uppercase tracking-wider">
+                Time left
+              </p>
+              <div
+                className={`flex items-baseline justify-end gap-0.5 sm:gap-1 font-mono font-bold leading-tight ${
+                  secondsRemaining < 30 ? "text-red-500 animate-pulse" : "text-red-400"
+                }`}
+                data-testid="text-countdown"
+              >
+                <span className="text-sm sm:text-xl">{String(mins).padStart(2, "0")}</span>
+                <span className="text-[10px] sm:text-sm opacity-60">m</span>
+                <span className="text-sm sm:text-xl">{String(secs).padStart(2, "0")}</span>
+                <span className="text-[10px] sm:text-sm opacity-60">s</span>
+              </div>
+              <p className="text-[9px] sm:text-[10px] font-mono text-muted-foreground uppercase truncate">
+                {isClosed ? "Closed" : "Accepting"}
               </p>
             </div>
           </div>
