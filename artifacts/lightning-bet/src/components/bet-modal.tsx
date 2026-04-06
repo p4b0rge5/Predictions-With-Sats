@@ -213,55 +213,51 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
             </Button>
           </form>
         ) : (
-          /* ── Invoice / payment screen — compact ── */
+          /* ── Invoice / payment screen ── */
           <div className="pt-1 space-y-3">
             {betStatus?.status === "pending" || !betStatus ? (
               <>
-                {/* QR + info side-by-side to minimise height */}
-                <div className="flex items-center gap-3">
-                  {/* QR — tappable to copy */}
+                {/* 1 — Amount info (above QR) */}
+                <div className="text-center">
+                  <p className="text-xl font-bold text-yellow-400 leading-tight">
+                    Pagar {new Intl.NumberFormat().format(satsAmount)} sats
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-0.5">≈ ${amountUsd} USD</p>
+                </div>
+
+                {/* 2 — QR code (center, tappable to copy) */}
+                <div className="flex justify-center">
                   <div
-                    className="shrink-0 bg-white p-2 rounded-lg shadow cursor-pointer relative group"
+                    className="bg-white p-2.5 rounded-xl shadow-lg cursor-pointer relative group"
                     onClick={copyToClipboard}
                     title="Clique para copiar"
                   >
-                    <QRCodeSVG value={paymentRequest} size={130} level="M" includeMargin={false} />
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
-                      <Copy className="h-6 w-6 text-white" />
+                    <QRCodeSVG value={paymentRequest} size={180} level="M" includeMargin={false} />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
+                      <Copy className="h-8 w-8 text-white" />
                     </div>
                   </div>
+                </div>
 
-                  {/* Info column */}
-                  <div className="flex-1 min-w-0 space-y-2">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Pagar</p>
-                      <p className="text-lg font-bold text-yellow-400 leading-tight">
-                        {new Intl.NumberFormat().format(satsAmount)} sats
-                      </p>
-                      <p className="text-xs text-muted-foreground">≈ ${amountUsd} USD</p>
-                    </div>
+                {/* 3 — Invoice link + copy (below QR) */}
+                <button
+                  type="button"
+                  onClick={copyToClipboard}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-muted/50 rounded-lg border border-border/60 hover:bg-muted/80 transition-colors text-left overflow-hidden"
+                >
+                  <span className="flex-1 min-w-0 text-xs font-mono text-muted-foreground truncate">
+                    {paymentRequest.slice(0, 28)}…
+                  </span>
+                  <span className="shrink-0 flex items-center gap-1.5 text-xs text-primary font-bold uppercase tracking-wider">
+                    <Copy className="h-3.5 w-3.5" />
+                    Copiar
+                  </span>
+                </button>
 
-                    {/* Copy button */}
-                    <button
-                      type="button"
-                      onClick={copyToClipboard}
-                      className="w-full flex items-center gap-1.5 px-2.5 py-2 bg-muted/50 rounded-lg border border-border/60 hover:bg-muted/80 transition-colors text-left overflow-hidden"
-                    >
-                      <span className="flex-1 min-w-0 text-[10px] font-mono text-muted-foreground truncate">
-                        {paymentRequest.slice(0, 16)}…
-                      </span>
-                      <span className="shrink-0 flex items-center gap-1 text-[10px] text-primary font-bold uppercase tracking-wider">
-                        <Copy className="h-3 w-3" />
-                        Copiar
-                      </span>
-                    </button>
-
-                    {/* Status */}
-                    <div className="flex items-center gap-1.5 text-yellow-500 text-[11px] animate-pulse uppercase tracking-wider font-bold">
-                      <Clock className="h-3.5 w-3.5 shrink-0" />
-                      Aguardando pagamento...
-                    </div>
-                  </div>
+                {/* 4 — Waiting status */}
+                <div className="flex items-center justify-center gap-2 text-yellow-500 text-sm animate-pulse uppercase tracking-wider font-bold">
+                  <Clock className="h-4 w-4 shrink-0" />
+                  Aguardando pagamento...
                 </div>
 
                 {/* WebLN */}

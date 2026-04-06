@@ -66,12 +66,34 @@ export function Home() {
   }, []);
   // ────────────────────────────────────────────────────────────────────────────
 
+  // ── Price freeze when window closes ─────────────────────────────────────────
+  // windowFrozenRef lets the price-history effect read the frozen flag without
+  // needing it in its own dependency array (avoids running every second).
+  const windowFrozenRef = useRef(false);
+  const [frozenPrice, setFrozenPrice] = useState<number | null>(null);
+
+  // Freeze once when the countdown hits 0
+  useEffect(() => {
+    if (secsLeft === 0 && market?.btcPriceUsd) {
+      windowFrozenRef.current = true;
+      setFrozenPrice((prev) => prev ?? market.btcPriceUsd);
+    }
+  }, [secsLeft]);
+
+  // Unfreeze as soon as a new window opens (windowId changes)
+  useEffect(() => {
+    windowFrozenRef.current = false;
+    setFrozenPrice(null);
+  }, [market?.windowId]);
+  // ────────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     setBetHashes(getBetHashes());
   }, []);
 
   useEffect(() => {
     if (!market || !market.btcPriceUsd || market.status === "none") return;
+    if (windowFrozenRef.current) return; // window ended — hold the chart still
 
     if (lastWindowId.current !== (market.windowId ?? null)) {
       priceHistory.current = [];
@@ -98,13 +120,18 @@ export function Home() {
 
   const { status, btcPriceUsd, openPrice, totalUpSats, totalDownSats, closesAt } = market;
 
+  // When the window ends (secsLeft = 0), show the last price before freeze.
+  // Resumes live updates once the next window opens.
+  const displayPrice = frozenPrice ?? btcPriceUsd;
+  const isFrozen = frozenPrice !== null;
+
   const isClosed = status === "closed" || secsLeft < 30;
   const isNone = status === "none";
 
   const totalSats = totalUpSats + totalDownSats;
   const upPercent = totalSats > 0 ? (totalUpSats / totalSats) * 100 : 50;
 
-  const priceChangeDollar = openPrice ? btcPriceUsd - openPrice : 0;
+  const priceChangeDollar = openPrice ? displayPrice - openPrice : 0;
   const priceChangeAbs = Math.abs(priceChangeDollar);
   const priceUp = priceChangeDollar > 0;
   const priceDown = priceChangeDollar < 0;
@@ -187,7 +214,7 @@ export function Home() {
                 className="text-sm sm:text-xl font-mono font-bold text-orange-400 leading-tight truncate"
                 data-testid="text-btc-price"
               >
-                ${formatUsd(btcPriceUsd)}
+                ${formatUsd(displayPrice)}
               </p>
             </div>
 
@@ -297,9 +324,17 @@ export function Home() {
 
             {chartData.length > 0 && (
               <div className="px-3 pt-1 flex items-center gap-2 flex-wrap">
-                <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shrink-0" />
-                <span className="text-[10px] sm:text-xs font-mono text-orange-400">
-                  Live: ${formatUsd(btcPriceUsd)}
+                <div
+                  className={`w-2 h-2 rounded-full shrink-0 ${
+                    isFrozen ? "bg-muted-foreground" : "bg-orange-500 animate-pulse"
+                  }`}
+                />
+                <span
+                  className={`text-[10px] sm:text-xs font-mono ${
+                    isFrozen ? "text-muted-foreground" : "text-orange-400"
+                  }`}
+                >
+                  {isFrozen ? "Fechado" : "Live"}: ${formatUsd(displayPrice)}
                 </span>
                 {openPrice && (
                   <span
