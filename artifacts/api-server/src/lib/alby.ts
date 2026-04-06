@@ -194,3 +194,55 @@ export async function ensureWebhookRegistered(webhookUrl: string): Promise<void>
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Invoice status polling (works with Alby Lightning addresses)
+// ---------------------------------------------------------------------------
+
+interface AlbyInvoice {
+  payment_hash: string;
+  settled: boolean;
+  memo?: string;
+  amount?: number;
+}
+
+/**
+ * Checks whether an invoice with the given payment hash has been settled on
+ * the Alby wallet.  Returns false silently on API errors (no throws).
+ *
+ * Only meaningful when LIGHTNING_ADDRESS is an Alby address (user@getalby.com)
+ * because only then does Alby have the invoice in its own ledger.
+ */
+export async function isAlbyInvoicePaid(paymentHash: string): Promise<boolean> {
+  try {
+    const { albyApiToken } = getConfig();
+    if (!albyApiToken) return false;
+
+    // Query the invoice list filtered by payment_hash
+    const res = await fetch(
+      `${ALBY_API_BASE}/invoices/incoming?payment_hash=${encodeURIComponent(paymentHash)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${albyApiToken}`,
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+
+    if (!res.ok) return false; // 401 = bad token / account issue; 404 = not found
+
+    const data = await res.json() as AlbyInvoice | AlbyInvoice[];
+
+    // Alby may return an object (direct hit) or array (filtered list)
+    if (Array.isArray(data)) {
+      const match = data.find((inv) => inv.payment_hash === paymentHash);
+      return match?.settled === true;
+    }
+
+    return data?.settled === true;
+  } catch {
+    // Network error or unexpected response — silently skip
+    return false;
+  }
+}
