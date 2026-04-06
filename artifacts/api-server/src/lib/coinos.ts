@@ -39,10 +39,11 @@ async function getCoinosToken(): Promise<string> {
 export async function coinosPayInvoice(bolt11: string, amountSats: number): Promise<void> {
   const token = await getCoinosToken();
 
+  // Use "payreq" (not "hash") for external Lightning payments.
+  // Coinos routes "hash" to internal transfers and "payreq" to sendLightning().
   const payBody = {
-    hash: bolt11,
+    payreq: bolt11,
     amount: amountSats,
-    type: "lightning",
   };
 
   const res = await fetch(`${COINOS_BASE}/payments`, {
