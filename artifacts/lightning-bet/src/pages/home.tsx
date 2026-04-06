@@ -1,6 +1,7 @@
 import { useGetCurrentMarket, getGetCurrentMarketQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { ArrowUpCircle, ArrowDownCircle, AlertCircle, TrendingUp, TrendingDown } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ArrowUpCircle, ArrowDownCircle, AlertCircle, TrendingUp, TrendingDown, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { BetModal } from "@/components/bet-modal";
 import { MyBetWidget, getLastBetHash, clearLastBetHash } from "@/components/my-bet-widget";
 import { useState, useEffect, useRef } from "react";
@@ -43,6 +44,9 @@ export function Home() {
   const priceHistory = useRef<PricePoint[]>([]);
   const lastWindowId = useRef<number | null>(null);
   const [lastBetHash, setLastBetHash] = useState<string | null>(null);
+  const [lookupHash, setLookupHash] = useState("");
+  const [lookedUpHash, setLookedUpHash] = useState<string | null>(null);
+  const [showLookup, setShowLookup] = useState(false);
 
   useEffect(() => {
     setLastBetHash(getLastBetHash());
@@ -347,13 +351,61 @@ export function Home() {
         </>
       )}
 
-      {/* My Last Bet widget */}
+      {/* My Last Bet widget — auto-tracked */}
       {lastBetHash && (
         <MyBetWidget
           paymentHash={lastBetHash}
           onDismiss={() => {
             clearLastBetHash();
             setLastBetHash(null);
+          }}
+        />
+      )}
+
+      {/* Manual bet lookup — for when modal was closed before auto-save */}
+      {!lastBetHash && (
+        <div className="rounded-xl border border-border/40 bg-card/20 font-mono overflow-hidden">
+          <button
+            onClick={() => setShowLookup(v => !v)}
+            className="w-full px-4 py-3 flex items-center justify-between text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <span className="flex items-center gap-1.5"><Search className="h-3 w-3" /> Check a previous bet</span>
+            {showLookup ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+          {showLookup && (
+            <div className="px-4 pb-4 space-y-2">
+              <p className="text-[10px] text-muted-foreground">Paste your 64-character payment hash to look up a bet result.</p>
+              <div className="flex gap-2">
+                <Input
+                  value={lookupHash}
+                  onChange={e => setLookupHash(e.target.value.trim().toLowerCase())}
+                  placeholder="payment hash (64 hex chars)"
+                  className="font-mono text-xs h-8"
+                />
+                <Button
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={lookupHash.length !== 64}
+                  onClick={() => {
+                    setLookedUpHash(lookupHash);
+                    setShowLookup(false);
+                  }}
+                >
+                  Look up
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Show looked-up bet result */}
+      {lookedUpHash && (
+        <MyBetWidget
+          paymentHash={lookedUpHash}
+          onDismiss={() => {
+            setLookedUpHash(null);
+            setLookupHash("");
           }}
         />
       )}

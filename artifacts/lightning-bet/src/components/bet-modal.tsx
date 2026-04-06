@@ -55,12 +55,22 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
       enabled: !!paymentHash,
       refetchInterval: (query) => {
         const state = query.state.data?.status;
+        // Keep polling while pending (waiting for LUD-21 auto-confirm)
         if (state === "pending") return 3000;
         return false;
       },
       queryKey: getGetBetStatusQueryKey(paymentHash || "")
     }
   });
+
+  // When LUD-21 auto-confirms the payment, save the hash to localStorage so the
+  // MyBetWidget on the home page can track the result even after the modal closes.
+  useEffect(() => {
+    if (betStatus?.status === "paid" && paymentHash) {
+      saveLastBetHash(paymentHash);
+      toast({ title: "Payment confirmed!", description: "Your bet is locked in. Check the homepage to see your result.", duration: 4000 });
+    }
+  }, [betStatus?.status, paymentHash]);
 
   const isUp = direction === "up";
 
@@ -120,11 +130,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
     await queryClient.invalidateQueries({
       queryKey: getGetBetStatusQueryKey(paymentHash),
     });
-
-    // Persist payment hash so user can check result later (even after closing modal)
-    saveLastBetHash(paymentHash);
-
-    toast({ title: "Payment confirmed!", description: "Your bet is locked in.", duration: 3000 });
+    // saveLastBetHash and confirmation toast are handled by the betStatus useEffect above
   };
 
   const handleManualVerify = async () => {
