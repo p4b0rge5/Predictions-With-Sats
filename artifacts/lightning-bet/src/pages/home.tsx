@@ -36,8 +36,9 @@ function CurrentPriceDot({ cx, cy, index, dataLength }: CustomDotProps) {
 }
 
 export function Home() {
+  // Refetch every 3 s for responsive price/chart updates
   const { data: market, isLoading } = useGetCurrentMarket({
-    query: { refetchInterval: 10000, queryKey: getGetCurrentMarketQueryKey() },
+    query: { refetchInterval: 3000, queryKey: getGetCurrentMarketQueryKey() },
   });
   const [betDirection, setBetDirection] = useState<"up" | "down" | null>(null);
   const [pricePoints, setPricePoints] = useState<PricePoint[]>([]);
@@ -47,6 +48,23 @@ export function Home() {
   const [lookupHash, setLookupHash] = useState("");
   const [lookedUpHash, setLookedUpHash] = useState<string | null>(null);
   const [showLookup, setShowLookup] = useState(false);
+
+  // ── 1-second countdown ──────────────────────────────────────────────────────
+  const [secsLeft, setSecsLeft] = useState<number>(0);
+
+  // Sync countdown whenever fresh server data arrives
+  useEffect(() => {
+    if (market) setSecsLeft(market.secondsRemaining ?? 0);
+  }, [market?.secondsRemaining, market?.windowId]);
+
+  // Local 1-second ticker — decrement until zero
+  useEffect(() => {
+    const id = setInterval(() => {
+      setSecsLeft((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  // ────────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     setBetHashes(getBetHashes());
@@ -78,9 +96,9 @@ export function Home() {
     );
   }
 
-  const { status, btcPriceUsd, openPrice, secondsRemaining, totalUpSats, totalDownSats, closesAt } = market;
+  const { status, btcPriceUsd, openPrice, totalUpSats, totalDownSats, closesAt } = market;
 
-  const isClosed = status === "closed" || secondsRemaining < 30;
+  const isClosed = status === "closed" || secsLeft < 30;
   const isNone = status === "none";
 
   const totalSats = totalUpSats + totalDownSats;
@@ -95,8 +113,8 @@ export function Home() {
   const formatUsd = (n: number) =>
     n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const mins = Math.floor(Math.max(0, secondsRemaining) / 60);
-  const secs = Math.max(0, secondsRemaining) % 60;
+  const mins = Math.floor(secsLeft / 60);
+  const secs = secsLeft % 60;
 
   const windowTimeLabel = (() => {
     if (!closesAt) return "";
@@ -180,7 +198,7 @@ export function Home() {
               </p>
               <div
                 className={`flex items-baseline justify-end gap-0.5 sm:gap-1 font-mono font-bold leading-tight ${
-                  secondsRemaining < 30 ? "text-red-500 animate-pulse" : "text-red-400"
+                  secsLeft < 30 ? "text-red-500 animate-pulse" : "text-red-400"
                 }`}
                 data-testid="text-countdown"
               >

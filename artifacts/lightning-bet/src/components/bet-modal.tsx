@@ -165,14 +165,10 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      {/*
-        max-h-[90dvh] + overflow-y-auto → modal scrolls on small screens
-        w-[calc(100vw-2rem)] caps width on very narrow phones
-      */}
-      <DialogContent className="sm:max-w-md border-2 border-primary/20 bg-background/95 backdrop-blur font-mono max-h-[90dvh] overflow-y-auto w-[calc(100vw-2rem)] sm:w-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl sm:text-2xl font-bold uppercase tracking-wider flex items-center gap-2">
-            Apostar <span className={isUp ? "text-green-500" : "text-red-500"}>{isUp ? "ALTA" : "BAIXA"}</span>
+      <DialogContent className="sm:max-w-md border-2 border-primary/20 bg-background/95 backdrop-blur font-mono max-h-[85dvh] overflow-y-auto w-[calc(100vw-2rem)] sm:w-auto p-4 sm:p-6">
+        <DialogHeader className="pb-1">
+          <DialogTitle className="text-lg font-bold uppercase tracking-wider flex items-center gap-2">
+            Apostar <span className={isUp ? "text-green-500" : "text-red-500"}>{isUp ? "ALTA ↑" : "BAIXA ↓"}</span>
           </DialogTitle>
           <DialogDescription className="font-mono uppercase text-xs tracking-wider">
             Janela #{windowId}
@@ -181,8 +177,8 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
 
         {!paymentRequest ? (
           /* ── Amount form ── */
-          <form onSubmit={handleSubmit} className="space-y-5 pt-3">
-            <div className="space-y-2">
+          <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
               <Label htmlFor="amount" className="text-muted-foreground uppercase text-xs tracking-wider">
                 Valor (USD)
               </Label>
@@ -195,19 +191,19 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                   step="any"
                   value={amountUsd}
                   onChange={(e) => setAmountUsd(e.target.value)}
-                  className="pl-8 text-xl font-bold h-14 bg-card/50"
+                  className="pl-8 text-xl font-bold h-12 bg-card/50"
                   autoFocus
                   data-testid="input-bet-amount"
                 />
               </div>
-              <div className="text-right text-sm text-muted-foreground">
+              <div className="text-right text-xs text-muted-foreground">
                 ≈ {new Intl.NumberFormat().format(satsAmount)} sats
               </div>
             </div>
 
             <Button
               type="submit"
-              className={`w-full h-14 text-lg font-bold uppercase tracking-wider text-white ${
+              className={`w-full h-12 text-base font-bold uppercase tracking-wider text-white ${
                 isUp ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
               }`}
               disabled={createBet.isPending || !satsAmount}
@@ -217,51 +213,63 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
             </Button>
           </form>
         ) : (
-          /* ── Invoice / payment screen ── */
-          <div className="flex flex-col items-center pt-2 pb-4 space-y-4 text-center">
+          /* ── Invoice / payment screen — compact ── */
+          <div className="pt-1 space-y-3">
             {betStatus?.status === "pending" || !betStatus ? (
               <>
-                {/* Amount */}
-                <div className="space-y-0.5">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Pagar Invoice</div>
-                  <div className="text-2xl font-bold text-yellow-400">
-                    {new Intl.NumberFormat().format(satsAmount)} sats
+                {/* QR + info side-by-side to minimise height */}
+                <div className="flex items-center gap-3">
+                  {/* QR — tappable to copy */}
+                  <div
+                    className="shrink-0 bg-white p-2 rounded-lg shadow cursor-pointer relative group"
+                    onClick={copyToClipboard}
+                    title="Clique para copiar"
+                  >
+                    <QRCodeSVG value={paymentRequest} size={130} level="M" includeMargin={false} />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
+                      <Copy className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+
+                  {/* Info column */}
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Pagar</p>
+                      <p className="text-lg font-bold text-yellow-400 leading-tight">
+                        {new Intl.NumberFormat().format(satsAmount)} sats
+                      </p>
+                      <p className="text-xs text-muted-foreground">≈ ${amountUsd} USD</p>
+                    </div>
+
+                    {/* Copy button */}
+                    <button
+                      type="button"
+                      onClick={copyToClipboard}
+                      className="w-full flex items-center gap-1.5 px-2.5 py-2 bg-muted/50 rounded-lg border border-border/60 hover:bg-muted/80 transition-colors text-left overflow-hidden"
+                    >
+                      <span className="flex-1 min-w-0 text-[10px] font-mono text-muted-foreground truncate">
+                        {paymentRequest.slice(0, 16)}…
+                      </span>
+                      <span className="shrink-0 flex items-center gap-1 text-[10px] text-primary font-bold uppercase tracking-wider">
+                        <Copy className="h-3 w-3" />
+                        Copiar
+                      </span>
+                    </button>
+
+                    {/* Status */}
+                    <div className="flex items-center gap-1.5 text-yellow-500 text-[11px] animate-pulse uppercase tracking-wider font-bold">
+                      <Clock className="h-3.5 w-3.5 shrink-0" />
+                      Aguardando pagamento...
+                    </div>
                   </div>
                 </div>
-
-                {/* QR — slightly smaller on mobile to save vertical space */}
-                <div
-                  className="bg-white p-3 rounded-xl shadow-lg relative group cursor-pointer"
-                  onClick={copyToClipboard}
-                  title="Clique para copiar"
-                >
-                  <QRCodeSVG value={paymentRequest} size={180} level="M" includeMargin={false} />
-                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
-                    <Copy className="h-8 w-8 text-white" />
-                  </div>
-                </div>
-
-                {/* Copy row — min-w-0 prevents icon overflow */}
-                <button
-                  type="button"
-                  onClick={copyToClipboard}
-                  className="w-full flex items-center gap-2 px-3 py-3 bg-muted/50 rounded-lg border border-border/60 hover:bg-muted/80 transition-colors text-left overflow-hidden"
-                >
-                  <span className="flex-1 min-w-0 text-xs font-mono text-muted-foreground truncate">
-                    {paymentRequest.slice(0, 24)}...{paymentRequest.slice(-12)}
-                  </span>
-                  <span className="shrink-0 flex items-center gap-1.5 text-xs text-primary font-bold uppercase tracking-wider">
-                    <Copy className="h-3.5 w-3.5" />
-                    Copiar
-                  </span>
-                </button>
 
                 {/* WebLN */}
                 {weblnAvailable && (
                   <Button
                     onClick={handleWeblnPay}
                     disabled={weblnPaying}
-                    className="w-full h-12 font-bold uppercase tracking-wider bg-yellow-500 hover:bg-yellow-400 text-black"
+                    className="w-full h-10 font-bold uppercase tracking-wider bg-yellow-500 hover:bg-yellow-400 text-black text-sm"
                     data-testid="button-webln-pay"
                   >
                     <Zap className="h-4 w-4 mr-2" />
@@ -269,18 +277,12 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                   </Button>
                 )}
 
-                {/* Status */}
-                <div className="flex items-center gap-2 text-yellow-500 text-sm animate-pulse uppercase tracking-wider font-bold">
-                  <Clock className="h-4 w-4" />
-                  Aguardando pagamento...
-                </div>
-
-                {/* Manual preimage */}
-                <div className="w-full border border-muted rounded-lg overflow-hidden">
+                {/* Manual preimage verify — collapsible */}
+                <div className="border border-muted rounded-lg overflow-hidden">
                   <button
                     type="button"
                     onClick={() => setShowPreimageInput(!showPreimageInput)}
-                    className="w-full flex items-center justify-between px-4 py-3 text-xs text-muted-foreground uppercase tracking-wider hover:bg-muted/30 transition-colors"
+                    className="w-full flex items-center justify-between px-3 py-2.5 text-[11px] text-muted-foreground uppercase tracking-wider hover:bg-muted/30 transition-colors"
                     data-testid="button-toggle-preimage"
                   >
                     <span className="flex items-center gap-2">
@@ -291,10 +293,9 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                   </button>
 
                   {showPreimageInput && (
-                    <div className="px-4 pb-4 space-y-3 bg-muted/10 border-t border-muted">
-                      <p className="text-xs text-muted-foreground pt-3 text-left leading-relaxed">
-                        Após pagar, sua carteira mostra um{" "}
-                        <strong className="text-foreground">preimage</strong> (prova de pagamento). Cole o hex de 64 caracteres abaixo.
+                    <div className="px-3 pb-3 space-y-2 bg-muted/10 border-t border-muted">
+                      <p className="text-xs text-muted-foreground pt-2 text-left leading-relaxed">
+                        Cole o <strong className="text-foreground">preimage</strong> (hex de 64 caracteres) da sua carteira.
                       </p>
                       <Input
                         placeholder="Cole o preimage de 64 caracteres..."
@@ -319,19 +320,19 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                 </div>
               </>
             ) : betStatus.status === "paid" ? (
-              <div className="space-y-4 py-6 flex flex-col items-center">
-                <CheckCircle2 className="h-16 w-16 text-green-500" />
+              <div className="space-y-4 py-4 flex flex-col items-center">
+                <CheckCircle2 className="h-14 w-14 text-green-500" />
                 <div className="text-xl font-bold uppercase tracking-wider text-green-500">Pagamento Recebido!</div>
-                <p className="text-muted-foreground text-sm">Sua aposta está confirmada. Boa sorte!</p>
-                <Button onClick={handleClose} className="mt-2 w-full font-bold uppercase tracking-wider" variant="outline">
+                <p className="text-muted-foreground text-sm text-center">Sua aposta está confirmada. Boa sorte!</p>
+                <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">
                   Fechar
                 </Button>
               </div>
             ) : (
-              <div className="space-y-4 py-6 flex flex-col items-center">
-                <XCircle className="h-16 w-16 text-red-500" />
+              <div className="space-y-4 py-4 flex flex-col items-center">
+                <XCircle className="h-14 w-14 text-red-500" />
                 <div className="text-xl font-bold uppercase tracking-wider text-red-500">Pagamento Falhou ou Expirou</div>
-                <Button onClick={handleClose} className="mt-2 w-full font-bold uppercase tracking-wider" variant="outline">
+                <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">
                   Fechar
                 </Button>
               </div>
