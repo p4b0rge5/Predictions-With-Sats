@@ -5,12 +5,32 @@ import { eq, and, desc, ne } from "drizzle-orm";
 import { fetchAndStoreBtcPrice, fetchPricesRaw, storePriceSnapshots } from "./price";
 import { logger } from "./logger";
 
-const WINDOW_DURATION_MS = 5 * 60 * 1000;
-const SETTLEMENT_BUFFER_MS = 30 * 1000;
+// ── Constants ──────────────────────────────────────────────────────────────────
 
+const WINDOW_DURATION_MS = 5 * 60 * 1000; // 300 000 ms — 5 minutes
+const SETTLEMENT_BUFFER_MS = 20 * 1000;    // 20 s — fetch close price + settle bets
+
+// ── Epoch helpers ──────────────────────────────────────────────────────────────
+// Windows are aligned to UTC 5-minute boundaries: :00, :05, :10, … :55
+// This mirrors the approach used by high-frequency prediction markets (Polymarket,
+// Drift, etc.) where every window starts and ends at a globally deterministic time.
+
+/** Index of the 5-minute epoch that contains `timestampMs`. */
+function epochIndexOf(timestampMs: number): number {
+  return Math.floor(timestampMs / WINDOW_DURATION_MS);
+}
+
+/** Exact UTC start of the epoch that contains `timestampMs`. */
+function epochStartOf(timestampMs: number): Date {
+  return new Date(epochIndexOf(timestampMs) * WINDOW_DURATION_MS);
+}
+
+/** The window's deterministic close time = openedAt + 5 min. */
 export function getWindowClosesAt(openedAt: Date): Date {
   return new Date(openedAt.getTime() + WINDOW_DURATION_MS);
 }
+
+// ── DB helpers ─────────────────────────────────────────────────────────────────
 
 export async function getLatestWindow() {
   const [win] = await db
@@ -31,15 +51,23 @@ export async function getActiveWindow() {
   return win ?? null;
 }
 
-async function createNewWindow(): Promise<void> {
+// ── Window lifecycle ───────────────────────────────────────────────────────────
+
+/**
+ * Create a new window anchored to `openedAt` (an epoch boundary).
+ * Passing the timestamp explicitly — rather than relying on DB `defaultNow()` —
+ * ensures the window's duration is always exactly 300 s regardless of when the
+ * INSERT actually runs.
+ */
+async function createNewWindow(openedAt: Date): Promise<void> {
   logger.info("Creating new market window");
   const { sources, price: openPrice } = await fetchPricesRaw();
   const [win] = await db
     .insert(marketWindowsTable)
-    .values({ openPrice: openPrice.toFixed(2), status: "open" })
+    .values({ openedAt, openPrice: openPrice.toFixed(2), status: "open" })
     .returning();
   await storePriceSnapshots(win.id, false, sources);
-  logger.info({ windowId: win.id, openPrice }, "Market window opened");
+  logger.info({ windowId: win.id, openPrice, openedAt }, "Market window opened");
 }
 
 async function closeWindow(windowId: number): Promise<void> {
@@ -71,13 +99,9 @@ async function settleWindow(windowId: number): Promise<void> {
   const openPriceNum = parseFloat(win.openPrice ?? "0");
 
   let outcome: "up" | "down" | "draw";
-  if (closePrice > openPriceNum) {
-    outcome = "up";
-  } else if (closePrice < openPriceNum) {
-    outcome = "down";
-  } else {
-    outcome = "draw";
-  }
+  if (closePrice > openPriceNum) outcome = "up";
+  else if (closePrice < openPriceNum) outcome = "down";
+  else outcome = "draw";
 
   const paidBets = await db
     .select()
@@ -86,33 +110,37 @@ async function settleWindow(windowId: number): Promise<void> {
 
   const totalPool = paidBets.reduce((sum, b) => sum + b.amountSats, 0);
   const payablePool = Math.floor(totalPool * 0.99);
-  const winners = outcome === "draw" ? paidBets : paidBets.filter(b => b.direction === outcome);
+  const winners =
+    outcome === "draw" ? paidBets : paidBets.filter((b) => b.direction === outcome);
   const totalWinnerStake = winners.reduce((sum, b) => sum + b.amountSats, 0);
 
   for (const bet of paidBets) {
     const isWinner = outcome === "draw" || bet.direction === outcome;
-    let payoutSats: number | null = null;
-    if (isWinner) {
-      payoutSats =
-        totalWinnerStake > 0
-          ? Math.floor((bet.amountSats / totalWinnerStake) * payablePool)
-          : bet.amountSats;
-    }
+    const payoutSats: number | null = isWinner
+      ? totalWinnerStake > 0
+        ? Math.floor((bet.amountSats / totalWinnerStake) * payablePool)
+        : bet.amountSats
+      : null;
+
     await db
       .update(betsTable)
       .set({
         status: isWinner ? "won" : "lost",
         payoutSats,
-        // Generate a unique withdraw token for winners so they can claim via LNURL-Withdraw
-        ...(isWinner ? { withdrawToken: randomUUID(), withdrawStatus: "unclaimed" } : {}),
+        ...(isWinner
+          ? { withdrawToken: randomUUID(), withdrawStatus: "unclaimed" }
+          : {}),
       })
       .where(eq(betsTable.id, bet.id));
   }
 
+  // Expire any bets that were never paid (invoice unpaid when window settled)
   await db
     .update(betsTable)
     .set({ status: "expired" })
-    .where(and(eq(betsTable.windowId, windowId), eq(betsTable.status, "pending")));
+    .where(
+      and(eq(betsTable.windowId, windowId), eq(betsTable.status, "pending")),
+    );
 
   await db
     .update(marketWindowsTable)
@@ -122,13 +150,20 @@ async function settleWindow(windowId: number): Promise<void> {
       status: "settled",
       settledAt: new Date(),
     })
-    .where(and(eq(marketWindowsTable.id, windowId), eq(marketWindowsTable.status, "closed")));
+    .where(
+      and(
+        eq(marketWindowsTable.id, windowId),
+        eq(marketWindowsTable.status, "closed"),
+      ),
+    );
 
   logger.info(
     { windowId, outcome, openPrice: openPriceNum, closePrice, totalPool },
     "Window settled",
   );
 }
+
+// ── Market cycle (epoch-aligned) ───────────────────────────────────────────────
 
 let cycleRunning = false;
 
@@ -139,26 +174,42 @@ async function runMarketCycle(): Promise<void> {
   }
   cycleRunning = true;
   try {
-    const win = await getLatestWindow();
+    const now = Date.now();
+    const currentEpochStart = epochStartOf(now);
+    const currentEpochIdx = epochIndexOf(now);
 
-    if (!win || win.status === "settled") {
-      await createNewWindow();
+    const latest = await getLatestWindow();
+
+    // ── No window at all → open one for the current epoch ──────────────────────
+    if (!latest) {
+      await createNewWindow(currentEpochStart);
       return;
     }
 
-    if (win.status === "open") {
-      const closesAt = getWindowClosesAt(win.openedAt);
-      if (Date.now() >= closesAt.getTime()) {
-        await closeWindow(win.id);
+    const latestEpochIdx = epochIndexOf(latest.openedAt.getTime());
+
+    // ── Latest window is settled and belongs to a past epoch → open current ────
+    if (latest.status === "settled" && latestEpochIdx < currentEpochIdx) {
+      await createNewWindow(currentEpochStart);
+      return;
+    }
+
+    // ── Open window: close it when the epoch boundary has passed ───────────────
+    if (latest.status === "open") {
+      const closesAt = getWindowClosesAt(latest.openedAt);
+      if (now >= closesAt.getTime()) {
+        await closeWindow(latest.id);
       }
       return;
     }
 
-    if (win.status === "closed" && win.closedAt) {
-      const settleAt = new Date(win.closedAt.getTime() + SETTLEMENT_BUFFER_MS);
-      if (Date.now() >= settleAt.getTime()) {
-        await settleWindow(win.id);
-        await createNewWindow();
+    // ── Closed window: settle after the buffer, then open the current epoch ────
+    if (latest.status === "closed" && latest.closedAt) {
+      const settleAt = latest.closedAt.getTime() + SETTLEMENT_BUFFER_MS;
+      if (now >= settleAt) {
+        await settleWindow(latest.id);
+        // Open the window for the current epoch (may have already started)
+        await createNewWindow(currentEpochStart);
       }
       return;
     }
@@ -169,6 +220,8 @@ async function runMarketCycle(): Promise<void> {
   }
 }
 
+// ── Engine bootstrap ───────────────────────────────────────────────────────────
+
 let engineStarted = false;
 
 export function startMarketEngine(): void {
@@ -177,24 +230,33 @@ export function startMarketEngine(): void {
 
   logger.info("Market engine starting");
 
-  runMarketCycle().catch(err =>
+  // Run immediately on startup, then every 10 s
+  runMarketCycle().catch((err) =>
     logger.error({ err }, "Initial market cycle failed"),
   );
 
   cron.schedule("*/10 * * * * *", () => {
-    runMarketCycle().catch(err =>
+    runMarketCycle().catch((err) =>
       logger.error({ err }, "Scheduled market cycle error"),
     );
   });
 }
 
-export async function getWindowBetTotals(windowId: number): Promise<{ totalUpSats: number; totalDownSats: number }> {
+// ── Public query helpers ───────────────────────────────────────────────────────
+
+export async function getWindowBetTotals(
+  windowId: number,
+): Promise<{ totalUpSats: number; totalDownSats: number }> {
   const bets = await db
     .select()
     .from(betsTable)
     .where(and(eq(betsTable.windowId, windowId), eq(betsTable.status, "paid")));
-  const totalUpSats = bets.filter(b => b.direction === "up").reduce((s, b) => s + b.amountSats, 0);
-  const totalDownSats = bets.filter(b => b.direction === "down").reduce((s, b) => s + b.amountSats, 0);
+  const totalUpSats = bets
+    .filter((b) => b.direction === "up")
+    .reduce((s, b) => s + b.amountSats, 0);
+  const totalDownSats = bets
+    .filter((b) => b.direction === "down")
+    .reduce((s, b) => s + b.amountSats, 0);
   return { totalUpSats, totalDownSats };
 }
 
@@ -210,13 +272,19 @@ export async function getSettledWindows(limit: number) {
 export async function getPlatformStats() {
   const [windowStats] = await db
     .select({
-      totalSettled: db.$count(marketWindowsTable, eq(marketWindowsTable.status, "settled")),
+      totalSettled: db.$count(
+        marketWindowsTable,
+        eq(marketWindowsTable.status, "settled"),
+      ),
     })
     .from(marketWindowsTable);
 
   const upWinCount = await db.$count(
     marketWindowsTable,
-    and(eq(marketWindowsTable.status, "settled"), eq(marketWindowsTable.outcome, "up")),
+    and(
+      eq(marketWindowsTable.status, "settled"),
+      eq(marketWindowsTable.outcome, "up"),
+    ),
   );
 
   const paidBets = await db
