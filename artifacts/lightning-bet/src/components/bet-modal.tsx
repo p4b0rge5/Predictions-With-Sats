@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Copy, XCircle, Clock, Zap } from "lucide-react";
+import { CheckCircle2, Copy, XCircle, Clock, Zap, ChevronDown, ChevronUp, ShieldCheck } from "lucide-react";
 
 interface BetModalProps {
   isOpen: boolean;
@@ -36,6 +36,11 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
   const [paymentRequest, setPaymentRequest] = useState<string | null>(null);
   const [weblnAvailable, setWeblnAvailable] = useState(false);
   const [weblnPaying, setWeblnPaying] = useState(false);
+
+  // Manual preimage verification state
+  const [showPreimageInput, setShowPreimageInput] = useState(false);
+  const [preimageInput, setPreimageInput] = useState("");
+  const [verifyingPreimage, setVerifyingPreimage] = useState(false);
 
   const amountNum = parseFloat(amountUsd);
   const satsAmount = !isNaN(amountNum) && amountNum > 0 ? Math.floor((amountNum / btcPriceUsd) * 100000000) : 0;
@@ -87,23 +92,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
       await window.webln.enable();
       const result = await window.webln.sendPayment(paymentRequest);
 
-      // Verify the preimage server-side to confirm the payment
-      const res = await fetch(`/api/bet/${paymentHash}/verify-preimage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preimage: result.preimage }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Server could not verify preimage");
-      }
-
-      // Invalidate the bet status query so it refreshes immediately
-      await queryClient.invalidateQueries({
-        queryKey: getGetBetStatusQueryKey(paymentHash),
-      });
-
-      toast({ title: "Payment sent!", description: "Your bet is confirmed.", duration: 3000 });
+      await submitPreimage(result.preimage);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Payment failed";
       if (!msg.toLowerCase().includes("user rejected") && !msg.toLowerCase().includes("cancelled")) {
@@ -111,6 +100,45 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
       }
     } finally {
       setWeblnPaying(false);
+    }
+  };
+
+  const submitPreimage = async (preimage: string) => {
+    if (!paymentHash) return;
+    const res = await fetch(`/api/bet/${paymentHash}/verify-preimage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preimage }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(body.error || "Server could not verify preimage");
+    }
+
+    await queryClient.invalidateQueries({
+      queryKey: getGetBetStatusQueryKey(paymentHash),
+    });
+
+    toast({ title: "Payment confirmed!", description: "Your bet is locked in.", duration: 3000 });
+  };
+
+  const handleManualVerify = async () => {
+    const trimmed = preimageInput.trim().toLowerCase();
+    if (!trimmed || trimmed.length !== 64) {
+      toast({ title: "Invalid preimage", description: "Payment proof must be 64 hex characters.", variant: "destructive" });
+      return;
+    }
+    setVerifyingPreimage(true);
+    try {
+      await submitPreimage(trimmed);
+      setShowPreimageInput(false);
+      setPreimageInput("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Verification failed";
+      toast({ title: "Verification failed", description: msg, variant: "destructive" });
+    } finally {
+      setVerifyingPreimage(false);
     }
   };
 
@@ -128,6 +156,8 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
     setPaymentHash(null);
     setPaymentRequest(null);
     setAmountUsd("5");
+    setShowPreimageInput(false);
+    setPreimageInput("");
     onClose();
   };
 
@@ -216,6 +246,48 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                 <div className="flex items-center gap-2 text-yellow-500 text-sm animate-pulse uppercase tracking-wider font-bold">
                   <Clock className="h-4 w-4" />
                   Waiting for payment...
+                </div>
+
+                {/* Manual preimage verification */}
+                <div className="w-full border border-muted rounded-lg overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowPreimageInput(!showPreimageInput)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-xs text-muted-foreground uppercase tracking-wider hover:bg-muted/30 transition-colors"
+                    data-testid="button-toggle-preimage"
+                  >
+                    <span className="flex items-center gap-2">
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      Already paid? Verify manually
+                    </span>
+                    {showPreimageInput ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+
+                  {showPreimageInput && (
+                    <div className="px-4 pb-4 space-y-3 bg-muted/10 border-t border-muted">
+                      <p className="text-xs text-muted-foreground pt-3 text-left leading-relaxed">
+                        After paying, your wallet shows a <strong className="text-foreground">payment proof</strong> (preimage). Paste the 64-character hex string below to confirm your bet instantly.
+                      </p>
+                      <Input
+                        placeholder="Paste 64-char payment preimage..."
+                        value={preimageInput}
+                        onChange={(e) => setPreimageInput(e.target.value)}
+                        className="font-mono text-xs bg-background"
+                        data-testid="input-preimage"
+                      />
+                      <Button
+                        onClick={handleManualVerify}
+                        disabled={verifyingPreimage || preimageInput.trim().length !== 64}
+                        className="w-full font-bold uppercase tracking-wider"
+                        variant="outline"
+                        size="sm"
+                        data-testid="button-verify-preimage"
+                      >
+                        <ShieldCheck className="h-4 w-4 mr-2" />
+                        {verifyingPreimage ? "Verifying..." : "Confirm Payment"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </>
             ) : betStatus.status === "paid" ? (

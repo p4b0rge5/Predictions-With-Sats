@@ -117,6 +117,12 @@ export async function createInvoice(
 
   const info = await fetchLnurlPayInfo(lightningAddress);
 
+  if (info.maxSendable === 0) {
+    throw new Error(
+      `Lightning address ${lightningAddress} is not configured to receive payments (maxSendable=0). ` +
+      `Check your LIGHTNING_ADDRESS secret — Alby accounts require AlbyHub to be connected.`,
+    );
+  }
   if (amountMsats < info.minSendable) {
     throw new Error(
       `Amount too small: ${amountSats} sats (minimum ${info.minSendable / 1000} sats)`,
