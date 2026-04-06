@@ -193,7 +193,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                   id="amount"
                   type="number"
                   min="0.05"
-                  step="0.05"
+                  step="any"
                   value={amountUsd}
                   onChange={(e) => setAmountUsd(e.target.value)}
                   className="pl-8 text-xl font-bold h-14 bg-card/50"
