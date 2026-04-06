@@ -6,16 +6,17 @@
  * Tier 1 — LUD-21 verify URL (preferred)
  *   When the LNURL-Pay callback includes a `verify` URL, we poll it every
  *   5 seconds to detect settlement.  Works with any provider that implements
- *   the LUD-21 standard (Alby, etc.).
+ *   the LUD-21 standard.
+ *
+ *   ✅ RECOMMENDED: use a Coinos.io Lightning address (username@coinos.io).
+ *   Coinos returns a LUD-21 verify URL with every invoice, enables fully
+ *   automatic confirmation, and is completely free with no node setup.
+ *   Sign up at https://coinos.io and set LIGHTNING_ADDRESS=username@coinos.io
  *
  * Tier 2 — Alby invoice API fallback
- *   When no verify URL is available (e.g. Wallet of Satoshi), we poll
- *   Alby's invoice API using ALBY_API_TOKEN.  This works when the
- *   LIGHTNING_ADDRESS is an Alby address (user@getalby.com), because the
- *   invoice then lives in Alby's system and is queryable.
- *
- * Recommendation: switch LIGHTNING_ADDRESS to user@getalby.com so both
- * tiers apply and payment confirmation is fully automatic.
+ *   When no verify URL is available, we poll Alby's invoice API using
+ *   ALBY_API_TOKEN.  Only works when LIGHTNING_ADDRESS is an Alby address
+ *   with AlbyHub connected (funded Lightning node required).
  */
 
 import { db, betsTable } from "@workspace/db";

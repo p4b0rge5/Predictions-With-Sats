@@ -119,8 +119,9 @@ export async function createInvoice(
 
   if (info.maxSendable === 0) {
     throw new Error(
-      `Lightning address ${lightningAddress} is not configured to receive payments (maxSendable=0). ` +
-      `Check your LIGHTNING_ADDRESS secret — Alby accounts require AlbyHub to be connected.`,
+      `Lightning address ${lightningAddress} cannot receive payments (maxSendable=0). ` +
+      `Use a Coinos.io address (username@coinos.io) — it's free and works out of the box. ` +
+      `Sign up at https://coinos.io and update LIGHTNING_ADDRESS.`,
     );
   }
   if (amountMsats < info.minSendable) {
