@@ -65,7 +65,7 @@ const STEPS = [
     iconBg: "bg-cyan-400/10 border-cyan-400/30",
     title: "Watch the Result",
     subtitle: "Settlement",
-    body: "When the window closes, the displayed price freezes. After a 20-second buffer the final BTC price is fetched and compared to the opening price. The outcome is UP, DOWN, or DRAW. Your bet card on the home page updates automatically.",
+    body: "When the window closes, the displayed price freezes. After a 20-second buffer the final BTC price is fetched and compared to the opening price. The outcome is UP, DOWN, DRAW, or REFUND (when no opposing bets existed). Your bet card on the home page updates automatically.",
     visual: <ResultVisual />,
   },
   {
@@ -85,7 +85,7 @@ const STEPS = [
     iconBg: "bg-emerald-400/10 border-emerald-400/30",
     title: "Fees & Edge Cases",
     subtitle: "The fine print",
-    body: "A 2% platform fee applies to every settlement. DRAW (price unchanged): all bettors share 98% of the combined pool proportionally. No opposing bets: your stake is fully refunded at 98%. Unpaid invoices expire when the window closes.",
+    body: "A 2% platform fee applies to every settlement. DRAW (price unchanged): all bettors share 98% of the combined pool proportionally. No opposing bets: your stake is fully refunded at 98%. Unpaid invoices expire when the window closes. Unclaimed payouts expire 30 days after the bet was placed.",
     visual: <FeesVisual />,
   },
 ];
@@ -417,28 +417,24 @@ function ResultVisual() {
 
 function WinVisual() {
   return (
-    <div className="flex items-center gap-4 justify-center py-1">
-      <div className="flex flex-col items-center gap-2">
-        <div className="w-16 h-16 bg-white rounded-lg p-1.5 flex items-center justify-center">
-          <div className="w-full h-full grid grid-cols-5 gap-px">
-            {Array.from({ length: 25 }).map((_, i) => (
-              <div key={i} className={`rounded-sm ${[0,2,4,6,8,10,12,14,16,18,20,22,24].includes(i) ? "bg-black" : "bg-white"}`} />
-            ))}
-          </div>
-        </div>
-        <span className="text-[10px] font-mono text-muted-foreground">Scan to claim</span>
+    <div className="font-mono space-y-3">
+      <div className="flex items-center gap-2 text-yellow-400 text-xs font-bold">
+        <Trophy className="h-4 w-4" />
+        You won! — two ways to claim
       </div>
-      <div className="space-y-2 font-mono">
-        <div className="flex items-center gap-2 text-yellow-400 text-xs font-bold">
-          <Trophy className="h-4 w-4" />
-          You won!
+      <div className="flex gap-2">
+        <div className="flex-1 rounded-lg border border-border/40 bg-muted/20 p-2.5 flex flex-col items-center gap-1.5">
+          <QrCode className="h-5 w-5 text-muted-foreground" />
+          <span className="text-[10px] text-muted-foreground text-center leading-tight">Scan QR in wallet<br />(LNURL-Withdraw)</span>
         </div>
-        <div className="text-green-400 text-sm font-bold">+2,847 sats</div>
-        <div className="text-[10px] text-muted-foreground leading-relaxed">
-          Wallet scans QR →
-          Wallet sends invoice →
-          We pay instantly
+        <div className="flex items-center text-muted-foreground text-[10px]">or</div>
+        <div className="flex-1 rounded-lg border border-yellow-400/30 bg-yellow-400/5 p-2.5 flex flex-col items-center gap-1.5">
+          <Zap className="h-5 w-5 text-yellow-400" />
+          <span className="text-[10px] text-yellow-400/80 text-center leading-tight">Type Lightning<br />address</span>
         </div>
+      </div>
+      <div className="text-[10px] text-muted-foreground text-center">
+        +2,847 sats sent directly · expires in 30 days
       </div>
     </div>
   );
@@ -465,7 +461,14 @@ function FeesVisual() {
         <div className="shrink-0 w-1.5 h-1.5 rounded-full bg-orange-400 mt-1.5" />
         <div>
           <span className="font-bold text-orange-400">No opposing bets</span>
-          <span className="text-muted-foreground"> — your stake is refunded at 98%. The 2% covers operating costs.</span>
+          <span className="text-muted-foreground"> — your stake is refunded at 98%. Shows as REFUND in history.</span>
+        </div>
+      </div>
+      <div className="flex items-start gap-3 rounded-lg bg-muted/20 px-3 py-2.5">
+        <div className="shrink-0 w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5" />
+        <div>
+          <span className="font-bold text-red-400">Payout expiry</span>
+          <span className="text-muted-foreground"> — unclaimed winnings expire 30 days after the bet. Claim promptly.</span>
         </div>
       </div>
     </div>
