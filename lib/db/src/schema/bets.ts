@@ -15,6 +15,8 @@ export const betsTable = pgTable("bets", {
   amountSats: integer("amount_sats").notNull(),
   paymentHash: text("payment_hash").notNull().unique(),
   paymentRequest: text("payment_request").notNull(),
+  /** LUD-21 verify URL for polling payment status (optional) */
+  verifyUrl: text("verify_url"),
   status: text("status").notNull().default("pending"),
   payoutSats: integer("payout_sats"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

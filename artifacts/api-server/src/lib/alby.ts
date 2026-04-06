@@ -34,6 +34,8 @@ interface LnurlPayCallbackResponse {
   routes?: unknown[];
   status?: string;
   reason?: string;
+  /** LUD-21: payment verify URL (optional, provider-dependent) */
+  verify?: string;
 }
 
 async function fetchLnurlPayInfo(lightningAddress: string): Promise<LnurlPayInfo> {
@@ -58,7 +60,7 @@ async function requestInvoiceFromCallback(
   info: LnurlPayInfo,
   amountMsats: number,
   comment?: string,
-): Promise<string> {
+): Promise<{ paymentRequest: string; verifyUrl: string | null }> {
   const callbackUrl = new URL(info.callback);
   callbackUrl.searchParams.set("amount", amountMsats.toString());
   if (comment && info.commentAllowed && info.commentAllowed > 0) {
@@ -76,7 +78,7 @@ async function requestInvoiceFromCallback(
   if (!body.pr) {
     throw new Error("LNURL-Pay callback returned no invoice (pr field missing)");
   }
-  return body.pr;
+  return { paymentRequest: body.pr, verifyUrl: body.verify ?? null };
 }
 
 function extractPaymentHashFromBolt11(paymentRequest: string): string {
@@ -106,7 +108,7 @@ function bolt11ExpiresAt(paymentRequest: string): string {
 export async function createInvoice(
   amountSats: number,
   memo: string,
-): Promise<{ paymentHash: string; paymentRequest: string; expiresAt: string }> {
+): Promise<{ paymentHash: string; paymentRequest: string; expiresAt: string; verifyUrl: string | null }> {
   const { lightningAddress } = getConfig();
 
   logger.info({ amountSats, lightningAddress }, "Creating LNURL-Pay invoice");
@@ -126,13 +128,13 @@ export async function createInvoice(
     );
   }
 
-  const paymentRequest = await requestInvoiceFromCallback(info, amountMsats, memo);
+  const { paymentRequest, verifyUrl } = await requestInvoiceFromCallback(info, amountMsats, memo);
   const paymentHash = extractPaymentHashFromBolt11(paymentRequest);
   const expiresAt = bolt11ExpiresAt(paymentRequest);
 
-  logger.info({ paymentHash, amountSats }, "LNURL-Pay invoice created");
+  logger.info({ paymentHash, amountSats, hasVerifyUrl: !!verifyUrl }, "LNURL-Pay invoice created");
 
-  return { paymentHash, paymentRequest, expiresAt };
+  return { paymentHash, paymentRequest, expiresAt, verifyUrl };
 }
 
 // ---------------------------------------------------------------------------

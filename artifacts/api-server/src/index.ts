@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { startMarketEngine } from "./lib/market";
 import { initConfig } from "./lib/config";
 import { ensureWebhookRegistered } from "./lib/alby";
+import { startPaymentPoller } from "./lib/payment-poller";
 
 const rawPort = process.env["PORT"];
 
@@ -29,6 +30,7 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
   startMarketEngine();
+  startPaymentPoller();
 
   if (config.webhookUrl) {
     ensureWebhookRegistered(config.webhookUrl).catch((e) =>

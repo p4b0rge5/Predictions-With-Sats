@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCreateBet, useGetBetStatus, getGetBetStatusQueryKey } from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, Copy, XCircle, Clock } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, Copy, XCircle, Clock, Zap } from "lucide-react";
 
 interface BetModalProps {
   isOpen: boolean;
@@ -16,17 +17,33 @@ interface BetModalProps {
   windowId: number;
 }
 
+declare global {
+  interface Window {
+    webln?: {
+      enable: () => Promise<void>;
+      sendPayment: (paymentRequest: string) => Promise<{ preimage: string }>;
+    };
+  }
+}
+
 export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: BetModalProps) {
   const [amountUsd, setAmountUsd] = useState<string>("5");
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const createBet = useCreateBet();
-  
+
   const [paymentHash, setPaymentHash] = useState<string | null>(null);
   const [paymentRequest, setPaymentRequest] = useState<string | null>(null);
-  
+  const [weblnAvailable, setWeblnAvailable] = useState(false);
+  const [weblnPaying, setWeblnPaying] = useState(false);
+
   const amountNum = parseFloat(amountUsd);
   const satsAmount = !isNaN(amountNum) && amountNum > 0 ? Math.floor((amountNum / btcPriceUsd) * 100000000) : 0;
-  
+
+  useEffect(() => {
+    setWeblnAvailable(typeof window.webln !== "undefined");
+  }, []);
+
   const { data: betStatus } = useGetBetStatus(paymentHash || "", {
     query: {
       enabled: !!paymentHash,
@@ -47,20 +64,54 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
       toast({ title: "Invalid amount", description: "Minimum bet is $1", variant: "destructive" });
       return;
     }
-    
+
     createBet.mutate({ data: { amountUsd: amountNum, direction } }, {
       onSuccess: (data) => {
         setPaymentHash(data.paymentHash);
         setPaymentRequest(data.paymentRequest);
       },
       onError: (err) => {
-        toast({ 
-          title: "Error creating bet", 
-          description: err.message || "Unknown error occurred", 
-          variant: "destructive" 
+        toast({
+          title: "Error creating bet",
+          description: err.message || "Unknown error occurred",
+          variant: "destructive"
         });
       }
     });
+  };
+
+  const handleWeblnPay = async () => {
+    if (!paymentRequest || !paymentHash || !window.webln) return;
+    setWeblnPaying(true);
+    try {
+      await window.webln.enable();
+      const result = await window.webln.sendPayment(paymentRequest);
+
+      // Verify the preimage server-side to confirm the payment
+      const res = await fetch(`/api/bet/${paymentHash}/verify-preimage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preimage: result.preimage }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Server could not verify preimage");
+      }
+
+      // Invalidate the bet status query so it refreshes immediately
+      await queryClient.invalidateQueries({
+        queryKey: getGetBetStatusQueryKey(paymentHash),
+      });
+
+      toast({ title: "Payment sent!", description: "Your bet is confirmed.", duration: 3000 });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Payment failed";
+      if (!msg.toLowerCase().includes("user rejected") && !msg.toLowerCase().includes("cancelled")) {
+        toast({ title: "Payment failed", description: msg, variant: "destructive" });
+      }
+    } finally {
+      setWeblnPaying(false);
+    }
   };
 
   const copyToClipboard = () => {
@@ -71,8 +122,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
   };
 
   const handleClose = () => {
-    if (betStatus?.status === 'pending') {
-      // Allow user to close, but notify them it's still pending
+    if (betStatus?.status === "pending") {
       toast({ title: "Invoice pending", description: "You can still pay this invoice in your wallet." });
     }
     setPaymentHash(null);
@@ -116,8 +166,8 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
               </div>
             </div>
 
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className={`w-full h-14 text-lg font-bold uppercase tracking-wider text-white ${isUp ? 'bg-green-600 hover:bg-green-700 disabled:bg-green-900' : 'bg-red-600 hover:bg-red-700 disabled:bg-red-900'}`}
               disabled={createBet.isPending || !satsAmount}
               data-testid="button-submit-bet"
@@ -133,15 +183,15 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                   <div className="text-sm text-muted-foreground uppercase tracking-wider">Pay Invoice</div>
                   <div className="text-2xl font-bold text-yellow-400">{new Intl.NumberFormat().format(satsAmount)} sats</div>
                 </div>
-                
-                <div className="bg-white p-4 rounded-xl shadow-lg relative group">
-                  <QRCodeSVG 
-                    value={paymentRequest} 
+
+                <div className="bg-white p-4 rounded-xl shadow-lg relative group cursor-pointer" onClick={copyToClipboard}>
+                  <QRCodeSVG
+                    value={paymentRequest}
                     size={200}
                     level="M"
                     includeMargin={false}
                   />
-                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl cursor-pointer" onClick={copyToClipboard}>
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
                     <Copy className="h-8 w-8 text-white" />
                   </div>
                 </div>
@@ -150,7 +200,19 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                   <div className="truncate opacity-70">{paymentRequest.slice(0, 30)}...{paymentRequest.slice(-10)}</div>
                   <Copy className="h-4 w-4 shrink-0 opacity-50 ml-auto" />
                 </div>
-                
+
+                {weblnAvailable && (
+                  <Button
+                    onClick={handleWeblnPay}
+                    disabled={weblnPaying}
+                    className="w-full h-12 font-bold uppercase tracking-wider bg-yellow-500 hover:bg-yellow-400 text-black"
+                    data-testid="button-webln-pay"
+                  >
+                    <Zap className="h-4 w-4 mr-2" />
+                    {weblnPaying ? "Paying..." : "Pay with WebLN"}
+                  </Button>
+                )}
+
                 <div className="flex items-center gap-2 text-yellow-500 text-sm animate-pulse uppercase tracking-wider font-bold">
                   <Clock className="h-4 w-4" />
                   Waiting for payment...

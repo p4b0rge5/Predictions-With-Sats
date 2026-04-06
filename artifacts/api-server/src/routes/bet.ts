@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import {
   CreateBetBody,
   GetBetStatusParams,
@@ -69,7 +69,7 @@ router.post("/bet", async (req, res): Promise<void> => {
 
   const memo = `Lightning Bet — ${direction.toUpperCase()} on BTC (window #${win.id})`;
 
-  let invoice: { paymentHash: string; paymentRequest: string; expiresAt: string };
+  let invoice: { paymentHash: string; paymentRequest: string; expiresAt: string; verifyUrl: string | null };
   try {
     invoice = await createInvoice(amountSats, memo);
   } catch (err) {
@@ -91,7 +91,11 @@ router.post("/bet", async (req, res): Promise<void> => {
 
   const [updatedBet] = await db
     .update(betsTable)
-    .set({ paymentHash: invoice.paymentHash, paymentRequest: invoice.paymentRequest })
+    .set({
+      paymentHash: invoice.paymentHash,
+      paymentRequest: invoice.paymentRequest,
+      verifyUrl: invoice.verifyUrl ?? null,
+    })
     .where(eq(betsTable.id, bet.id))
     .returning();
 
@@ -137,6 +141,66 @@ router.get("/bet/:paymentHash", async (req, res): Promise<void> => {
   });
 
   res.json(data);
+});
+
+/**
+ * POST /bet/:paymentHash/verify-preimage
+ * WebLN payment confirmation: the client provides the payment preimage returned
+ * by the paying wallet, we verify SHA256(preimage) === paymentHash and mark paid.
+ */
+router.post("/bet/:paymentHash/verify-preimage", async (req, res): Promise<void> => {
+  const params = GetBetStatusParams.safeParse({ paymentHash: req.params.paymentHash });
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const rawPreimage = req.body?.preimage;
+  if (typeof rawPreimage !== "string" || rawPreimage.length === 0) {
+    res.status(400).json({ error: "preimage field is required" });
+    return;
+  }
+
+  const { paymentHash } = params.data;
+  const preimage = rawPreimage;
+
+  // Verify SHA256(preimage) === paymentHash  (both hex-encoded)
+  const derivedHash = createHash("sha256")
+    .update(Buffer.from(preimage, "hex"))
+    .digest("hex");
+
+  if (derivedHash !== paymentHash) {
+    req.log.warn({ paymentHash, derivedHash }, "Preimage verification failed");
+    res.status(400).json({ error: "Preimage does not match payment hash" });
+    return;
+  }
+
+  const [bet] = await db
+    .select()
+    .from(betsTable)
+    .where(eq(betsTable.paymentHash, paymentHash))
+    .limit(1);
+
+  if (!bet) {
+    res.status(404).json({ error: "Bet not found." });
+    return;
+  }
+
+  if (bet.status !== "pending") {
+    // Already confirmed — just return current state
+    res.json({ status: bet.status });
+    return;
+  }
+
+  const [updated] = await db
+    .update(betsTable)
+    .set({ status: "paid", paidAt: new Date() })
+    .where(and(eq(betsTable.id, bet.id), eq(betsTable.status, "pending")))
+    .returning();
+
+  req.log.info({ betId: bet.id, paymentHash }, "Bet confirmed via WebLN preimage");
+
+  res.json({ status: updated.status });
 });
 
 export default router;
