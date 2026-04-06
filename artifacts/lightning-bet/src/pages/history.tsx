@@ -72,7 +72,7 @@ export function History() {
                   className="rounded-xl border border-border/40 bg-card/40 px-4 py-3 font-mono flex flex-col gap-2"
                   data-testid={`row-history-${w.id}`}
                 >
-                  {/* Top row: time + outcome */}
+                  {/* Row 1: date + outcome badge */}
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">
                       {format(new Date(w.openedAt), "MMM d, HH:mm")}
@@ -80,27 +80,33 @@ export function History() {
                     <OutcomeBadge outcome={w.outcome} />
                   </div>
 
-                  {/* Prices row */}
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground text-xs">Open</span>
-                    <span className="font-bold">${w.openPrice ? formatUsd(w.openPrice) : "—"}</span>
-                    <span className="text-muted-foreground mx-1">→</span>
-                    <span className="text-xs text-muted-foreground">Close</span>
-                    <span className="font-bold">${w.closePrice ? formatUsd(w.closePrice) : "—"}</span>
-                    {w.priceChangePercent && (
-                      <span className={`ml-auto text-xs font-bold ${changeColor}`}>
+                  {/* Row 2: open → close (two stacked mini-labels, arrow centre) */}
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Open</p>
+                      <p className="text-sm font-bold leading-tight">${w.openPrice ? formatUsd(w.openPrice) : "—"}</p>
+                    </div>
+                    <span className="text-muted-foreground shrink-0 text-lg leading-none">→</span>
+                    <div className="min-w-0 flex-1 text-right">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Close</p>
+                      <p className="text-sm font-bold leading-tight">${w.closePrice ? formatUsd(w.closePrice) : "—"}</p>
+                    </div>
+                  </div>
+
+                  {/* Row 3: change % + pool (never overflows — both shrink-0 on own line) */}
+                  <div className="flex items-center justify-between text-xs">
+                    {w.priceChangePercent != null ? (
+                      <span className={`font-bold ${changeColor}`}>
                         {w.priceChangePercent > 0 ? "+" : ""}
                         {w.priceChangePercent.toFixed(3)}%
                       </span>
+                    ) : <span />}
+                    {totalSats > 0 && (
+                      <span className="text-muted-foreground">
+                        Pool: {formatSats(totalSats)} sats
+                      </span>
                     )}
                   </div>
-
-                  {/* Pool */}
-                  {totalSats > 0 && (
-                    <div className="text-[10px] text-muted-foreground">
-                      Pool: {formatSats(totalSats)} sats
-                    </div>
-                  )}
                 </div>
               );
             })}
