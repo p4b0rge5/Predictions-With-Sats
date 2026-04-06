@@ -28,7 +28,7 @@ declare global {
 }
 
 export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: BetModalProps) {
-  const [amountUsd, setAmountUsd] = useState<string>("5");
+  const [amountUsd, setAmountUsd] = useState<string>("1");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const createBet = useCreateBet();
@@ -76,8 +76,8 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amountNum || amountNum < 1) {
-      toast({ title: "Invalid amount", description: "Minimum bet is $1", variant: "destructive" });
+    if (!amountNum || amountNum < 0.05) {
+      toast({ title: "Invalid amount", description: "Minimum bet is $0.05", variant: "destructive" });
       return;
     }
 
@@ -165,7 +165,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
     }
     setPaymentHash(null);
     setPaymentRequest(null);
-    setAmountUsd("5");
+    setAmountUsd("1");
     setShowPreimageInput(false);
     setPreimageInput("");
     onClose();
@@ -192,8 +192,8 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                 <Input
                   id="amount"
                   type="number"
-                  min="1"
-                  step="0.01"
+                  min="0.05"
+                  step="0.05"
                   value={amountUsd}
                   onChange={(e) => setAmountUsd(e.target.value)}
                   className="pl-8 text-xl font-bold h-14 bg-card/50"

@@ -15,7 +15,7 @@ import { encodeLnurl } from "./withdraw";
 const router: IRouter = Router();
 
 const WINDOW_CLOSE_BUFFER_MS = 30 * 1000;
-const MIN_AMOUNT_SATS = 100;
+const MIN_AMOUNT_SATS = 10;
 
 router.post("/bet", async (req, res): Promise<void> => {
   const parsed = CreateBetBody.safeParse(req.body);

@@ -61,7 +61,7 @@ export const GetMarketHistoryResponse = zod.array(GetMarketHistoryResponseItem);
 export const CreateBetBody = zod.object({
   amountUsd: zod
     .number()
-    .min(1)
+    .min(0.05)
     .describe("Bet amount in USD (converted to sats by server)"),
   direction: zod.enum(["up", "down"]).describe("Bet direction"),
 });
