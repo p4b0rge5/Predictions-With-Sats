@@ -27,12 +27,20 @@ async function fetchFromKraken(): Promise<number> {
   return parseFloat(data.result.XXBTZUSD.c[0]);
 }
 
+async function fetchFromBitfinex(): Promise<number> {
+  const res = await fetch("https://api-pub.bitfinex.com/v2/ticker/tBTCUSD");
+  if (!res.ok) throw new Error(`Bitfinex HTTP ${res.status}`);
+  const data = (await res.json()) as number[];
+  return data[6]; // index 6 = LAST_PRICE
+}
+
 type NamedFetch = { name: string; fn: () => Promise<number> };
 
 const priceSources: NamedFetch[] = [
-  { name: "binance", fn: fetchFromBinance },
+  { name: "binance",  fn: fetchFromBinance },
   { name: "coinbase", fn: fetchFromCoinbase },
-  { name: "kraken", fn: fetchFromKraken },
+  { name: "kraken",   fn: fetchFromKraken },
+  { name: "bitfinex", fn: fetchFromBitfinex },
 ];
 
 function median(values: number[]): number {

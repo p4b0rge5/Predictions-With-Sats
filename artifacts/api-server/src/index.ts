@@ -4,6 +4,7 @@ import { startMarketEngine } from "./lib/market";
 import { initConfig } from "./lib/config";
 import { ensureWebhookRegistered } from "./lib/alby";
 import { startPaymentPoller } from "./lib/payment-poller";
+import { checkCoinosTokenHealth } from "./lib/coinos";
 
 const rawPort = process.env["PORT"];
 
@@ -31,6 +32,9 @@ app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
   startMarketEngine();
   startPaymentPoller();
+  // Check Coinos token on startup; re-check every 6 hours
+  checkCoinosTokenHealth().catch(() => {});
+  setInterval(() => checkCoinosTokenHealth().catch(() => {}), 6 * 60 * 60 * 1000);
 
   if (config.webhookUrl) {
     ensureWebhookRegistered(config.webhookUrl).catch((e) =>

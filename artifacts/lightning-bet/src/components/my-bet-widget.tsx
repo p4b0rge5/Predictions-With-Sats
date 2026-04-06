@@ -1,7 +1,12 @@
+import { useState, useEffect, useRef } from "react";
 import { useGetBetStatus, getGetBetStatusQueryKey } from "@workspace/api-client-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, Clock, Trophy, Copy, X, Gift, ArrowUp, ArrowDown } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  CheckCircle2, XCircle, Clock, Trophy, Copy, X, Gift,
+  ArrowUp, ArrowDown, Zap, Share2, ChevronDown, ChevronUp, Loader2,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -48,6 +53,37 @@ export function clearLastBetHash() {
   localStorage.removeItem(STORAGE_KEY);
 }
 
+// ── Sound helpers ──────────────────────────────────────────────────────────────
+
+function playTone(won: boolean) {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    if (won) {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(660, ctx.currentTime);
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.6);
+    } else {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(330, ctx.currentTime);
+      osc.frequency.setValueAtTime(220, ctx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.5);
+    }
+  } catch {
+    // AudioContext not available — silent fail
+  }
+}
+
 // ── Single bet card ────────────────────────────────────────────────────────────
 
 interface MyBetWidgetProps {
@@ -58,6 +94,15 @@ interface MyBetWidgetProps {
 export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Lightning address payout state
+  const [showLnInput, setShowLnInput] = useState(false);
+  const [lnAddress, setLnAddress] = useState("");
+  const [lnPaying, setLnPaying] = useState(false);
+  const [lnError, setLnError] = useState<string | null>(null);
+
+  // Track previous status for sound notification
+  const prevStatusRef = useRef<string | undefined>(undefined);
 
   const { data: bet } = useGetBetStatus(paymentHash, {
     query: {
@@ -73,6 +118,16 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
     },
   });
 
+  // Play sound when bet result arrives
+  useEffect(() => {
+    if (!bet) return;
+    const prev = prevStatusRef.current;
+    if (prev === "paid" && (bet.status === "won" || bet.status === "lost")) {
+      playTone(bet.status === "won");
+    }
+    prevStatusRef.current = bet.status;
+  }, [bet?.status]);
+
   const handleCopyLnurl = (lnurl: string) => {
     navigator.clipboard.writeText(lnurl);
     toast({ title: "LNURL copied!", description: "Paste it in your Lightning wallet.", duration: 3000 });
@@ -83,12 +138,59 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
     toast({ title: "Withdrawal sent!", description: "Your winnings are on their way.", duration: 4000 });
   };
 
+  const handlePayToAddress = async () => {
+    if (!bet?.withdrawToken || !lnAddress.trim()) return;
+    setLnPaying(true);
+    setLnError(null);
+    try {
+      const res = await fetch(
+        `${window.location.origin}/api/withdraw/${bet.withdrawToken}/pay-to-address`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: lnAddress.trim().toLowerCase() }),
+        },
+      );
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        setLnError(data.error ?? "Payment failed. Try again.");
+      } else {
+        await queryClient.invalidateQueries({ queryKey: getGetBetStatusQueryKey(paymentHash) });
+        toast({
+          title: "Sats sent!",
+          description: `${new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats sent to ${lnAddress.trim()}.`,
+          duration: 5000,
+        });
+      }
+    } catch {
+      setLnError("Network error. Please try again.");
+    } finally {
+      setLnPaying(false);
+    }
+  };
+
+  const handleShareX = () => {
+    if (!bet) return;
+    const sats = new Intl.NumberFormat().format(bet.payoutSats ?? 0);
+    const dir = bet.direction === "up" ? "UP ↑" : "DOWN ↓";
+    const text = `⚡ Just won ${sats} sats on Lightning Bet! Called BTC ${dir} correctly in a 5-minute window. Try it at lightningbet — no accounts, instant Lightning payouts.`;
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank");
+  };
+
+  const handleShareNostr = () => {
+    if (!bet) return;
+    const sats = new Intl.NumberFormat().format(bet.payoutSats ?? 0);
+    const dir = bet.direction === "up" ? "UP ↑" : "DOWN ↓";
+    const text = `⚡ Just won ${sats} sats on Lightning Bet! Called BTC ${dir} correctly in a 5-minute prediction window. No accounts — bet and claim entirely via Lightning Network. #Bitcoin #Lightning`;
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copied for Nostr!", description: "Paste it in your Nostr client.", duration: 3000 });
+  };
+
   if (!bet) return null;
 
   const isUp = bet.direction === "up";
   const dirColor = isUp ? "text-green-500" : "text-red-500";
   const dirBg = isUp ? "bg-green-500/10 border-green-500/30" : "bg-red-500/10 border-red-500/30";
-
   const isRefund = bet.windowOutcome === "no_liquidity";
 
   const statusInfo = (() => {
@@ -152,7 +254,34 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
         </div>
       )}
 
-      {/* CLAIM WINNINGS / REFUND */}
+      {/* Share buttons — shown after claimed */}
+      {bet.status === "won" && bet.withdrawStatus === "claimed" && (
+        <div className="mt-3 pt-3 border-t border-border/30 space-y-2">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+            <Share2 className="h-3 w-3" /> Share your win
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs font-bold gap-1.5 border-sky-500/30 text-sky-400 hover:bg-sky-500/10"
+              onClick={handleShareX}
+            >
+              𝕏 Post on X
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs font-bold gap-1.5 border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+              onClick={handleShareNostr}
+            >
+              <Zap className="h-3 w-3" /> Copy for Nostr
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* CLAIM WINNINGS / REFUND — QR + LNURL flow (unchanged) */}
       {bet.status === "won" && bet.withdrawStatus === "unclaimed" && bet.withdrawLnurl && (
         <div className="mt-3 space-y-3">
           <div className="flex items-center gap-2 text-yellow-400 text-xs font-bold uppercase tracking-wider animate-pulse">
@@ -164,6 +293,8 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
               No bets were placed on the opposing side — your stake is being returned minus the 2% platform fee.
             </p>
           )}
+
+          {/* Existing QR + copy + manual confirm */}
           <div className="flex flex-col items-center gap-3 pt-1">
             <div
               className="bg-white p-3 rounded-lg cursor-pointer relative group"
@@ -198,6 +329,50 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
             <p className="text-[10px] text-muted-foreground text-center leading-relaxed">
               Open your Lightning wallet → Scan QR or paste LNURL → Receive {new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats
             </p>
+          </div>
+
+          {/* Lightning address alternative */}
+          <div className="border-t border-border/30 pt-3">
+            <button
+              className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors w-full"
+              onClick={() => { setShowLnInput((v) => !v); setLnError(null); }}
+            >
+              <Zap className="h-3 w-3 text-yellow-400" />
+              <span>Send to my Lightning address instead</span>
+              {showLnInput ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}
+            </button>
+
+            {showLnInput && (
+              <div className="mt-2 space-y-2">
+                <Input
+                  className="h-8 text-xs font-mono"
+                  placeholder="yourname@wallet.com"
+                  value={lnAddress}
+                  onChange={(e) => { setLnAddress(e.target.value); setLnError(null); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !lnPaying) handlePayToAddress(); }}
+                  disabled={lnPaying}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                />
+                {lnError && (
+                  <p className="text-[10px] text-red-400 leading-relaxed">{lnError}</p>
+                )}
+                <Button
+                  size="sm"
+                  className="w-full text-xs font-bold gap-1.5 bg-yellow-500 hover:bg-yellow-400 text-black"
+                  disabled={lnPaying || !lnAddress.includes("@")}
+                  onClick={handlePayToAddress}
+                >
+                  {lnPaying
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Sending...</>
+                    : <><Zap className="h-3.5 w-3.5" /> Send {new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats</>
+                  }
+                </Button>
+                <p className="text-[10px] text-muted-foreground text-center">
+                  We resolve your address and pay instantly. No scanning needed.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

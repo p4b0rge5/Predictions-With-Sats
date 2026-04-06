@@ -19,6 +19,13 @@ import { eq, and } from "drizzle-orm";
 import { coinosPayInvoice } from "../lib/coinos";
 import { logger } from "../lib/logger";
 
+const PAYOUT_EXPIRY_DAYS = 30;
+const PAYOUT_EXPIRY_MS = PAYOUT_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+
+function isPayoutExpired(createdAt: Date): boolean {
+  return Date.now() - createdAt.getTime() > PAYOUT_EXPIRY_MS;
+}
+
 const router: IRouter = Router();
 
 /** Encode a URL as LNURL (bech32 with "lnurl" prefix). */
@@ -59,6 +66,11 @@ router.get("/withdraw/:token", async (req, res): Promise<void> => {
 
   if (bet.status !== "won" || !bet.payoutSats) {
     res.status(409).json({ status: "ERROR", reason: "Bet is not eligible for withdrawal." });
+    return;
+  }
+
+  if (isPayoutExpired(bet.createdAt)) {
+    res.status(410).json({ status: "ERROR", reason: `This payout expired ${PAYOUT_EXPIRY_DAYS} days after the bet was placed.` });
     return;
   }
 
@@ -151,6 +163,116 @@ router.get("/withdraw/:token/callback", async (req, res): Promise<void> => {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error({ err, betId: bet.id }, "Coinos payment failed for winner payout");
     res.json({ status: "ERROR", reason: `Payment failed: ${msg}` });
+  }
+});
+
+/**
+ * POST /api/withdraw/:token/pay-to-address
+ * Alternative claim flow: user provides their Lightning address and we pay them directly.
+ * Resolves the address → LNURL-Pay → invoice → pays via Coinos.
+ * Existing QR/LNURL-Withdraw flow is unaffected.
+ */
+router.post("/withdraw/:token/pay-to-address", async (req, res): Promise<void> => {
+  const { token } = req.params;
+  const { address } = req.body as { address?: string };
+
+  if (!address || !address.includes("@") || address.split("@").length !== 2) {
+    res.status(400).json({ error: "Invalid Lightning address format. Expected user@domain.com" });
+    return;
+  }
+
+  const [bet] = await db
+    .select()
+    .from(betsTable)
+    .where(and(eq(betsTable.withdrawToken, token), eq(betsTable.withdrawStatus, "unclaimed")))
+    .limit(1);
+
+  if (!bet) {
+    res.status(404).json({ error: "Withdraw token not found or already claimed." });
+    return;
+  }
+
+  if (bet.status !== "won" || !bet.payoutSats) {
+    res.status(409).json({ error: "Bet is not eligible for withdrawal." });
+    return;
+  }
+
+  if (isPayoutExpired(bet.createdAt)) {
+    res.status(410).json({ error: `Payout expired after ${PAYOUT_EXPIRY_DAYS} days.` });
+    return;
+  }
+
+  // Resolve Lightning address → LNURL-Pay metadata
+  const [user, domain] = address.split("@");
+  const lnurlpUrl = `https://${domain}/.well-known/lnurlp/${user}`;
+
+  let callbackUrl: string;
+  let minSendable: number;
+  let maxSendable: number;
+
+  try {
+    const metaRes = await fetch(lnurlpUrl, { signal: AbortSignal.timeout(10_000) });
+    if (!metaRes.ok) throw new Error(`HTTP ${metaRes.status}`);
+    const meta = (await metaRes.json()) as { callback: string; minSendable: number; maxSendable: number; tag: string };
+    if (meta.tag !== "payRequest") throw new Error("Not a LNURL-Pay endpoint");
+    callbackUrl = meta.callback;
+    minSendable = meta.minSendable;
+    maxSendable = meta.maxSendable;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ address, err }, "Could not resolve Lightning address");
+    res.status(400).json({ error: `Could not reach wallet at ${domain}: ${msg}` });
+    return;
+  }
+
+  const amountMsats = bet.payoutSats * 1000;
+  if (amountMsats < minSendable || amountMsats > maxSendable) {
+    res.status(400).json({
+      error: `Payout of ${bet.payoutSats} sats is outside the wallet's accepted range (${Math.ceil(minSendable / 1000)}–${Math.floor(maxSendable / 1000)} sats).`,
+    });
+    return;
+  }
+
+  // Get invoice from wallet
+  let bolt11: string;
+  try {
+    const invRes = await fetch(`${callbackUrl}?amount=${amountMsats}`, { signal: AbortSignal.timeout(10_000) });
+    if (!invRes.ok) throw new Error(`HTTP ${invRes.status}`);
+    const inv = (await invRes.json()) as { pr?: string; reason?: string };
+    if (!inv.pr) throw new Error(inv.reason ?? "No invoice in response");
+    bolt11 = inv.pr;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ address, err }, "Could not get invoice from Lightning address");
+    res.status(502).json({ error: `Could not get invoice from wallet: ${msg}` });
+    return;
+  }
+
+  // Mark as claimed immediately to prevent double-spend
+  const [updated] = await db
+    .update(betsTable)
+    .set({ withdrawStatus: "claimed", claimedAt: new Date() })
+    .where(and(eq(betsTable.id, bet.id), eq(betsTable.withdrawStatus, "unclaimed")))
+    .returning();
+
+  if (!updated) {
+    res.status(409).json({ error: "Payout already claimed (concurrent request)." });
+    return;
+  }
+
+  try {
+    await coinosPayInvoice(bolt11, bet.payoutSats);
+    logger.info({ betId: bet.id, payoutSats: bet.payoutSats, address }, "Payout sent to Lightning address");
+    res.json({ ok: true });
+  } catch (err) {
+    // Revert on failure so user can retry
+    await db
+      .update(betsTable)
+      .set({ withdrawStatus: "unclaimed", claimedAt: null })
+      .where(eq(betsTable.id, bet.id));
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error({ err, betId: bet.id }, "Pay-to-address Coinos payment failed");
+    res.status(502).json({ error: `Payment failed: ${msg}` });
   }
 });
 

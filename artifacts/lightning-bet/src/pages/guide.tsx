@@ -75,7 +75,7 @@ const STEPS = [
     iconBg: "bg-yellow-400/10 border-yellow-400/30",
     title: "Claim Your Winnings",
     subtitle: "Getting paid",
-    body: "If you won, a QR code appears on your bet card. Scan it with your Lightning wallet to receive your sats instantly. This uses LNURL-Withdraw — your wallet generates an invoice and we pay it automatically, no strings attached.",
+    body: "If you won, a QR code appears on your bet card. Scan it with any Lightning wallet to receive your sats via LNURL-Withdraw — your wallet generates an invoice and we pay it automatically. Prefer not to scan? Expand 'Send to my Lightning address' and type your address (e.g. you@wallet.com) — we resolve it and push the payment directly to you. Payouts expire after 30 days.",
     visual: <WinVisual />,
   },
   {

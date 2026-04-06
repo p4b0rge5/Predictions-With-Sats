@@ -19,6 +19,35 @@ import { logger } from "./logger";
 
 const COINOS_BASE = "https://coinos.io/api";
 
+/**
+ * Verify the COINOS_JWT_TOKEN is valid and warn loudly if not.
+ * Call this on server startup and periodically so token expiry is caught early.
+ */
+export async function checkCoinosTokenHealth(): Promise<void> {
+  const jwt = process.env.COINOS_JWT_TOKEN;
+  if (!jwt) {
+    logger.error("COINOS_JWT_TOKEN is not set — winner payouts will fail until it is configured");
+    return;
+  }
+  try {
+    const res = await fetch(`${COINOS_BASE}/me`, {
+      headers: { Authorization: `Bearer ${jwt}`, Accept: "application/json" },
+    });
+    if (res.status === 401) {
+      logger.error(
+        "COINOS_JWT_TOKEN is expired or invalid — update the secret to restore winner payouts. " +
+        "Log into coinos.io → DevTools → Application → Local Storage → copy 'token' value.",
+      );
+    } else if (res.ok) {
+      logger.info("Coinos token health check passed ✓");
+    } else {
+      logger.warn({ status: res.status }, "Coinos health check returned unexpected status");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Coinos health check request failed (network issue?)");
+  }
+}
+
 async function getCoinosToken(): Promise<string> {
   const jwt = process.env.COINOS_JWT_TOKEN;
 
