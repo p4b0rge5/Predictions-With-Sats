@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
+import { MyBetsList, getBetHashes, removeBetHash, saveBetHash } from "@/components/my-bet-widget";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -150,21 +151,19 @@ function PoolBar({ homeSats, drawSats, awaySats }: { homeSats: number; drawSats:
   const pH = total > 0 ? (homeSats / total) * 100 : 100 / 3;
   const pD = total > 0 ? (drawSats / total) * 100 : 100 / 3;
   const pA = total > 0 ? (awaySats / total) * 100 : 100 / 3;
-  const isEmpty = total === 0;
-  const dim = isEmpty ? "opacity-30" : "";
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-center font-mono text-xs mb-1">
-        <span className={`font-bold ${isEmpty ? "text-green-500/50" : "text-green-500"}`}>{pH.toFixed(1)}% HOME</span>
-        <span className={`text-[10px] ${isEmpty ? "text-muted-foreground/50" : "text-muted-foreground"}`}>Pool: {formatSats(total)} sats</span>
-        <span className={`font-bold ${isEmpty ? "text-blue-500/50" : "text-blue-500"}`}>{pA.toFixed(1)}% AWAY</span>
+        <span className="font-bold text-green-500">{pH.toFixed(1)}% HOME</span>
+        <span className="text-[10px] text-muted-foreground">Pool: {formatSats(total)} sats</span>
+        <span className="font-bold text-blue-500">{pA.toFixed(1)}% AWAY</span>
       </div>
       <div className="flex h-2 rounded-full overflow-hidden gap-px">
-        <div className={`bg-green-500 transition-all ${dim}`} style={{ width: `${pH}%` }} />
-        <div className={`bg-yellow-400 transition-all ${dim}`} style={{ width: `${pD}%` }} />
-        <div className={`bg-blue-500 transition-all ${dim}`} style={{ width: `${pA}%` }} />
+        <div className="bg-green-500 transition-all" style={{ width: `${pH}%` }} />
+        <div className="bg-yellow-400 transition-all" style={{ width: `${pD}%` }} />
+        <div className="bg-blue-500 transition-all" style={{ width: `${pA}%` }} />
       </div>
-      <div className={`text-center text-[10px] font-mono font-bold ${isEmpty ? "text-yellow-500/50" : "text-yellow-400"}`}>
+      <div className="text-center text-[10px] font-mono font-bold text-yellow-400">
         {pD.toFixed(1)}% DRAW
       </div>
     </div>
@@ -293,7 +292,10 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
         if (!res.ok) return;
         const data = (await res.json()) as SportBetStatus;
         setBetStatus(data);
-        if (data.status !== "pending") clearInterval(pollRef.current!);
+        if (data.status !== "pending") {
+          clearInterval(pollRef.current!);
+          if (data.status === "paid" || data.status === "won") saveBetHash(paymentHash);
+        }
       } catch { /* ignore */ }
     }, 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -430,7 +432,6 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
               className={`w-full h-12 text-base font-bold uppercase tracking-wider ${colors.btn}`}>
               {creating ? "Generating invoice…" : "Generate Invoice"}
             </Button>
-            <p className="text-[10px] text-muted-foreground text-center">2% house fee · Settled at final whistle</p>
           </form>
         )}
 
@@ -577,7 +578,6 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) =
         </div>
       )}
       <PoolBar homeSats={ev.totalHomeSats} drawSats={ev.totalDrawSats ?? 0} awaySats={ev.totalAwaySats} />
-      <p className="text-[9px] text-muted-foreground text-center">2% house fee · settled automatically at full time</p>
     </div>
   );
 }
@@ -659,7 +659,10 @@ export function Sports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
+  const [betHashes, setBetHashes] = useState<string[]>([]);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => { setBetHashes(getBetHashes()); }, []);
 
   const fetchData = useCallback((quiet = false) => {
     if (!quiet) { setLoading(true); setError(false); }
@@ -803,10 +806,13 @@ export function Sports() {
         </div>
       )}
 
+      {/* My Bets */}
+      <MyBetsList hashes={betHashes} onDismiss={(hash) => { removeBetHash(hash); setBetHashes(getBetHashes()); }} />
+
       <SportBetModal
         event={betModal?.event ?? null}
         direction={betModal?.direction ?? null}
-        onClose={() => setBetModal(null)}
+        onClose={() => { setBetModal(null); setBetHashes(getBetHashes()); }}
       />
     </div>
   );

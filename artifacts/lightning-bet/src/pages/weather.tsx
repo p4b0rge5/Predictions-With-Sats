@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
+import { MyBetsList, getBetHashes, removeBetHash, saveBetHash } from "@/components/my-bet-widget";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -178,18 +179,16 @@ function PoolBar({ yesSats, noSats }: { yesSats: number; noSats: number }) {
   const total = yesSats + noSats;
   const pY = total > 0 ? (yesSats / total) * 100 : 50;
   const pN = total > 0 ? (noSats / total) * 100 : 50;
-  const isEmpty = total === 0;
-  const dim = isEmpty ? "opacity-30" : "";
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-center font-mono text-xs mb-1">
-        <span className={`font-bold ${isEmpty ? "text-green-500/50" : "text-green-500"}`}>{pY.toFixed(1)}% YES</span>
-        <span className={`text-[10px] ${isEmpty ? "text-muted-foreground/50" : "text-muted-foreground"}`}>Pool: {formatSats(total)} sats</span>
-        <span className={`font-bold ${isEmpty ? "text-red-500/50" : "text-red-500"}`}>{pN.toFixed(1)}% NO</span>
+        <span className="font-bold text-green-500">{pY.toFixed(1)}% YES</span>
+        <span className="text-[10px] text-muted-foreground">Pool: {formatSats(total)} sats</span>
+        <span className="font-bold text-red-500">{pN.toFixed(1)}% NO</span>
       </div>
       <div className="flex h-2 rounded-full overflow-hidden gap-px">
-        <div className={`bg-green-500 transition-all ${dim}`} style={{ width: `${pY}%` }} />
-        <div className={`bg-red-500 transition-all ${dim}`} style={{ width: `${pN}%` }} />
+        <div className="bg-green-500 transition-all" style={{ width: `${pY}%` }} />
+        <div className="bg-red-500 transition-all" style={{ width: `${pN}%` }} />
       </div>
     </div>
   );
@@ -230,7 +229,7 @@ function WeatherBetModal({
       }
       return res.json() as Promise<WeatherBetResult>;
     },
-    onSuccess: (data) => setInvoice(data),
+    onSuccess: (data) => { setInvoice(data); saveBetHash(data.paymentHash); },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
@@ -460,6 +459,9 @@ type CityFilter = (typeof CITY_KEYS)[number];
 export function Weather() {
   const [activeTab, setActiveTab] = useState<ContentTab>("markets");
   const [cityFilter, setCityFilter] = useState<CityFilter>("all");
+  const [betHashes, setBetHashes] = useState<string[]>([]);
+
+  useEffect(() => { setBetHashes(getBetHashes()); }, []);
 
   const { data: markets, isLoading } = useQuery<WeatherMarket[]>({
     queryKey: ["/api/weather/markets"],
@@ -550,6 +552,9 @@ export function Weather() {
           )}
         </div>
       )}
+
+      {/* My Bets */}
+      <MyBetsList hashes={betHashes} onDismiss={(hash) => { removeBetHash(hash); setBetHashes(getBetHashes()); }} />
     </div>
   );
 }

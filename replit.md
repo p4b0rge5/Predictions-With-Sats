@@ -42,5 +42,13 @@ All prediction cards (Crypto, Sports, Weather) follow the same vertical order:
 [========= colored bar =========]
          {Z}% DRAW  ← Sports only, centered below bar
 ```
-- Empty pool defaults to equal split (50/50 or 33.3%), rendered dimmed (opacity-30/50)
+- Empty pool defaults to equal split (50/50 or 33.3%) — always rendered at FULL color, never dimmed
 - Pool bar is NEVER shown on finished/settled/results cards
+- Do NOT add "2% house fee" or similar footnotes to prediction cards — it does not exist on the Bitcoin reference screen
+
+## My Bets — standard for all categories
+
+Every category page (Crypto, Sports, Weather) must include a `MyBetsList` section below the market cards, using `getBetHashes` / `removeBetHash` / `saveBetHash` from `@/components/my-bet-widget`.
+- Save hash: call `saveBetHash(paymentHash)` when payment is confirmed (status `"paid"` in polling, or `onSuccess` in mutation)
+- Refresh list when modal closes: `setBetHashes(getBetHashes())`
+- The widget is self-contained; returns `null` if there are no hashes to show
