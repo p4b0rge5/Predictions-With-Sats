@@ -8,7 +8,7 @@ import { logger } from "./logger";
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const WINDOW_DURATION_MS = 5 * 60 * 1000; // 300 000 ms — 5 minutes
-const SETTLEMENT_BUFFER_MS = 3 * 1000;     // 3 s — fetch close price + settle bets
+const SETTLEMENT_BUFFER_MS = 0;            // 0 s — use cached price at close (refreshed every cycle)
 
 // Platform fee: 2% taken from every settled window (winners or refunds).
 const PLATFORM_FEE = 0.02;
