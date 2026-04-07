@@ -820,9 +820,9 @@ export function Sports() {
       {/* ── Content tabs: Guide | Upcoming | Results ── */}
       <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40 mb-4">
         {([
+          { key: "upcoming", label: "Upcoming" },
           { key: "guide",    label: "Guide" },
           { key: "my-bets",  label: "My Bets" },
-          { key: "upcoming", label: "Upcoming" },
           { key: "results",  label: "Results" },
         ] as { key: ContentTab; label: string }[]).map((t) => (
           <button

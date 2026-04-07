@@ -562,9 +562,9 @@ export function Home() {
       {/* Content tabs */}
       <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40 mb-4">
         {([
+          { key: "live",     label: "Live" },
           { key: "guide",    label: "Guide" },
           { key: "my-bets",  label: "My Bets" },
-          { key: "live",     label: "Live" },
           { key: "history",  label: "Window History" },
         ] as { key: ContentTab; label: string }[]).map((t) => (
           <button
