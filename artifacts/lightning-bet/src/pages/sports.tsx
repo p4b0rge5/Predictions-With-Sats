@@ -701,7 +701,7 @@ export function Sports() {
 
       {/* ── Guide ── */}
       {activeTab === "guide" && (
-        activeSportDef.key === "football" ? <FootballGuide onDone={() => setActiveTab("upcoming")} /> : (
+        activeSportDef.key === "football" ? <FootballGuide onDone={() => { setActiveTab("upcoming"); window.scrollTo({ top: 0, behavior: "smooth" }); }} /> : (
           <p className="text-center text-muted-foreground text-sm py-10 font-mono">Guide coming soon.</p>
         )
       )}

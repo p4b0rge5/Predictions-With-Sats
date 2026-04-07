@@ -427,7 +427,7 @@ export function Home() {
 
       {/* ── Tab content ── */}
       {activeTab === "guide" && (
-        <Guide onDone={() => setActiveTab("live")} />
+        <Guide onDone={() => { setActiveTab("live"); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       )}
       {activeTab === "live" && (
         <BitcoinPrediction onShowGuide={() => setActiveTab("guide")} />
