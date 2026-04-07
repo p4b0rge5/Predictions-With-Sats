@@ -165,7 +165,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
         await queryClient.invalidateQueries({ queryKey: getGetBetStatusQueryKey(paymentHash) });
         toast({
           title: "Sats sent!",
-          description: `${new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats sent to ${lnAddress.trim()}.`,
+          description: `${new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0)} sats sent to ${lnAddress.trim()}.`,
           duration: 5000,
         });
       }
@@ -178,7 +178,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
 
   const handleShareX = () => {
     if (!bet) return;
-    const sats = new Intl.NumberFormat().format(bet.payoutSats ?? 0);
+    const sats = new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0);
     const dir = bet.direction === "up" ? "UP ↑" : "DOWN ↓";
     const text = `⚡ Just won ${sats} sats on Prediction With Sats! Called BTC ${dir} correctly in a 5-minute window. Try it at pwsats.com — no accounts, instant Lightning payouts.`;
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank");
@@ -186,7 +186,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
 
   const handleShareNostr = () => {
     if (!bet) return;
-    const sats = new Intl.NumberFormat().format(bet.payoutSats ?? 0);
+    const sats = new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0);
     const dir = bet.direction === "up" ? "UP ↑" : "DOWN ↓";
     const text = `⚡ Just won ${sats} sats on Prediction With Sats! Called BTC ${dir} correctly in a 5-minute prediction window. No accounts — bet and claim entirely via Lightning Network. pwsats.com #Bitcoin #Lightning`;
     navigator.clipboard.writeText(text);
@@ -237,7 +237,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
           {bet.direction.toUpperCase()}
         </span>
         <span className="text-muted-foreground text-xs">
-          {new Intl.NumberFormat().format(bet.amountSats)} sats
+          {new Intl.NumberFormat("en-US").format(bet.amountSats)} sats
         </span>
         <span className="text-[10px] text-muted-foreground ml-auto">
           Window #{bet.windowId}
@@ -248,8 +248,8 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
       {bet.status === "won" && bet.payoutSats && (
         <div className="text-green-400 text-sm font-bold mb-3">
           {isRefund
-            ? `${new Intl.NumberFormat().format(bet.payoutSats)} sats refunded (2% fee)`
-            : `+${new Intl.NumberFormat().format(bet.payoutSats)} sats won`}
+            ? `${new Intl.NumberFormat("en-US").format(bet.payoutSats)} sats refunded (2% fee)`
+            : `+${new Intl.NumberFormat("en-US").format(bet.payoutSats)} sats won`}
         </div>
       )}
 
@@ -334,7 +334,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
               </Button>
             </div>
             <p className="text-[10px] text-muted-foreground text-center leading-relaxed">
-              Open your Lightning wallet → Scan QR or paste LNURL → Receive {new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats
+              Open your Lightning wallet → Scan QR or paste LNURL → Receive {new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0)} sats
             </p>
           </div>
 
@@ -372,7 +372,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
                 >
                   {lnPaying
                     ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Sending...</>
-                    : <><Zap className="h-3.5 w-3.5" /> Send {new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats</>
+                    : <><Zap className="h-3.5 w-3.5" /> Send {new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0)} sats</>
                   }
                 </Button>
                 <p className="text-[10px] text-muted-foreground text-center">
@@ -388,8 +388,8 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
         <div className="flex items-center gap-2 text-yellow-400 text-xs animate-pulse mt-1">
           <Trophy className="h-3.5 w-3.5" />
           {isRefund
-            ? `Refund of ${new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats ready — generating link...`
-            : `You won ${new Intl.NumberFormat().format(bet.payoutSats ?? 0)} sats — generating withdrawal link...`}
+            ? `Refund of ${new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0)} sats ready — generating link...`
+            : `You won ${new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0)} sats — generating withdrawal link...`}
         </div>
       )}
     </div>

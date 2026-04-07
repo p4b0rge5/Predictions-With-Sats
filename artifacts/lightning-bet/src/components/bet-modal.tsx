@@ -221,7 +221,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                 <span>Min: 546 sats (~$0.50)</span>
                 {inputMode === "sats"
                   ? <span>≈ ${usdAmount.toFixed(2)} USD</span>
-                  : <span>≈ {new Intl.NumberFormat().format(satsAmount)} sats</span>
+                  : <span>≈ {new Intl.NumberFormat("en-US").format(satsAmount)} sats</span>
                 }
               </div>
             </div>
@@ -260,7 +260,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
               <>
                 <div className="text-center">
                   <p className="text-xl font-bold text-yellow-400 leading-tight">
-                    Pay {new Intl.NumberFormat().format(satsAmount)} sats
+                    Pay {new Intl.NumberFormat("en-US").format(satsAmount)} sats
                   </p>
                   <p className="text-sm text-muted-foreground mt-0.5">≈ ${usdAmount.toFixed(2)} USD</p>
                 </div>

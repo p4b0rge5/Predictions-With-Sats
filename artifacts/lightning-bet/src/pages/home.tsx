@@ -317,7 +317,7 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
   const priceUp          = priceChangeDollar > 0;
   const priceDown        = priceChangeDollar < 0;
 
-  const formatSats = (sats: number) => new Intl.NumberFormat().format(sats);
+  const formatSats = (sats: number) => new Intl.NumberFormat("en-US").format(sats);
   const formatUsd  = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const mins = Math.floor(displaySecsLeft / 60);
   const secs = displaySecsLeft % 60;

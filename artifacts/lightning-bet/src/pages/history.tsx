@@ -35,7 +35,7 @@ export function History({ asset = "btc" }: { asset?: AssetParam }) {
 
   const formatUsd = (n: number) =>
     n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const formatSats = (sats: number) => new Intl.NumberFormat().format(sats);
+  const formatSats = (sats: number) => new Intl.NumberFormat("en-US").format(sats);
 
   if (isLoading) {
     return (

@@ -67,7 +67,7 @@ function usdToSats(usd: number): number {
 }
 
 function formatSats(n: number) {
-  return new Intl.NumberFormat().format(n);
+  return new Intl.NumberFormat("en-US").format(n);
 }
 
 function formatDate(dateStr: string) {
@@ -569,10 +569,10 @@ function WeatherBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: ()
           <p className="text-[10px] text-muted-foreground">Will max temp reach {bet.market.threshold}°C?</p>
         </>
       )}
-      <p className="text-[10px] text-muted-foreground">{bet.amountSats.toLocaleString()} sats wagered</p>
+      <p className="text-[10px] text-muted-foreground">{bet.amountSats.toLocaleString("en-US")} sats wagered</p>
       {bet.status === "won" && bet.payoutSats && (
         <div className="border-t border-border/30 pt-3 space-y-2 flex flex-col items-center">
-          <p className="text-xs text-yellow-400 font-bold">PAYOUT: {bet.payoutSats.toLocaleString()} sats</p>
+          <p className="text-xs text-yellow-400 font-bold">PAYOUT: {bet.payoutSats.toLocaleString("en-US")} sats</p>
           {bet.withdrawLnurl && (
             <>
               <div className="bg-white p-2 rounded-lg"><QRCodeSVG value={bet.withdrawLnurl} size={120} /></div>

@@ -99,7 +99,7 @@ function apiUrl(path: string) {
 }
 
 function formatSats(n: number) {
-  return new Intl.NumberFormat().format(n);
+  return new Intl.NumberFormat("en-US").format(n);
 }
 
 function formatKickoff(isoStr: string) {

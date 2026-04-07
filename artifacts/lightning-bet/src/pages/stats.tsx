@@ -13,7 +13,7 @@ export function Stats() {
     );
   }
 
-  const formatSats = (sats: number) => new Intl.NumberFormat().format(sats);
+  const formatSats = (sats: number) => new Intl.NumberFormat("en-US").format(sats);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -43,7 +43,7 @@ export function Stats() {
           </CardHeader>
           <CardContent>
             <div className="text-5xl font-mono font-bold tracking-tighter">
-              {new Intl.NumberFormat().format(stats.totalBets)}
+              {new Intl.NumberFormat("en-US").format(stats.totalBets)}
             </div>
           </CardContent>
         </Card>
@@ -56,7 +56,7 @@ export function Stats() {
           </CardHeader>
           <CardContent>
             <div className="text-5xl font-mono font-bold tracking-tighter">
-              {new Intl.NumberFormat().format(stats.totalWindowsSettled)}
+              {new Intl.NumberFormat("en-US").format(stats.totalWindowsSettled)}
             </div>
           </CardContent>
         </Card>
