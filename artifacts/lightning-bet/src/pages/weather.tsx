@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -523,10 +523,45 @@ function MiniTempBar({ temp, threshold }: { temp: number; threshold: number }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Countdown hook — updates every second
+// ---------------------------------------------------------------------------
+
+function useCountdown(deadlineIso: string): { label: string; urgent: boolean; critical: boolean } {
+  const deadline = useMemo(() => new Date(deadlineIso).getTime(), [deadlineIso]);
+  const [remaining, setRemaining] = useState(() => deadline - Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setRemaining(deadline - Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
+
+  if (remaining <= 0) return { label: "Closing", urgent: true, critical: true };
+
+  const totalSecs = Math.floor(remaining / 1000);
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+
+  let label: string;
+  if (h > 0) label = `${h}h ${m}m`;
+  else if (m > 0) label = `${m}m ${String(s).padStart(2, "0")}s`;
+  else label = `${s}s`;
+
+  return {
+    label,
+    urgent: remaining < 3 * 60 * 60 * 1000,   // < 3h
+    critical: remaining < 60 * 60 * 1000,       // < 1h
+  };
+}
+
 function MarketCard({ market, cityTemp }: { market: WeatherMarket; cityTemp?: CityTemp }) {
   const [betDirection, setBetDirection] = useState<Direction | null>(null);
   const today = new Date().toISOString().slice(0, 10);
   const isToday = market.date === today;
+  // Deadline = end of market date at 23:59:59 UTC
+  const deadline = `${market.date}T23:59:59Z`;
+  const countdown = useCountdown(deadline);
   const totalSats = market.totalYesSats + market.totalNoSats;
   const isSettled = market.status === "settled";
 
@@ -564,8 +599,15 @@ function MarketCard({ market, cityTemp }: { market: WeatherMarket; cityTemp?: Ci
             )}
           </div>
         ) : (
-          <div className="shrink-0 flex items-center gap-1 text-xs font-mono text-muted-foreground">
-            <Clock className="h-3 w-3" /> Open
+          <div className={`shrink-0 flex items-center gap-1 text-xs font-mono font-bold ${
+            countdown.critical
+              ? "text-red-400"
+              : countdown.urgent
+              ? "text-amber-400"
+              : "text-muted-foreground"
+          }`}>
+            <Clock className="h-3 w-3" />
+            {countdown.label}
           </div>
         )}
       </div>
