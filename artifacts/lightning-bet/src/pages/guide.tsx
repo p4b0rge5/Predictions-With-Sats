@@ -90,26 +90,34 @@ const STEPS = [
   },
 ];
 
-export function Guide() {
+interface GuideProps {
+  onDone?: () => void;
+}
+
+export function Guide({ onDone }: GuideProps = {}) {
   const [step, setStep] = useState(0);
   const navigate = useNavigate();
   const total = STEPS.length;
 
+  const handleDone = useCallback(() => {
+    if (onDone) onDone(); else navigate("/");
+  }, [onDone, navigate]);
+
   const prev = useCallback(() => setStep((s) => Math.max(0, s - 1)), []);
   const next = useCallback(() => {
     if (step < total - 1) setStep((s) => s + 1);
-    else navigate("/");
-  }, [step, total, navigate]);
+    else handleDone();
+  }, [step, total, handleDone]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight" || e.key === "ArrowDown") next();
       if (e.key === "ArrowLeft" || e.key === "ArrowUp") prev();
-      if (e.key === "Escape") navigate("/");
+      if (e.key === "Escape") handleDone();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [next, prev, navigate]);
+  }, [next, prev, handleDone]);
 
   const current = STEPS[step];
   const Icon = current.icon;
@@ -126,7 +134,7 @@ export function Guide() {
           variant="ghost"
           size="icon"
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          onClick={() => navigate("/")}
+          onClick={handleDone}
           aria-label="Close guide"
         >
           <X className="h-4 w-4" />

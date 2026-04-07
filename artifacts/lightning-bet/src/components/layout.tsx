@@ -14,10 +14,7 @@ const CATEGORIES = [
     href: "/",
     icon: <span className="text-sm leading-none font-bold">₿</span>,
     routes: ["/", "/history", "/guide", "/stats"],
-    subNav: [
-      { label: "Guide", href: "/guide" },
-      { label: "Window History", href: "/history" },
-    ],
+    subNav: [] as { label: string; href: string }[],
   },
   {
     key: "sports",
