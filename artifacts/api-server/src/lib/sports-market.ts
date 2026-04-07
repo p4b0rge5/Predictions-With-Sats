@@ -4,9 +4,11 @@
  * Handles creation, lookup, and settlement of sport prediction markets.
  * Completely isolated from the BTC prediction logic (market.ts).
  *
- * Settlement math (mirrors BTC market logic):
- *   - Winners split the total pool (home + away sats) minus 2% house fee
- *   - DRAW: all paid bettors receive 98% refund
+ * Three-way market: HOME | DRAW | AWAY
+ * Settlement math:
+ *   - The total pool (home + draw + away sats) minus 2% house fee is distributed
+ *     proportionally to winners.
+ *   - DRAW is a real betting outcome — DRAW bettors win when the final score is a draw.
  *   - Minimum payout: 1 sat
  */
 
@@ -17,6 +19,8 @@ import { logger } from "./logger";
 import type { SportEvent } from "./sports";
 
 const HOUSE_FEE = 0.02;
+
+export type SportDirection = "home" | "draw" | "away";
 
 // ---------------------------------------------------------------------------
 // Market lookup / creation
@@ -71,7 +75,7 @@ export async function getMarketByEventId(eventId: string) {
 // Pool accounting — called after a bet is confirmed as paid
 // ---------------------------------------------------------------------------
 
-export async function addToPool(marketId: number, direction: "home" | "away", amountSats: number) {
+export async function addToPool(marketId: number, direction: SportDirection, amountSats: number) {
   const [market] = await db
     .select()
     .from(sportMarketsTable)
@@ -85,6 +89,11 @@ export async function addToPool(marketId: number, direction: "home" | "away", am
       .update(sportMarketsTable)
       .set({ totalHomeSats: market.totalHomeSats + amountSats })
       .where(eq(sportMarketsTable.id, marketId));
+  } else if (direction === "draw") {
+    await db
+      .update(sportMarketsTable)
+      .set({ totalDrawSats: market.totalDrawSats + amountSats })
+      .where(eq(sportMarketsTable.id, marketId));
   } else {
     await db
       .update(sportMarketsTable)
@@ -94,12 +103,12 @@ export async function addToPool(marketId: number, direction: "home" | "away", am
 }
 
 // ---------------------------------------------------------------------------
-// Settlement
+// Settlement — three-way (HOME | DRAW | AWAY)
 // ---------------------------------------------------------------------------
 
 export async function settleMarket(
   marketId: number,
-  outcome: "home" | "away" | "draw",
+  outcome: SportDirection,
   homeScore: number | null,
   awayScore: number | null,
 ) {
@@ -128,73 +137,53 @@ export async function settleMarket(
     return;
   }
 
-  const totalPool = market.totalHomeSats + market.totalAwaySats;
+  const totalPool = market.totalHomeSats + market.totalDrawSats + market.totalAwaySats;
   const netPool = Math.floor(totalPool * (1 - HOUSE_FEE));
 
-  if (outcome === "draw") {
-    // Everyone gets 98% refund
-    for (const bet of paidBets) {
-      const refundSats = Math.max(1, Math.floor(bet.amountSats * (1 - HOUSE_FEE)));
+  const winners = paidBets.filter((b) => b.direction === outcome);
+  const losers = paidBets.filter((b) => b.direction !== outcome);
+  const totalWinnerStake = winners.reduce((s, b) => s + Number(b.amountSats), 0);
+
+  // Mark losers
+  if (losers.length > 0) {
+    await db
+      .update(sportBetsTable)
+      .set({ status: "lost", payoutSats: 0 })
+      .where(
+        and(
+          eq(sportBetsTable.marketId, marketId),
+          inArray(sportBetsTable.id, losers.map((b) => b.id)),
+        ),
+      );
+  }
+
+  if (winners.length === 0 || totalWinnerStake === 0) {
+    // No one bet on the winning outcome — house keeps pool
+    await db
+      .update(sportBetsTable)
+      .set({ status: "lost", payoutSats: 0 })
+      .where(and(eq(sportBetsTable.marketId, marketId), eq(sportBetsTable.status, "paid")));
+    logger.info({ marketId, outcome }, "Sport market settled — no winners, house keeps pool");
+  } else {
+    // Distribute net pool proportionally to winners
+    for (const bet of winners) {
+      const share = Number(bet.amountSats) / totalWinnerStake;
+      const payoutSats = Math.max(1, Math.floor(netPool * share));
       const token = randomUUID();
       await db
         .update(sportBetsTable)
         .set({
-          status: "refunded",
-          payoutSats: refundSats,
+          status: "won",
+          payoutSats,
           withdrawToken: token,
           withdrawStatus: "unclaimed",
         })
         .where(and(eq(sportBetsTable.id, bet.id), eq(sportBetsTable.status, "paid")));
     }
-    logger.info({ marketId, paidBets: paidBets.length }, "Sport market settled — DRAW, all refunded");
-  } else {
-    const winners = paidBets.filter((b) => b.direction === outcome);
-    const losers = paidBets.filter((b) => b.direction !== outcome);
-    const totalWinnerStake = winners.reduce((s, b) => s + b.amountSats, 0);
-
-    // Mark losers
-    if (losers.length > 0) {
-      await db
-        .update(sportBetsTable)
-        .set({ status: "lost", payoutSats: 0 })
-        .where(
-          and(
-            eq(sportBetsTable.marketId, marketId),
-            inArray(
-              sportBetsTable.id,
-              losers.map((b) => b.id),
-            ),
-          ),
-        );
-    }
-
-    if (winners.length === 0 || totalWinnerStake === 0) {
-      // No winners — mark all as lost (house keeps pool)
-      await db
-        .update(sportBetsTable)
-        .set({ status: "lost", payoutSats: 0 })
-        .where(and(eq(sportBetsTable.marketId, marketId), eq(sportBetsTable.status, "paid")));
-    } else {
-      // Distribute pool to winners proportionally
-      for (const bet of winners) {
-        const share = bet.amountSats / totalWinnerStake;
-        const payoutSats = Math.max(1, Math.floor(netPool * share));
-        const token = randomUUID();
-        await db
-          .update(sportBetsTable)
-          .set({
-            status: "won",
-            payoutSats,
-            withdrawToken: token,
-            withdrawStatus: "unclaimed",
-          })
-          .where(and(eq(sportBetsTable.id, bet.id), eq(sportBetsTable.status, "paid")));
-      }
-      logger.info(
-        { marketId, outcome, winners: winners.length, totalPool, netPool },
-        "Sport market settled — winners paid",
-      );
-    }
+    logger.info(
+      { marketId, outcome, winners: winners.length, totalPool, netPool },
+      "Sport market settled — winners paid",
+    );
   }
 
   await db

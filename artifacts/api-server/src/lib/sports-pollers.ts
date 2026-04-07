@@ -76,7 +76,7 @@ async function pollSportPayments(): Promise<void> {
       // Update market pool totals
       try {
         const { addToPool } = await import("./sports-market");
-        await addToPool(bet.marketId, bet.direction as "home" | "away", Number(bet.amountSats));
+        await addToPool(bet.marketId, bet.direction as "home" | "draw" | "away", Number(bet.amountSats));
       } catch (err) {
         logger.warn({ err, sportBetId: bet.id }, "Failed to update sport market pool");
       }

@@ -55,7 +55,7 @@ router.get("/sports/events", async (req, res): Promise<void> => {
     const marketsByEventId = new Map(
       allMarkets.map((m) => [
         m.eventId,
-        { totalHomeSats: m.totalHomeSats, totalAwaySats: m.totalAwaySats, marketId: m.id, status: m.status },
+        { totalHomeSats: m.totalHomeSats, totalDrawSats: m.totalDrawSats, totalAwaySats: m.totalAwaySats, marketId: m.id, status: m.status },
       ]),
     );
 
@@ -66,6 +66,7 @@ router.get("/sports/events", async (req, res): Promise<void> => {
           ...ev,
           marketId: market?.marketId ?? null,
           totalHomeSats: market?.totalHomeSats ?? 0,
+          totalDrawSats: market?.totalDrawSats ?? 0,
           totalAwaySats: market?.totalAwaySats ?? 0,
           marketStatus: market?.status ?? null,
         };
@@ -76,6 +77,7 @@ router.get("/sports/events", async (req, res): Promise<void> => {
           ...ev,
           marketId: market?.marketId ?? null,
           totalHomeSats: market?.totalHomeSats ?? 0,
+          totalDrawSats: market?.totalDrawSats ?? 0,
           totalAwaySats: market?.totalAwaySats ?? 0,
           marketStatus: market?.status ?? null,
         };
@@ -112,8 +114,8 @@ router.post("/sports/bets", async (req, res): Promise<void> => {
     res.status(400).json({ error: "eventId is required" });
     return;
   }
-  if (direction !== "home" && direction !== "away") {
-    res.status(400).json({ error: "direction must be 'home' or 'away'" });
+  if (direction !== "home" && direction !== "draw" && direction !== "away") {
+    res.status(400).json({ error: "direction must be 'home', 'draw', or 'away'" });
     return;
   }
   if (!amountSats || typeof amountSats !== "number" || amountSats < MIN_AMOUNT_SATS) {
@@ -153,8 +155,9 @@ router.post("/sports/bets", async (req, res): Promise<void> => {
     })
     .returning();
 
-  const teamLabel = direction === "home" ? market.homeTeam : market.awayTeam;
-  const memo = `PWSats — ${teamLabel} WINS (${market.league})`;
+  const teamLabel =
+    direction === "home" ? market.homeTeam : direction === "away" ? market.awayTeam : "DRAW";
+  const memo = `PWSats — ${teamLabel} (${market.league})`;
 
   let invoice: { paymentHash: string; paymentRequest: string; expiresAt: string; verifyUrl: string | null };
   try {
@@ -296,7 +299,8 @@ router.post("/sports/bets/:hash/verify-preimage", async (req, res): Promise<void
     .returning();
 
   try {
-    await addToPool(bet.marketId, bet.direction as "home" | "away", Number(bet.amountSats));
+    const { addToPool: addPoolFn } = await import("../lib/sports-market");
+    await addPoolFn(bet.marketId, bet.direction as "home" | "draw" | "away", Number(bet.amountSats));
   } catch (err) {
     logger.warn({ err, sportBetId: bet.id }, "Failed to update pool after preimage verify");
   }

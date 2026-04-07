@@ -23,6 +23,7 @@ export const sportMarketsTable = pgTable("sport_markets", {
   awayScore: integer("away_score"),
   outcome: text("outcome"),
   totalHomeSats: bigint("total_home_sats", { mode: "number" }).notNull().default(0),
+  totalDrawSats: bigint("total_draw_sats", { mode: "number" }).notNull().default(0),
   totalAwaySats: bigint("total_away_sats", { mode: "number" }).notNull().default(0),
   settledAt: timestamp("settled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

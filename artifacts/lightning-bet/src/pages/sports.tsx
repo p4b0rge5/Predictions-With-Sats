@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Trophy, Clock, CheckCircle2, AlertCircle, RefreshCw,
-  Copy, Zap, ShieldCheck, ChevronDown, ChevronUp, XCircle, X,
+  Copy, Zap, ShieldCheck, ChevronDown, ChevronUp, XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+type Direction = "home" | "draw" | "away";
 
 interface SportEvent {
   id: string;
@@ -28,9 +30,10 @@ interface SportEvent {
   status: "upcoming" | "finished" | "live";
   homeScore: number | null;
   awayScore: number | null;
-  outcome: "home" | "away" | "draw" | null;
+  outcome: "home" | "draw" | "away" | null;
   marketId: number | null;
   totalHomeSats: number;
+  totalDrawSats: number;
   totalAwaySats: number;
   marketStatus: string | null;
 }
@@ -70,6 +73,7 @@ declare global {
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const MIN_SATS = 546;
 const BTC_SATS = 100_000_000;
+const APPROX_BTC_USD = 95000;
 
 function apiUrl(path: string) {
   return `${API_BASE}${path}`;
@@ -88,6 +92,18 @@ function formatKickoff(isoStr: string) {
 function msTillKickoff(isoStr: string) {
   return new Date(isoStr).getTime() - Date.now();
 }
+
+const DIRECTION_LABELS: Record<Direction, string> = {
+  home: "HOME",
+  draw: "DRAW",
+  away: "AWAY",
+};
+
+const DIRECTION_COLORS: Record<Direction, { btn: string; text: string }> = {
+  home: { btn: "bg-green-500/10 text-green-400 border-green-500/30 hover:bg-green-500/20 hover:border-green-500/60", text: "text-green-400" },
+  draw: { btn: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20 hover:border-yellow-500/60", text: "text-yellow-400" },
+  away: { btn: "bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20 hover:border-blue-500/60", text: "text-blue-400" },
+};
 
 // ---------------------------------------------------------------------------
 // Team badge
@@ -110,27 +126,30 @@ function TeamBadge({ src, name, size = "sm" }: { src: string | null; name: strin
 }
 
 // ---------------------------------------------------------------------------
-// Pool bar
+// Three-way pool bar
 // ---------------------------------------------------------------------------
 
-function PoolBar({ homeSats, awaySats }: { homeSats: number; awaySats: number }) {
-  const total = homeSats + awaySats;
+function PoolBar({ homeSats, drawSats, awaySats }: { homeSats: number; drawSats: number; awaySats: number }) {
+  const total = homeSats + drawSats + awaySats;
   if (total === 0) {
     return (
       <div className="text-[10px] text-muted-foreground font-mono text-center">No bets yet — be first!</div>
     );
   }
-  const homePct = (homeSats / total) * 100;
-  const awayPct = 100 - homePct;
+  const pHome = (homeSats / total) * 100;
+  const pDraw = (drawSats / total) * 100;
+  const pAway = (awaySats / total) * 100;
   return (
     <div className="space-y-1">
-      <div className="flex h-1.5 rounded-full overflow-hidden">
-        <div className="bg-green-500 transition-all" style={{ width: `${homePct}%` }} />
-        <div className="bg-blue-500 transition-all" style={{ width: `${awayPct}%` }} />
+      <div className="flex h-1.5 rounded-full overflow-hidden gap-px">
+        {pHome > 0 && <div className="bg-green-500 transition-all" style={{ width: `${pHome}%` }} />}
+        {pDraw > 0 && <div className="bg-yellow-400 transition-all" style={{ width: `${pDraw}%` }} />}
+        {pAway > 0 && <div className="bg-blue-500 transition-all" style={{ width: `${pAway}%` }} />}
       </div>
       <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
-        <span className="text-green-400">⬆ {formatSats(homeSats)} sats</span>
-        <span className="text-blue-400">{formatSats(awaySats)} sats ⬆</span>
+        <span className="text-green-400">{formatSats(homeSats)}</span>
+        <span className="text-yellow-400">{formatSats(drawSats)}</span>
+        <span className="text-blue-400">{formatSats(awaySats)}</span>
       </div>
     </div>
   );
@@ -142,8 +161,14 @@ function PoolBar({ homeSats, awaySats }: { homeSats: number; awaySats: number })
 
 interface SportBetModalProps {
   event: SportEvent | null;
-  direction: "home" | "away" | null;
+  direction: Direction | null;
   onClose: () => void;
+}
+
+function directionLabel(dir: Direction, ev: SportEvent | null): string {
+  if (dir === "home") return ev?.homeTeam ?? "HOME";
+  if (dir === "away") return ev?.awayTeam ?? "AWAY";
+  return "DRAW";
 }
 
 function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
@@ -151,7 +176,6 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
   const [amountSats, setAmountSats] = useState("1000");
   const [paymentHash, setPaymentHash] = useState<string | null>(null);
   const [paymentRequest, setPaymentRequest] = useState<string | null>(null);
-  const [betInfo, setBetInfo] = useState<{ homeTeam: string; awayTeam: string; league: string } | null>(null);
   const [creating, setCreating] = useState(false);
   const [betStatus, setBetStatus] = useState<SportBetStatus | null>(null);
   const [weblnAvailable, setWeblnAvailable] = useState(false);
@@ -167,7 +191,6 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
     setWeblnAvailable(typeof window.webln !== "undefined");
   }, []);
 
-  // Poll bet status when we have a paymentHash and status is still pending
   useEffect(() => {
     if (!paymentHash) return;
     if (betStatus && betStatus.status !== "pending") return;
@@ -190,7 +213,6 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
     setAmountSats("1000");
     setPaymentHash(null);
     setPaymentRequest(null);
-    setBetInfo(null);
     setBetStatus(null);
     setShowPreimage(false);
     setPreimageInput("");
@@ -214,14 +236,13 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ eventId: event.id, direction, amountSats: sats }),
       });
-      const data = await res.json() as { paymentHash?: string; paymentRequest?: string; error?: string; homeTeam?: string; awayTeam?: string; league?: string };
+      const data = await res.json() as { paymentHash?: string; paymentRequest?: string; error?: string };
       if (!res.ok || !data.paymentHash) {
         toast({ title: "Error", description: data.error ?? "Failed to create bet", variant: "destructive" });
         return;
       }
       setPaymentHash(data.paymentHash);
       setPaymentRequest(data.paymentRequest!);
-      setBetInfo({ homeTeam: data.homeTeam!, awayTeam: data.awayTeam!, league: data.league! });
     } catch {
       toast({ title: "Error", description: "Network error. Please try again.", variant: "destructive" });
     } finally {
@@ -247,7 +268,6 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
       const body = await res.json().catch(() => ({})) as { error?: string };
       throw new Error(body.error ?? "Verification failed");
     }
-    // Re-fetch status
     const statusRes = await fetch(apiUrl(`/api/sports/bets/${paymentHash}`));
     if (statusRes.ok) setBetStatus(await statusRes.json() as SportBetStatus);
   };
@@ -287,25 +307,22 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
     }
   };
 
-  const isHome = direction === "home";
-  const teamLabel = event ? (isHome ? event.homeTeam : event.awayTeam) : "";
   const satsNum = parseInt(amountSats, 10);
   const validSats = !isNaN(satsNum) && satsNum >= MIN_SATS;
+  const teamLabel = direction && event ? directionLabel(direction, event) : "";
+  const colors = direction ? DIRECTION_COLORS[direction] : DIRECTION_COLORS.home;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="sm:max-w-md border-2 border-primary/20 bg-background/95 backdrop-blur font-mono max-h-[85dvh] overflow-y-auto w-[calc(100vw-2rem)] sm:w-auto p-4 sm:p-6">
         <DialogHeader className="pb-1">
           <DialogTitle className="text-base font-bold uppercase tracking-wider flex items-center gap-2 flex-wrap">
-            <span className={isHome ? "text-green-400" : "text-blue-400"}>
-              {isHome ? "↑ HOME WINS" : "↓ AWAY WINS"}
+            <span className={colors.text}>
+              {direction === "home" ? "↑" : direction === "away" ? "↓" : "="} {DIRECTION_LABELS[direction ?? "home"]}
             </span>
             <span className="text-muted-foreground font-normal text-sm truncate">{teamLabel}</span>
           </DialogTitle>
-          {betInfo && (
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{betInfo.league}</p>
-          )}
-          {event && !betInfo && (
+          {event && (
             <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{event.league}</p>
           )}
         </DialogHeader>
@@ -329,11 +346,10 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
               />
               <div className="flex justify-between text-[11px] text-muted-foreground">
                 <span>Min: {formatSats(MIN_SATS)} sats</span>
-                <span>≈ ${((satsNum / BTC_SATS) * 95000).toFixed(2)} USD</span>
+                <span>≈ ${((!isNaN(satsNum) ? satsNum : 0) / BTC_SATS * APPROX_BTC_USD).toFixed(2)} USD</span>
               </div>
             </div>
 
-            {/* Quick-pick buttons */}
             <div className="grid grid-cols-4 gap-1.5">
               {[546, 1000, 5000, 10000].map((v) => (
                 <button
@@ -349,16 +365,14 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
 
             <Button
               type="submit"
-              className={`w-full h-12 text-base font-bold uppercase tracking-wider text-white ${
-                isHome ? "bg-green-600 hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"
-              }`}
               disabled={creating || !validSats}
+              className={`w-full h-12 text-base font-bold uppercase tracking-wider ${colors.btn}`}
             >
               {creating ? "Generating invoice…" : "Generate Invoice"}
             </Button>
 
             <p className="text-[10px] text-muted-foreground text-center">
-              DRAW → 98% refund · Settled at final whistle · 2% house fee
+              2% house fee · Settled at final whistle
             </p>
           </form>
         )}
@@ -368,8 +382,8 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
           <div className="pt-1 space-y-3">
             <div className="text-center">
               <p className="text-xl font-bold text-yellow-400">Pay {formatSats(satsNum)} sats</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {isHome ? "↑ HOME WINS" : "↓ AWAY WINS"} · {teamLabel}
+              <p className={`text-xs mt-0.5 ${colors.text}`}>
+                {direction === "home" ? "↑" : direction === "away" ? "↓" : "="} {DIRECTION_LABELS[direction ?? "home"]} · {teamLabel}
               </p>
             </div>
 
@@ -469,16 +483,14 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
         )}
 
         {/* ── Won ── */}
-        {(betStatus?.status === "won" || betStatus?.status === "refunded") && (
+        {betStatus?.status === "won" && (
           <div className="space-y-4 py-4 flex flex-col items-center">
             <CheckCircle2 className="h-14 w-14 text-yellow-400" />
-            <div className="text-xl font-bold uppercase tracking-wider text-yellow-400">
-              {betStatus.status === "won" ? "You Won!" : "Refunded!"}
-            </div>
+            <div className="text-xl font-bold uppercase tracking-wider text-yellow-400">You Won!</div>
             <p className="text-muted-foreground text-sm text-center">
               {betStatus.payoutSats ? `Payout: ${formatSats(Number(betStatus.payoutSats))} sats` : ""}
               {betStatus.withdrawLnurl && (
-                <span className="block mt-1 text-[11px]">Scan QR with your wallet to claim.</span>
+                <span className="block mt-1 text-[11px]">Scan to claim your sats.</span>
               )}
             </p>
             {betStatus.withdrawLnurl && (
@@ -510,12 +522,11 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Upcoming match card
+// Upcoming match card — three-way buttons
 // ---------------------------------------------------------------------------
 
-function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (direction: "home" | "away") => void }) {
-  const kickoff = msTillKickoff(ev.startsAt);
-  const bettingClosed = kickoff < 5 * 60 * 1000;
+function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) => void }) {
+  const bettingClosed = msTillKickoff(ev.startsAt) < 5 * 60 * 1000;
   const settled = ev.marketStatus === "settled";
 
   return (
@@ -530,13 +541,14 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (direction: "home"
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
+      {/* Teams */}
+      <div className="flex items-center justify-between gap-2">
         <div className="flex-1 flex flex-col items-center gap-1.5">
           <TeamBadge src={ev.homeBadge} name={ev.homeTeam} />
           <span className="text-xs font-semibold text-center leading-tight">{ev.homeTeam}</span>
           <span className="text-[9px] text-muted-foreground font-mono">HOME</span>
         </div>
-        <span className="text-lg font-bold font-mono text-muted-foreground">VS</span>
+        <span className="text-base font-bold font-mono text-muted-foreground">VS</span>
         <div className="flex-1 flex flex-col items-center gap-1.5">
           <TeamBadge src={ev.awayBadge} name={ev.awayTeam} />
           <span className="text-xs font-semibold text-center leading-tight">{ev.awayTeam}</span>
@@ -544,7 +556,11 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (direction: "home"
         </div>
       </div>
 
-      <PoolBar homeSats={ev.totalHomeSats} awaySats={ev.totalAwaySats} />
+      <PoolBar
+        homeSats={ev.totalHomeSats}
+        drawSats={ev.totalDrawSats ?? 0}
+        awaySats={ev.totalAwaySats}
+      />
 
       {settled ? (
         <div className="text-center text-[11px] text-muted-foreground font-mono py-1">Market settled</div>
@@ -553,26 +569,23 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (direction: "home"
           ⏳ Betting closed — match imminent
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            size="sm"
-            onClick={() => onBet("home")}
-            className="h-10 text-xs font-mono font-bold bg-green-500/10 text-green-400 border border-green-500/30 hover:bg-green-500/20 hover:border-green-500/60 transition-all"
-          >
-            ↑ HOME WINS
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => onBet("away")}
-            className="h-10 text-xs font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20 hover:border-blue-500/60 transition-all"
-          >
-            ↓ AWAY WINS
-          </Button>
+        /* Three-way buttons */
+        <div className="grid grid-cols-3 gap-1.5">
+          {(["home", "draw", "away"] as Direction[]).map((dir) => (
+            <Button
+              key={dir}
+              size="sm"
+              onClick={() => onBet(dir)}
+              className={`h-10 text-[11px] font-mono font-bold transition-all border ${DIRECTION_COLORS[dir].btn}`}
+            >
+              {dir === "home" ? "↑" : dir === "away" ? "↓" : "="} {DIRECTION_LABELS[dir]}
+            </Button>
+          ))}
         </div>
       )}
 
       <p className="text-[9px] text-muted-foreground text-center">
-        DRAW → 98% refund · 2% house fee · settled automatically at full time
+        2% house fee · settled automatically at full time
       </p>
     </div>
   );
@@ -593,6 +606,9 @@ function OutcomeBadge({ outcome }: { outcome: SportEvent["outcome"] }) {
 
 function FinishedCard({ ev }: { ev: SportEvent }) {
   const settled = ev.marketStatus === "settled";
+  const totalDrawSats = ev.totalDrawSats ?? 0;
+  const hasPool = ev.totalHomeSats > 0 || totalDrawSats > 0 || ev.totalAwaySats > 0;
+
   return (
     <div className="rounded-xl border border-border/40 bg-card/20 p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -623,18 +639,19 @@ function FinishedCard({ ev }: { ev: SportEvent }) {
         </div>
       </div>
 
-      {(ev.totalHomeSats > 0 || ev.totalAwaySats > 0) && (
-        <div className="text-[10px] font-mono text-muted-foreground flex justify-between">
-          <span className="text-green-400/70">HOME pool: {formatSats(ev.totalHomeSats)} sats</span>
-          <span className="text-blue-400/70">{formatSats(ev.totalAwaySats)} sats :AWAY</span>
-        </div>
+      {hasPool && (
+        <PoolBar
+          homeSats={ev.totalHomeSats}
+          drawSats={totalDrawSats}
+          awaySats={ev.totalAwaySats}
+        />
       )}
 
       {ev.outcome && (
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
           <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
           {ev.outcome === "draw"
-            ? "DRAW — all bettors refunded at 98%"
+            ? `DRAW — Draw bettors collect the pool${settled ? "" : " (settlement pending)"}`
             : `${ev.outcome === "home" ? ev.homeTeam : ev.awayTeam} wins — ${settled ? "payouts distributed" : "settlement pending"}`}
         </div>
       )}
@@ -651,7 +668,7 @@ export function Sports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [tab, setTab] = useState<"upcoming" | "results">("upcoming");
-  const [betModal, setBetModal] = useState<{ event: SportEvent; direction: "home" | "away" } | null>(null);
+  const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -675,7 +692,7 @@ export function Sports() {
             <h1 className="text-xl font-bold font-mono tracking-tight">Sports Predictions</h1>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Predict match outcomes and win sats. Pool splits between winners, settled at full time.
+            Bet HOME · DRAW · AWAY. Winners split the pool. Settled at final whistle.
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={fetchData} disabled={loading} className="text-muted-foreground shrink-0">
@@ -705,7 +722,6 @@ export function Sports() {
           <span className="font-mono text-sm">Fetching matches…</span>
         </div>
       )}
-
       {error && !loading && (
         <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
           <AlertCircle className="h-8 w-8" />
@@ -722,11 +738,7 @@ export function Sports() {
                 <p className="text-center text-muted-foreground text-sm py-10 font-mono">No upcoming matches found.</p>
               )}
               {data.upcoming.map((ev) => (
-                <UpcomingCard
-                  key={ev.id}
-                  ev={ev}
-                  onBet={(direction) => setBetModal({ event: ev, direction })}
-                />
+                <UpcomingCard key={ev.id} ev={ev} onBet={(dir) => setBetModal({ event: ev, direction: dir })} />
               ))}
             </div>
           )}
@@ -743,7 +755,6 @@ export function Sports() {
         </>
       )}
 
-      {/* Bet modal */}
       <SportBetModal
         event={betModal?.event ?? null}
         direction={betModal?.direction ?? null}
