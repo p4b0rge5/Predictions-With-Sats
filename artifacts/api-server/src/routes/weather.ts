@@ -12,7 +12,7 @@ import { Router, type IRouter } from "express";
 import { randomUUID, createHash } from "node:crypto";
 import { db, weatherMarketsTable, weatherBetsTable } from "@workspace/db";
 import { eq, and, gte } from "drizzle-orm";
-import { addToWeatherPool, WEATHER_CITIES } from "../lib/weather";
+import { addToWeatherPool, WEATHER_CITIES, fetchForecast } from "../lib/weather";
 import { createInvoice } from "../lib/alby";
 import { coinosPayInvoice } from "../lib/coinos";
 import { logger } from "../lib/logger";
@@ -21,6 +21,60 @@ import { bech32 } from "bech32";
 const router: IRouter = Router();
 
 const MIN_AMOUNT_SATS = 546;
+
+// ---------------------------------------------------------------------------
+// Temps cache (30-min TTL)
+// ---------------------------------------------------------------------------
+
+interface CityTemp {
+  key: string;
+  name: string;
+  emoji: string;
+  threshold: number;
+  todayMax: number | null;
+  tomorrowMax: number | null;
+}
+
+let tempsCache: { data: CityTemp[]; ts: number } | null = null;
+const TEMPS_TTL_MS = 30 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// GET /api/weather/temps — current forecast max temps for all cities
+// ---------------------------------------------------------------------------
+
+router.get("/weather/temps", async (_req, res) => {
+  if (tempsCache && Date.now() - tempsCache.ts < TEMPS_TTL_MS) {
+    return res.json(tempsCache.data);
+  }
+
+  const results = await Promise.all(
+    WEATHER_CITIES.map(async (city) => {
+      try {
+        const forecast = await fetchForecast(city.latitude, city.longitude);
+        return {
+          key: city.key,
+          name: city.name,
+          emoji: city.emoji,
+          threshold: city.threshold,
+          todayMax: forecast.maxTemps[0] ?? null,
+          tomorrowMax: forecast.maxTemps[1] ?? null,
+        } as CityTemp;
+      } catch {
+        return {
+          key: city.key,
+          name: city.name,
+          emoji: city.emoji,
+          threshold: city.threshold,
+          todayMax: null,
+          tomorrowMax: null,
+        } as CityTemp;
+      }
+    }),
+  );
+
+  tempsCache = { data: results, ts: Date.now() };
+  return res.json(results);
+});
 const PAYOUT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 const APPROX_BTC_USD = 95_000;
 const BTC_SATS = 100_000_000;

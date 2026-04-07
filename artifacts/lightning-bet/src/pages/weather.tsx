@@ -36,6 +36,15 @@ interface WeatherMarket {
   settledAt: string | null;
 }
 
+interface CityTemp {
+  key: string;
+  name: string;
+  emoji: string;
+  threshold: number;
+  todayMax: number | null;
+  tomorrowMax: number | null;
+}
+
 interface WeatherBetResult {
   betId: number;
   paymentHash: string;
@@ -481,8 +490,105 @@ function WeatherBetModal({
 }
 
 // ---------------------------------------------------------------------------
-// Market Card
+// Temperature Chart — forecast max temps vs thresholds
 // ---------------------------------------------------------------------------
+
+function TemperatureChart() {
+  const { data: temps, isLoading } = useQuery<CityTemp[]>({
+    queryKey: ["/api/weather/temps"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/weather/temps`);
+      if (!res.ok) throw new Error("Failed to fetch temps");
+      return res.json() as Promise<CityTemp[]>;
+    },
+    staleTime: 25 * 60 * 1000,
+    refetchInterval: 30 * 60 * 1000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-border/40 bg-card/20 p-3 animate-pulse h-36" />
+    );
+  }
+  if (!temps || temps.every((t) => t.todayMax === null)) return null;
+
+  const allValues = temps.flatMap((t) => [t.todayMax ?? t.threshold, t.threshold]).filter(Boolean) as number[];
+  const minVal = Math.floor(Math.min(...allValues)) - 3;
+  const maxVal = Math.ceil(Math.max(...allValues)) + 3;
+  const range = maxVal - minVal;
+
+  function pct(v: number) {
+    return Math.min(100, Math.max(0, ((v - minVal) / range) * 100));
+  }
+
+  return (
+    <div className="rounded-xl border border-border/40 bg-card/20 p-3 space-y-3">
+      <div className="flex items-center gap-2">
+        <Thermometer className="h-3.5 w-3.5 text-cyan-400" />
+        <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-muted-foreground">
+          Today's Forecast Max Temperature
+        </span>
+      </div>
+
+      <div className="space-y-2.5">
+        {temps.map((city) => {
+          const temp = city.todayMax;
+          const isAbove = temp !== null && temp >= city.threshold;
+          const isClose = temp !== null && !isAbove && temp >= city.threshold - 2;
+          const barColor = isAbove
+            ? "bg-green-500/70"
+            : isClose
+            ? "bg-amber-500/70"
+            : "bg-red-500/60";
+          const textColor = isAbove ? "text-green-400" : isClose ? "text-amber-400" : "text-red-400";
+
+          return (
+            <div key={city.key} className="space-y-1">
+              <div className="flex items-center justify-between text-[10px] font-mono">
+                <span className="text-foreground/80">
+                  {city.emoji} {city.name}
+                </span>
+                <span className={textColor}>
+                  {temp !== null ? `${temp.toFixed(1)}°C` : "—"}
+                  <span className="text-muted-foreground ml-1">/ {city.threshold}°C</span>
+                </span>
+              </div>
+              <div className="relative h-4 bg-muted/30 rounded-sm overflow-visible">
+                {temp !== null && (
+                  <div
+                    className={`h-full rounded-sm transition-all duration-500 ${barColor}`}
+                    style={{ width: `${pct(temp)}%` }}
+                  >
+                    {pct(temp) > 20 && (
+                      <span className="absolute right-1.5 top-0 bottom-0 flex items-center text-[9px] font-mono font-bold text-white/90">
+                        {temp.toFixed(1)}°
+                      </span>
+                    )}
+                  </div>
+                )}
+                {/* Threshold marker */}
+                <div
+                  className="absolute top-0 bottom-0 w-[2px] bg-yellow-400 z-10"
+                  style={{ left: `${pct(city.threshold)}%` }}
+                >
+                  <div className="absolute -top-3 left-1 text-[8px] font-mono text-yellow-400 whitespace-nowrap">
+                    {city.threshold}°
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-[9px] text-muted-foreground text-center leading-tight">
+        <span className="inline-block w-2 h-2 bg-yellow-400 mr-1 align-middle" /> threshold ·{" "}
+        <span className="text-green-400">green</span> = forecast above ·{" "}
+        <span className="text-red-400">red</span> = forecast below · Open-Meteo
+      </p>
+    </div>
+  );
+}
 
 function MarketCard({ market }: { market: WeatherMarket }) {
   const [betDirection, setBetDirection] = useState<Direction | null>(null);
@@ -769,6 +875,7 @@ export function Weather() {
 
       {activeTab === "markets" && (
         <div className="space-y-3">
+          <TemperatureChart />
           {isLoading ? (
             <div className="flex items-center justify-center h-40">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-cyan-400 border-t-transparent" />
