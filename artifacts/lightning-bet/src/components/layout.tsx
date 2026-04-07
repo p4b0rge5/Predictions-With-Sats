@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { Zap, Sun, Moon } from "lucide-react";
+import { Zap, Sun, Moon, Trophy } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 import { Button } from "@/components/ui/button";
 
@@ -9,19 +9,21 @@ import { Button } from "@/components/ui/button";
 
 const CATEGORIES = [
   {
+    key: "crypto",
     label: "Crypto",
     href: "/",
-    icon: "₿",
+    icon: <span className="text-sm leading-none font-bold">₿</span>,
     routes: ["/", "/history", "/guide", "/stats"],
     subNav: [
-      { label: "History", href: "/history" },
       { label: "Guide", href: "/guide" },
+      { label: "Window History", href: "/history" },
     ],
   },
   {
+    key: "sports",
     label: "Sports",
     href: "/sports",
-    icon: "⚽",
+    icon: <Trophy className="h-3.5 w-3.5 text-yellow-400 fill-yellow-400/20" />,
     routes: ["/sports"],
     subNav: [] as { label: string; href: string }[],
   },
@@ -62,7 +64,7 @@ function CategoryNav() {
                     : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
                 }`}
               >
-                <span className="text-sm leading-none">{cat.icon}</span>
+                {cat.icon}
                 {cat.label}
               </NavLink>
             );

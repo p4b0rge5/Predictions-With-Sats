@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Trophy, Clock, CheckCircle2, AlertCircle, RefreshCw,
   Copy, Zap, ShieldCheck, ChevronDown, ChevronUp, XCircle,
+  BookOpen, Wallet, Handshake, Coins, Award, ListChecks,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,19 @@ import { useToast } from "@/hooks/use-toast";
 // ---------------------------------------------------------------------------
 
 type Direction = "home" | "draw" | "away";
+type SportKey = "football";
+type ContentTab = "guide" | "upcoming" | "results";
+
+interface SportDef {
+  key: SportKey;
+  label: string;
+  icon: string;
+  apiFilter?: string;
+}
+
+const SPORTS: SportDef[] = [
+  { key: "football", label: "Football", icon: "⚽", apiFilter: "soccer" },
+];
 
 interface SportEvent {
   id: string;
@@ -61,7 +75,7 @@ declare global {
   interface Window {
     webln?: {
       enable: () => Promise<void>;
-      sendPayment: (paymentRequest: string) => Promise<{ preimage: string }>;
+      sendPayment: (pr: string) => Promise<{ preimage: string }>;
     };
   }
 }
@@ -74,6 +88,7 @@ const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const MIN_SATS = 546;
 const BTC_SATS = 100_000_000;
 const APPROX_BTC_USD = 95000;
+const REFRESH_INTERVAL_MS = 30_000;
 
 function apiUrl(path: string) {
   return `${API_BASE}${path}`;
@@ -120,9 +135,7 @@ function TeamBadge({ src, name, size = "sm" }: { src: string | null; name: strin
       </div>
     );
   }
-  return (
-    <img src={src} alt={name} className={`${dim} object-contain shrink-0`} onError={() => setError(true)} />
-  );
+  return <img src={src} alt={name} className={`${dim} object-contain shrink-0`} onError={() => setError(true)} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,43 +145,115 @@ function TeamBadge({ src, name, size = "sm" }: { src: string | null; name: strin
 function PoolBar({ homeSats, drawSats, awaySats }: { homeSats: number; drawSats: number; awaySats: number }) {
   const total = homeSats + drawSats + awaySats;
   if (total === 0) {
-    return (
-      <div className="text-[10px] text-muted-foreground font-mono text-center">No bets yet — be first!</div>
-    );
+    return <div className="text-[10px] text-muted-foreground font-mono text-center">No bets yet — be first!</div>;
   }
-  const pHome = (homeSats / total) * 100;
-  const pDraw = (drawSats / total) * 100;
-  const pAway = (awaySats / total) * 100;
+  const pH = (homeSats / total) * 100;
+  const pD = (drawSats / total) * 100;
+  const pA = (awaySats / total) * 100;
   return (
     <div className="space-y-1">
       <div className="flex h-1.5 rounded-full overflow-hidden gap-px">
-        {pHome > 0 && <div className="bg-green-500 transition-all" style={{ width: `${pHome}%` }} />}
-        {pDraw > 0 && <div className="bg-yellow-400 transition-all" style={{ width: `${pDraw}%` }} />}
-        {pAway > 0 && <div className="bg-blue-500 transition-all" style={{ width: `${pAway}%` }} />}
+        {pH > 0 && <div className="bg-green-500 transition-all" style={{ width: `${pH}%` }} />}
+        {pD > 0 && <div className="bg-yellow-400 transition-all" style={{ width: `${pD}%` }} />}
+        {pA > 0 && <div className="bg-blue-500 transition-all" style={{ width: `${pA}%` }} />}
       </div>
       <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
-        <span className="text-green-400">{formatSats(homeSats)}</span>
-        <span className="text-yellow-400">{formatSats(drawSats)}</span>
-        <span className="text-blue-400">{formatSats(awaySats)}</span>
+        <span className="text-green-400">{formatSats(homeSats)} sats</span>
+        <span className="text-yellow-400">{formatSats(drawSats)} sats</span>
+        <span className="text-blue-400">{formatSats(awaySats)} sats</span>
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Sport Bet Modal
+// Football Guide
 // ---------------------------------------------------------------------------
 
-interface SportBetModalProps {
-  event: SportEvent | null;
-  direction: Direction | null;
-  onClose: () => void;
+const GUIDE_STEPS = [
+  {
+    icon: BookOpen,
+    color: "text-yellow-400",
+    bg: "bg-yellow-400/10 border-yellow-400/30",
+    title: "How Sports Predictions Work",
+    body: "Choose an upcoming football match and predict the outcome: HOME win, DRAW, or AWAY win. Pay your bet via the Lightning Network (no account needed). Winners split the entire pool minus a 2% house fee.",
+  },
+  {
+    icon: Wallet,
+    color: "text-blue-400",
+    bg: "bg-blue-400/10 border-blue-400/30",
+    title: "Pay with Lightning",
+    body: "After picking a side, scan the QR code with any Lightning wallet (Phoenix, Wallet of Satoshi, Alby, etc.) or use WebLN if your browser supports it. Minimum bet is 546 sats (~$0.50).",
+  },
+  {
+    icon: Handshake,
+    color: "text-green-400",
+    bg: "bg-green-400/10 border-green-400/30",
+    title: "Three Outcomes — All Real",
+    body: "Unlike some platforms, DRAW is a fully supported outcome. If the match ends in a draw, only bettors who picked DRAW collect. No partial refunds — every bet counts.",
+  },
+  {
+    icon: Coins,
+    color: "text-purple-400",
+    bg: "bg-purple-400/10 border-purple-400/30",
+    title: "Pool & Payout",
+    body: "All bets on a match flow into one shared pool. After the final whistle, winners split the total pool proportional to their stake (minus 2% fee). Payout arrives via Lightning — scan the withdrawal QR to claim your sats.",
+  },
+  {
+    icon: Award,
+    color: "text-orange-400",
+    bg: "bg-orange-400/10 border-orange-400/30",
+    title: "Automatic Settlement",
+    body: "Our system checks match results every 5 minutes. Once a result is confirmed, payouts are calculated and withdrawal QR codes are generated automatically. No manual action needed.",
+  },
+  {
+    icon: ListChecks,
+    color: "text-red-400",
+    bg: "bg-red-400/10 border-red-400/30",
+    title: "Tips & Rules",
+    body: "• Betting closes 5 minutes before kick-off.\n• If nobody bets on the winning side, the house keeps the pool.\n• Keep your preimage (payment proof) — you can verify your bet manually if needed.\n• Odds are implied by the pool: bet early for better value.",
+  },
+];
+
+function FootballGuide() {
+  return (
+    <div className="space-y-3 max-w-xl mx-auto">
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-2xl">⚽</span>
+        <h2 className="text-base font-bold font-mono uppercase tracking-wider">Football Betting Guide</h2>
+      </div>
+      {GUIDE_STEPS.map((step, i) => {
+        const Icon = step.icon;
+        return (
+          <div key={i} className="flex gap-3 p-3 rounded-xl border border-border/40 bg-card/30">
+            <div className={`mt-0.5 shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center ${step.bg}`}>
+              <Icon className={`h-4 w-4 ${step.color}`} />
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs font-bold font-mono uppercase tracking-wider text-foreground">{step.title}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">{step.body}</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
+
+// ---------------------------------------------------------------------------
+// Bet Modal
+// ---------------------------------------------------------------------------
 
 function directionLabel(dir: Direction, ev: SportEvent | null): string {
   if (dir === "home") return ev?.homeTeam ?? "HOME";
   if (dir === "away") return ev?.awayTeam ?? "AWAY";
   return "DRAW";
+}
+
+interface SportBetModalProps {
+  event: SportEvent | null;
+  direction: Direction | null;
+  onClose: () => void;
 }
 
 function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
@@ -185,16 +270,11 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
   const [verifyingPreimage, setVerifyingPreimage] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isOpen = !!event && !!direction;
-
-  useEffect(() => {
-    setWeblnAvailable(typeof window.webln !== "undefined");
-  }, []);
+  useEffect(() => { setWeblnAvailable(typeof window.webln !== "undefined"); }, []);
 
   useEffect(() => {
     if (!paymentHash) return;
     if (betStatus && betStatus.status !== "pending") return;
-
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(apiUrl(`/api/sports/bets/${paymentHash}`));
@@ -204,19 +284,13 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
         if (data.status !== "pending") clearInterval(pollRef.current!);
       } catch { /* ignore */ }
     }, 3000);
-
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [paymentHash, betStatus?.status]);
 
   const handleClose = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
-    setAmountSats("1000");
-    setPaymentHash(null);
-    setPaymentRequest(null);
-    setBetStatus(null);
-    setShowPreimage(false);
-    setPreimageInput("");
-    setCreating(false);
+    setAmountSats("1000"); setPaymentHash(null); setPaymentRequest(null);
+    setBetStatus(null); setShowPreimage(false); setPreimageInput(""); setCreating(false);
     onClose();
   }, [onClose]);
 
@@ -228,7 +302,6 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
       return;
     }
     if (!event || !direction) return;
-
     setCreating(true);
     try {
       const res = await fetch(apiUrl("/api/sports/bets"), {
@@ -251,10 +324,7 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
   };
 
   const copyInvoice = () => {
-    if (paymentRequest) {
-      navigator.clipboard.writeText(paymentRequest);
-      toast({ title: "Copied!", duration: 2000 });
-    }
+    if (paymentRequest) { navigator.clipboard.writeText(paymentRequest); toast({ title: "Copied!", duration: 2000 }); }
   };
 
   const submitPreimage = async (preimage: string) => {
@@ -298,8 +368,7 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
     setVerifyingPreimage(true);
     try {
       await submitPreimage(trimmed);
-      setShowPreimage(false);
-      setPreimageInput("");
+      setShowPreimage(false); setPreimageInput("");
     } catch (err) {
       toast({ title: "Verification failed", description: err instanceof Error ? err.message : "Error", variant: "destructive" });
     } finally {
@@ -307,6 +376,7 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
     }
   };
 
+  const isOpen = !!event && !!direction;
   const satsNum = parseInt(amountSats, 10);
   const validSats = !isNaN(satsNum) && satsNum >= MIN_SATS;
   const teamLabel = direction && event ? directionLabel(direction, event) : "";
@@ -322,62 +392,36 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
             </span>
             <span className="text-muted-foreground font-normal text-sm truncate">{teamLabel}</span>
           </DialogTitle>
-          {event && (
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{event.league}</p>
-          )}
+          {event && <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{event.league}</p>}
         </DialogHeader>
 
-        {/* ── Amount form ── */}
         {!paymentRequest && (
           <form onSubmit={handleSubmit} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label htmlFor="sport-amount" className="text-muted-foreground uppercase text-xs tracking-wider">
-                Amount (sats)
-              </Label>
-              <Input
-                id="sport-amount"
-                type="number"
-                min={MIN_SATS}
-                step="1"
-                value={amountSats}
-                onChange={(e) => setAmountSats(e.target.value)}
-                className="text-xl font-bold h-12 bg-card/50"
-                autoFocus
-              />
+              <Label htmlFor="sport-amount" className="text-muted-foreground uppercase text-xs tracking-wider">Amount (sats)</Label>
+              <Input id="sport-amount" type="number" min={MIN_SATS} step="1" value={amountSats}
+                onChange={(e) => setAmountSats(e.target.value)} className="text-xl font-bold h-12 bg-card/50" autoFocus />
               <div className="flex justify-between text-[11px] text-muted-foreground">
                 <span>Min: {formatSats(MIN_SATS)} sats</span>
                 <span>≈ ${((!isNaN(satsNum) ? satsNum : 0) / BTC_SATS * APPROX_BTC_USD).toFixed(2)} USD</span>
               </div>
             </div>
-
             <div className="grid grid-cols-4 gap-1.5">
               {[546, 1000, 5000, 10000].map((v) => (
-                <button
-                  type="button"
-                  key={v}
-                  onClick={() => setAmountSats(String(v))}
-                  className="py-1.5 rounded-md border border-border/50 text-[11px] font-mono hover:bg-muted/50 transition-colors"
-                >
+                <button type="button" key={v} onClick={() => setAmountSats(String(v))}
+                  className="py-1.5 rounded-md border border-border/50 text-[11px] font-mono hover:bg-muted/50 transition-colors">
                   {v >= 1000 ? `${v / 1000}k` : v}
                 </button>
               ))}
             </div>
-
-            <Button
-              type="submit"
-              disabled={creating || !validSats}
-              className={`w-full h-12 text-base font-bold uppercase tracking-wider ${colors.btn}`}
-            >
+            <Button type="submit" disabled={creating || !validSats}
+              className={`w-full h-12 text-base font-bold uppercase tracking-wider ${colors.btn}`}>
               {creating ? "Generating invoice…" : "Generate Invoice"}
             </Button>
-
-            <p className="text-[10px] text-muted-foreground text-center">
-              2% house fee · Settled at final whistle
-            </p>
+            <p className="text-[10px] text-muted-foreground text-center">2% house fee · Settled at final whistle</p>
           </form>
         )}
 
-        {/* ── Invoice / payment screen ── */}
         {paymentRequest && (betStatus?.status === "pending" || !betStatus) && (
           <div className="pt-1 space-y-3">
             <div className="text-center">
@@ -386,58 +430,35 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
                 {direction === "home" ? "↑" : direction === "away" ? "↓" : "="} {DIRECTION_LABELS[direction ?? "home"]} · {teamLabel}
               </p>
             </div>
-
             <div className="flex justify-center">
-              <div
-                className="bg-white p-2.5 rounded-xl shadow-lg cursor-pointer relative group"
-                onClick={copyInvoice}
-              >
+              <div className="bg-white p-2.5 rounded-xl shadow-lg cursor-pointer relative group" onClick={copyInvoice}>
                 <QRCodeSVG value={paymentRequest} size={180} level="M" includeMargin={false} />
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
                   <Copy className="h-8 w-8 text-white" />
                 </div>
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={copyInvoice}
-              className="w-full flex items-center gap-2 px-3 py-2.5 bg-muted/50 rounded-lg border border-border/60 hover:bg-muted/80 transition-colors text-left overflow-hidden"
-            >
-              <span className="flex-1 min-w-0 text-xs font-mono text-muted-foreground truncate">
-                {paymentRequest.slice(0, 30)}…
-              </span>
+            <button type="button" onClick={copyInvoice}
+              className="w-full flex items-center gap-2 px-3 py-2.5 bg-muted/50 rounded-lg border border-border/60 hover:bg-muted/80 transition-colors text-left overflow-hidden">
+              <span className="flex-1 min-w-0 text-xs font-mono text-muted-foreground truncate">{paymentRequest.slice(0, 30)}…</span>
               <span className="shrink-0 flex items-center gap-1.5 text-xs text-primary font-bold uppercase tracking-wider">
                 <Copy className="h-3.5 w-3.5" /> Copy
               </span>
             </button>
-
             <div className="flex items-center justify-center gap-2 text-yellow-500 text-sm animate-pulse uppercase tracking-wider font-bold">
-              <Clock className="h-4 w-4 shrink-0" />
-              Waiting for payment…
+              <Clock className="h-4 w-4 shrink-0" /> Waiting for payment…
             </div>
-
             {weblnAvailable && (
-              <Button
-                onClick={handleWeblnPay}
-                disabled={weblnPaying}
-                className="w-full h-10 font-bold uppercase tracking-wider bg-yellow-500 hover:bg-yellow-400 text-black text-sm"
-              >
+              <Button onClick={handleWeblnPay} disabled={weblnPaying}
+                className="w-full h-10 font-bold uppercase tracking-wider bg-yellow-500 hover:bg-yellow-400 text-black text-sm">
                 <Zap className="h-4 w-4 mr-2" />
                 {weblnPaying ? "Paying…" : "Pay with WebLN"}
               </Button>
             )}
-
             <div className="border border-muted rounded-lg overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setShowPreimage(!showPreimage)}
-                className="w-full flex items-center justify-between px-3 py-2.5 text-[11px] text-muted-foreground uppercase tracking-wider hover:bg-muted/30 transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  Already paid? Verify manually
-                </span>
+              <button type="button" onClick={() => setShowPreimage(!showPreimage)}
+                className="w-full flex items-center justify-between px-3 py-2.5 text-[11px] text-muted-foreground uppercase tracking-wider hover:bg-muted/30 transition-colors">
+                <span className="flex items-center gap-2"><ShieldCheck className="h-3.5 w-3.5" /> Already paid? Verify manually</span>
                 {showPreimage ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               </button>
               {showPreimage && (
@@ -445,19 +466,10 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
                   <p className="text-xs text-muted-foreground pt-2 leading-relaxed">
                     Paste the 64-char hex <strong className="text-foreground">preimage</strong> shown by your wallet after payment.
                   </p>
-                  <Input
-                    placeholder="Paste 64-char preimage…"
-                    value={preimageInput}
-                    onChange={(e) => setPreimageInput(e.target.value)}
-                    className="font-mono text-xs bg-background"
-                  />
-                  <Button
-                    onClick={handleManualVerify}
-                    disabled={verifyingPreimage || preimageInput.trim().length !== 64}
-                    className="w-full font-bold uppercase tracking-wider"
-                    variant="outline"
-                    size="sm"
-                  >
+                  <Input placeholder="Paste 64-char preimage…" value={preimageInput}
+                    onChange={(e) => setPreimageInput(e.target.value)} className="font-mono text-xs bg-background" />
+                  <Button onClick={handleManualVerify} disabled={verifyingPreimage || preimageInput.trim().length !== 64}
+                    className="w-full font-bold uppercase tracking-wider" variant="outline" size="sm">
                     <ShieldCheck className="h-4 w-4 mr-2" />
                     {verifyingPreimage ? "Verifying…" : "Confirm Payment"}
                   </Button>
@@ -467,53 +479,40 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
           </div>
         )}
 
-        {/* ── Paid ── */}
         {betStatus?.status === "paid" && (
           <div className="space-y-4 py-4 flex flex-col items-center">
             <CheckCircle2 className="h-14 w-14 text-green-500" />
             <div className="text-xl font-bold uppercase tracking-wider text-green-500">Bet Placed!</div>
             <p className="text-muted-foreground text-sm text-center">
-              Rooting for <strong>{teamLabel}</strong>.<br />
-              Payout settles automatically at the final whistle.
+              Rooting for <strong>{teamLabel}</strong>.<br />Payout settles at the final whistle.
             </p>
-            <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">
-              Close
-            </Button>
+            <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">Close</Button>
           </div>
         )}
 
-        {/* ── Won ── */}
         {betStatus?.status === "won" && (
           <div className="space-y-4 py-4 flex flex-col items-center">
             <CheckCircle2 className="h-14 w-14 text-yellow-400" />
             <div className="text-xl font-bold uppercase tracking-wider text-yellow-400">You Won!</div>
             <p className="text-muted-foreground text-sm text-center">
               {betStatus.payoutSats ? `Payout: ${formatSats(Number(betStatus.payoutSats))} sats` : ""}
-              {betStatus.withdrawLnurl && (
-                <span className="block mt-1 text-[11px]">Scan to claim your sats.</span>
-              )}
             </p>
             {betStatus.withdrawLnurl && (
               <div className="bg-white p-2.5 rounded-xl">
                 <QRCodeSVG value={betStatus.withdrawLnurl} size={160} level="M" />
               </div>
             )}
-            <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">
-              Close
-            </Button>
+            <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">Close</Button>
           </div>
         )}
 
-        {/* ── Lost / Expired ── */}
         {(betStatus?.status === "lost" || betStatus?.status === "expired") && (
           <div className="space-y-4 py-4 flex flex-col items-center">
             <XCircle className="h-14 w-14 text-red-500" />
             <div className="text-xl font-bold uppercase tracking-wider text-red-500">
               {betStatus.status === "lost" ? "Better luck next time" : "Invoice Expired"}
             </div>
-            <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">
-              Close
-            </Button>
+            <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">Close</Button>
           </div>
         )}
       </DialogContent>
@@ -522,26 +521,20 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Upcoming match card — three-way buttons
+// Upcoming match card
 // ---------------------------------------------------------------------------
 
 function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) => void }) {
   const bettingClosed = msTillKickoff(ev.startsAt) < 5 * 60 * 1000;
   const settled = ev.marketStatus === "settled";
-
   return (
     <div className="rounded-xl border border-border/40 bg-card/30 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">
-          {ev.league}
-        </span>
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">{ev.league}</span>
         <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono shrink-0">
-          <Clock className="h-3 w-3" />
-          {formatKickoff(ev.startsAt)}
+          <Clock className="h-3 w-3" />{formatKickoff(ev.startsAt)}
         </div>
       </div>
-
-      {/* Teams */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex-1 flex flex-col items-center gap-1.5">
           <TeamBadge src={ev.homeBadge} name={ev.homeTeam} />
@@ -555,13 +548,7 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) =
           <span className="text-[9px] text-muted-foreground font-mono">AWAY</span>
         </div>
       </div>
-
-      <PoolBar
-        homeSats={ev.totalHomeSats}
-        drawSats={ev.totalDrawSats ?? 0}
-        awaySats={ev.totalAwaySats}
-      />
-
+      <PoolBar homeSats={ev.totalHomeSats} drawSats={ev.totalDrawSats ?? 0} awaySats={ev.totalAwaySats} />
       {settled ? (
         <div className="text-center text-[11px] text-muted-foreground font-mono py-1">Market settled</div>
       ) : bettingClosed ? (
@@ -569,24 +556,16 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) =
           ⏳ Betting closed — match imminent
         </div>
       ) : (
-        /* Three-way buttons */
         <div className="grid grid-cols-3 gap-1.5">
           {(["home", "draw", "away"] as Direction[]).map((dir) => (
-            <Button
-              key={dir}
-              size="sm"
-              onClick={() => onBet(dir)}
-              className={`h-10 text-[11px] font-mono font-bold transition-all border ${DIRECTION_COLORS[dir].btn}`}
-            >
+            <Button key={dir} size="sm" onClick={() => onBet(dir)}
+              className={`h-10 text-[11px] font-mono font-bold transition-all border ${DIRECTION_COLORS[dir].btn}`}>
               {dir === "home" ? "↑" : dir === "away" ? "↓" : "="} {DIRECTION_LABELS[dir]}
             </Button>
           ))}
         </div>
       )}
-
-      <p className="text-[9px] text-muted-foreground text-center">
-        2% house fee · settled automatically at full time
-      </p>
+      <p className="text-[9px] text-muted-foreground text-center">2% house fee · settled automatically at full time</p>
     </div>
   );
 }
@@ -597,32 +576,24 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) =
 
 function OutcomeBadge({ outcome }: { outcome: SportEvent["outcome"] }) {
   if (!outcome) return null;
-  if (outcome === "home")
-    return <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px]">HOME WIN</Badge>;
-  if (outcome === "away")
-    return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[10px]">AWAY WIN</Badge>;
+  if (outcome === "home") return <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px]">HOME WIN</Badge>;
+  if (outcome === "away") return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[10px]">AWAY WIN</Badge>;
   return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[10px]">DRAW</Badge>;
 }
 
 function FinishedCard({ ev }: { ev: SportEvent }) {
   const settled = ev.marketStatus === "settled";
-  const totalDrawSats = ev.totalDrawSats ?? 0;
-  const hasPool = ev.totalHomeSats > 0 || totalDrawSats > 0 || ev.totalAwaySats > 0;
-
+  const drawSats = ev.totalDrawSats ?? 0;
+  const hasPool = ev.totalHomeSats > 0 || drawSats > 0 || ev.totalAwaySats > 0;
   return (
     <div className="rounded-xl border border-border/40 bg-card/20 p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">
-          {ev.league}
-        </span>
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">{ev.league}</span>
         <div className="flex items-center gap-1.5">
           <OutcomeBadge outcome={ev.outcome} />
-          {settled && (
-            <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px]">SETTLED</Badge>
-          )}
+          {settled && <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px]">SETTLED</Badge>}
         </div>
       </div>
-
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <TeamBadge src={ev.homeBadge} name={ev.homeTeam} />
@@ -638,15 +609,7 @@ function FinishedCard({ ev }: { ev: SportEvent }) {
           <TeamBadge src={ev.awayBadge} name={ev.awayTeam} />
         </div>
       </div>
-
-      {hasPool && (
-        <PoolBar
-          homeSats={ev.totalHomeSats}
-          drawSats={totalDrawSats}
-          awaySats={ev.totalAwaySats}
-        />
-      )}
-
+      {hasPool && <PoolBar homeSats={ev.totalHomeSats} drawSats={drawSats} awaySats={ev.totalAwaySats} />}
       {ev.outcome && (
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
           <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
@@ -664,95 +627,154 @@ function FinishedCard({ ev }: { ev: SportEvent }) {
 // ---------------------------------------------------------------------------
 
 export function Sports() {
+  const [activeSport, setActiveSport] = useState<SportKey>("football");
+  const [activeTab, setActiveTab] = useState<ContentTab>("upcoming");
   const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [tab, setTab] = useState<"upcoming" | "results">("upcoming");
   const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchData = useCallback(() => {
-    setLoading(true);
-    setError(false);
+  const fetchData = useCallback((quiet = false) => {
+    if (!quiet) { setLoading(true); setError(false); }
     fetch(apiUrl("/api/sports/events"))
       .then((r) => r.json())
-      .then(setData)
+      .then((d) => { setData(d); setError(false); })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+    refreshTimerRef.current = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
+    return () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current); };
+  }, [fetchData]);
+
+  const activeSportDef = SPORTS.find((s) => s.key === activeSport)!;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-yellow-400" />
-            <h1 className="text-xl font-bold font-mono tracking-tight">Sports Predictions</h1>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Bet HOME · DRAW · AWAY. Winners split the pool. Settled at final whistle.
-          </p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={fetchData} disabled={loading} className="text-muted-foreground shrink-0">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
-      </div>
+    <div className="max-w-3xl mx-auto space-y-0">
 
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40">
-        {(["upcoming", "results"] as const).map((t) => (
+      {/* ── Sport selector chips ── */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
+        {SPORTS.map((sp) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex-1 py-1.5 rounded-md text-xs font-mono font-medium transition-colors ${
-              tab === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            key={sp.key}
+            onClick={() => setActiveSport(sp.key)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+              activeSport === sp.key
+                ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
             }`}
           >
-            {t === "upcoming" ? "Upcoming Matches" : "Recent Results"}
+            <span className="text-sm leading-none">{sp.icon}</span>
+            {sp.label}
           </button>
         ))}
       </div>
 
-      {/* States */}
-      {loading && (
-        <div className="flex items-center justify-center h-40 gap-3 text-muted-foreground">
-          <RefreshCw className="h-5 w-5 animate-spin" />
-          <span className="font-mono text-sm">Fetching matches…</span>
-        </div>
+      {/* ── Content tabs: Guide | Upcoming | Results ── */}
+      <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40 mb-4">
+        {([
+          { key: "guide", label: "Guide" },
+          { key: "upcoming", label: "Upcoming Matches" },
+          { key: "results", label: "Recent Results" },
+        ] as { key: ContentTab; label: string }[]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={`flex-1 py-1.5 rounded-md text-[11px] font-mono font-medium transition-colors ${
+              activeTab === t.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Guide ── */}
+      {activeTab === "guide" && (
+        activeSportDef.key === "football" ? <FootballGuide /> : (
+          <p className="text-center text-muted-foreground text-sm py-10 font-mono">Guide coming soon.</p>
+        )
       )}
-      {error && !loading && (
-        <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
-          <AlertCircle className="h-8 w-8" />
-          <p className="font-mono text-sm">Failed to load events.</p>
-          <Button variant="outline" size="sm" onClick={fetchData}>Retry</Button>
+
+      {/* ── Upcoming Matches ── */}
+      {activeTab === "upcoming" && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 pb-1">
+            <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
+              {activeSportDef.icon} {activeSportDef.label} — Upcoming
+            </p>
+            <button
+              onClick={() => fetchData()}
+              disabled={loading}
+              className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
+
+          {loading && !data && (
+            <div className="flex items-center justify-center h-40 gap-3 text-muted-foreground">
+              <RefreshCw className="h-5 w-5 animate-spin" />
+              <span className="font-mono text-sm">Fetching matches…</span>
+            </div>
+          )}
+          {error && !loading && (
+            <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
+              <AlertCircle className="h-8 w-8" />
+              <p className="font-mono text-sm">Failed to load matches.</p>
+              <Button variant="outline" size="sm" onClick={() => fetchData()}>Retry</Button>
+            </div>
+          )}
+          {!error && data && (
+            data.upcoming.length === 0
+              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No upcoming matches.</p>
+              : data.upcoming.map((ev) => (
+                  <UpcomingCard key={ev.id} ev={ev} onBet={(dir) => setBetModal({ event: ev, direction: dir })} />
+                ))
+          )}
         </div>
       )}
 
-      {!loading && !error && data && (
-        <>
-          {tab === "upcoming" && (
-            <div className="space-y-3">
-              {data.upcoming.length === 0 && (
-                <p className="text-center text-muted-foreground text-sm py-10 font-mono">No upcoming matches found.</p>
-              )}
-              {data.upcoming.map((ev) => (
-                <UpcomingCard key={ev.id} ev={ev} onBet={(dir) => setBetModal({ event: ev, direction: dir })} />
-              ))}
+      {/* ── Recent Results ── */}
+      {activeTab === "results" && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2 pb-1">
+            <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
+              {activeSportDef.icon} {activeSportDef.label} — Recent Results
+            </p>
+            <button
+              onClick={() => fetchData()}
+              disabled={loading}
+              className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
+
+          {loading && !data && (
+            <div className="flex items-center justify-center h-40 gap-3 text-muted-foreground">
+              <RefreshCw className="h-5 w-5 animate-spin" />
+              <span className="font-mono text-sm">Fetching results…</span>
             </div>
           )}
-          {tab === "results" && (
-            <div className="space-y-2">
-              {data.finished.length === 0 && (
-                <p className="text-center text-muted-foreground text-sm py-10 font-mono">No recent results found.</p>
-              )}
-              {data.finished.map((ev) => (
-                <FinishedCard key={ev.id} ev={ev} />
-              ))}
+          {error && !loading && (
+            <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
+              <AlertCircle className="h-8 w-8" />
+              <p className="font-mono text-sm">Failed to load results.</p>
+              <Button variant="outline" size="sm" onClick={() => fetchData()}>Retry</Button>
             </div>
           )}
-        </>
+          {!error && data && (
+            data.finished.length === 0
+              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No recent results.</p>
+              : data.finished.map((ev) => <FinishedCard key={ev.id} ev={ev} />)
+          )}
+        </div>
       )}
 
       <SportBetModal
