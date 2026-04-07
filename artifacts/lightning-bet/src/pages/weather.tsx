@@ -563,16 +563,16 @@ function MarketCard({ market }: { market: WeatherMarket }) {
             <Button
               size="sm"
               onClick={() => setBetDirection("yes")}
-              className="h-10 font-mono font-bold text-xs bg-green-500/10 text-green-400 border border-green-500/30 hover:bg-green-500/20 hover:border-green-500/60"
+              className="h-11 font-mono font-bold text-[11px] bg-green-500/10 text-green-400 border border-green-500/40 hover:bg-green-500/20 hover:border-green-500 transition-all"
             >
-              <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> BET YES
+              <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> BET YES
             </Button>
             <Button
               size="sm"
               onClick={() => setBetDirection("no")}
-              className="h-10 font-mono font-bold text-xs bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 hover:border-red-500/60"
+              className="h-11 font-mono font-bold text-[11px] bg-red-500/10 text-red-400 border border-red-500/40 hover:bg-red-500/20 hover:border-red-500 transition-all"
             >
-              <XCircle className="h-3.5 w-3.5 mr-1" /> BET NO
+              <XCircle className="h-3.5 w-3.5 mr-1.5" /> BET NO
             </Button>
           </div>
           {/* Pool bar — below buttons, matching Bitcoin pattern */}

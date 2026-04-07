@@ -118,10 +118,10 @@ const DIRECTION_LABELS: Record<Direction, string> = {
   away: "AWAY",
 };
 
-const DIRECTION_COLORS: Record<Direction, { btn: string; text: string }> = {
-  home: { btn: "bg-green-600 hover:bg-green-700 text-white", text: "text-green-400" },
-  draw: { btn: "bg-yellow-500 hover:bg-yellow-600 text-black", text: "text-yellow-400" },
-  away: { btn: "bg-blue-600 hover:bg-blue-700 text-white", text: "text-blue-400" },
+const DIRECTION_COLORS: Record<Direction, { btn: string; text: string; cta: string }> = {
+  home: { btn: "bg-green-500/10 text-green-400 border border-green-500/40 hover:bg-green-500/20 hover:border-green-500", text: "text-green-400", cta: "bg-green-600 hover:bg-green-700 text-white" },
+  draw: { btn: "bg-yellow-500/10 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/20 hover:border-yellow-500", text: "text-yellow-400", cta: "bg-yellow-500 hover:bg-yellow-600 text-black" },
+  away: { btn: "bg-blue-500/10 text-blue-400 border border-blue-500/40 hover:bg-blue-500/20 hover:border-blue-500", text: "text-blue-400", cta: "bg-blue-600 hover:bg-blue-700 text-white" },
 };
 
 // ---------------------------------------------------------------------------
@@ -495,7 +495,7 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
               }
             </div>
             <Button type="submit" disabled={creating || !validSats}
-              className={`w-full h-12 text-base font-bold uppercase tracking-wider ${colors.btn}`}>
+              className={`w-full h-12 text-base font-bold uppercase tracking-wider ${colors.cta}`}>
               {creating ? "Generating invoice…" : "Generate Invoice"}
             </Button>
           </form>
@@ -637,7 +637,7 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) =
         <div className="grid grid-cols-3 gap-1.5">
           {(["home", "draw", "away"] as Direction[]).map((dir) => (
             <Button key={dir} size="sm" onClick={() => onBet(dir)}
-              className={`h-10 text-[11px] font-mono font-bold transition-all border ${DIRECTION_COLORS[dir].btn}`}>
+              className={`h-11 text-[11px] font-mono font-bold transition-all ${DIRECTION_COLORS[dir].btn}`}>
               {dir === "home" ? "↑" : dir === "away" ? "↓" : "="} {DIRECTION_LABELS[dir]}
             </Button>
           ))}
