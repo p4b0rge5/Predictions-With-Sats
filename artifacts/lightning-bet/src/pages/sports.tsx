@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { format } from "date-fns";
 import {
   Trophy, Clock, CheckCircle2, AlertCircle, RefreshCw,
   Copy, Zap, ShieldCheck, ChevronDown, ChevronUp, XCircle,
@@ -50,6 +51,8 @@ interface SportEvent {
   totalDrawSats: number;
   totalAwaySats: number;
   marketStatus: string | null;
+  marketOutcome: string | null;
+  marketSettledAt: string | null;
 }
 
 interface SportBetStatus {
@@ -142,25 +145,38 @@ function TeamBadge({ src, name, size = "sm" }: { src: string | null; name: strin
 // Three-way pool bar
 // ---------------------------------------------------------------------------
 
-function PoolBar({ homeSats, drawSats, awaySats }: { homeSats: number; drawSats: number; awaySats: number }) {
+function PoolBar({ homeSats, drawSats, awaySats, winnerSide }: { homeSats: number; drawSats: number; awaySats: number; winnerSide?: string | null }) {
   const total = homeSats + drawSats + awaySats;
   if (total === 0) {
-    return <div className="text-[10px] text-muted-foreground font-mono text-center">No bets yet — be first!</div>;
+    return <div className="text-[10px] text-muted-foreground font-mono text-center">No bets in this market</div>;
   }
   const pH = (homeSats / total) * 100;
   const pD = (drawSats / total) * 100;
   const pA = (awaySats / total) * 100;
   return (
-    <div className="space-y-1">
-      <div className="flex h-1.5 rounded-full overflow-hidden gap-px">
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
+        <span>Pool</span>
+        <span className="font-bold text-foreground">{formatSats(total)} sats</span>
+      </div>
+      <div className="flex h-2 rounded-full overflow-hidden gap-px">
         {pH > 0 && <div className="bg-green-500 transition-all" style={{ width: `${pH}%` }} />}
         {pD > 0 && <div className="bg-yellow-400 transition-all" style={{ width: `${pD}%` }} />}
         {pA > 0 && <div className="bg-blue-500 transition-all" style={{ width: `${pA}%` }} />}
       </div>
-      <div className="flex justify-between text-[10px] font-mono text-muted-foreground">
-        <span className="text-green-400">{formatSats(homeSats)} sats</span>
-        <span className="text-yellow-400">{formatSats(drawSats)} sats</span>
-        <span className="text-blue-400">{formatSats(awaySats)} sats</span>
+      <div className="flex justify-between text-[10px] font-mono">
+        <span className={`flex flex-col ${winnerSide === "home" ? "text-green-400 font-bold" : "text-green-500/70"}`}>
+          <span>{pH.toFixed(1)}%</span>
+          <span>{formatSats(homeSats)} sats</span>
+        </span>
+        <span className={`flex flex-col items-center ${winnerSide === "draw" ? "text-yellow-400 font-bold" : "text-yellow-500/70"}`}>
+          <span>{pD.toFixed(1)}%</span>
+          <span>{formatSats(drawSats)} sats</span>
+        </span>
+        <span className={`flex flex-col items-end ${winnerSide === "away" ? "text-blue-400 font-bold" : "text-blue-500/70"}`}>
+          <span>{pA.toFixed(1)}%</span>
+          <span>{formatSats(awaySats)} sats</span>
+        </span>
       </div>
     </div>
   );
@@ -592,15 +608,21 @@ function FinishedCard({ ev }: { ev: SportEvent }) {
   const settled = ev.marketStatus === "settled";
   const drawSats = ev.totalDrawSats ?? 0;
   const hasPool = ev.totalHomeSats > 0 || drawSats > 0 || ev.totalAwaySats > 0;
+  const winner = ev.marketOutcome ?? ev.outcome;
+  const settledAt = ev.marketSettledAt;
+
   return (
-    <div className="rounded-xl border border-border/40 bg-card/20 p-3 space-y-2">
+    <div className="rounded-xl border border-border/40 bg-card/20 p-3 space-y-2.5">
+      {/* League + badges */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">{ev.league}</span>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <OutcomeBadge outcome={ev.outcome} />
           {settled && <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px]">SETTLED</Badge>}
         </div>
       </div>
+
+      {/* Teams + score */}
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <TeamBadge src={ev.homeBadge} name={ev.homeTeam} />
@@ -616,13 +638,32 @@ function FinishedCard({ ev }: { ev: SportEvent }) {
           <TeamBadge src={ev.awayBadge} name={ev.awayTeam} />
         </div>
       </div>
-      {hasPool && <PoolBar homeSats={ev.totalHomeSats} drawSats={drawSats} awaySats={ev.totalAwaySats} />}
+
+      {/* Pool + percentages */}
+      {hasPool && (
+        <PoolBar
+          homeSats={ev.totalHomeSats}
+          drawSats={drawSats}
+          awaySats={ev.totalAwaySats}
+          winnerSide={winner}
+        />
+      )}
+
+      {/* Outcome description */}
       {ev.outcome && (
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
           <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
           {ev.outcome === "draw"
             ? `DRAW — Draw bettors collect the pool${settled ? "" : " (settlement pending)"}`
             : `${ev.outcome === "home" ? ev.homeTeam : ev.awayTeam} wins — ${settled ? "payouts distributed" : "settlement pending"}`}
+        </div>
+      )}
+
+      {/* Settlement timestamp */}
+      {settledAt && (
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono border-t border-border/30 pt-2">
+          <Clock className="h-3 w-3 shrink-0" />
+          Resolved {format(new Date(settledAt), "MMM d, yyyy · HH:mm")} UTC
         </div>
       )}
     </div>

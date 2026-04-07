@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { format } from "date-fns";
 import {
   Cloud, CloudRain, Sun, Thermometer, Zap, ChevronDown, ChevronUp,
   CheckCircle2, XCircle, Clock, AlertCircle, Copy,
@@ -173,22 +174,32 @@ function WeatherGuide({ onDone }: { onDone?: () => void }) {
 // Pool Bar (2-way: YES / NO)
 // ---------------------------------------------------------------------------
 
-function PoolBar({ yesSats, noSats }: { yesSats: number; noSats: number }) {
+function PoolBar({ yesSats, noSats, winner }: { yesSats: number; noSats: number; winner?: "yes" | "no" | null }) {
   const total = yesSats + noSats;
   if (total === 0) {
-    return <div className="text-[10px] text-muted-foreground font-mono text-center">No bets yet — be first!</div>;
+    return <div className="text-[10px] text-muted-foreground font-mono text-center">No bets yet — be first to bet!</div>;
   }
   const pY = (yesSats / total) * 100;
   const pN = (noSats / total) * 100;
   return (
-    <div className="space-y-1">
-      <div className="flex h-1.5 rounded-full overflow-hidden gap-px">
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
+        <span>Pool</span>
+        <span className="font-bold text-foreground">{formatSats(total)} sats</span>
+      </div>
+      <div className="flex h-2 rounded-full overflow-hidden gap-px">
         {pY > 0 && <div className="bg-green-500 transition-all" style={{ width: `${pY}%` }} />}
         {pN > 0 && <div className="bg-red-500 transition-all" style={{ width: `${pN}%` }} />}
       </div>
       <div className="flex justify-between text-[10px] font-mono">
-        <span className="text-green-400">{formatSats(yesSats)} sats YES</span>
-        <span className="text-red-400">{formatSats(noSats)} sats NO</span>
+        <span className={`flex flex-col ${winner === "yes" ? "text-green-400 font-bold" : "text-green-500/70"}`}>
+          <span>{pY.toFixed(1)}% YES</span>
+          <span>{formatSats(yesSats)} sats</span>
+        </span>
+        <span className={`flex flex-col items-end ${winner === "no" ? "text-red-400 font-bold" : "text-red-500/70"}`}>
+          <span>{pN.toFixed(1)}% NO</span>
+          <span>{formatSats(noSats)} sats</span>
+        </span>
       </div>
     </div>
   );
@@ -402,7 +413,26 @@ function MarketCard({ market }: { market: WeatherMarket }) {
         )}
       </div>
 
-      {totalSats > 0 && <PoolBar yesSats={market.totalYesSats} noSats={market.totalNoSats} />}
+      {totalSats > 0 && (
+        <PoolBar
+          yesSats={market.totalYesSats}
+          noSats={market.totalNoSats}
+          winner={isSettled ? market.outcome : undefined}
+        />
+      )}
+
+      {/* Settlement timestamp — only on settled markets */}
+      {isSettled && market.settledAt && (
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono border-t border-border/30 pt-2">
+          <Clock className="h-3 w-3 shrink-0" />
+          Resolved {format(new Date(market.settledAt), "MMM d, yyyy · HH:mm")} UTC
+          {market.actualTemp !== null && (
+            <span className="ml-auto">
+              Actual max: <span className="text-foreground font-bold">{market.actualTemp}°C</span>
+            </span>
+          )}
+        </div>
+      )}
 
       {!isSettled && (
         <div className="grid grid-cols-2 gap-2">

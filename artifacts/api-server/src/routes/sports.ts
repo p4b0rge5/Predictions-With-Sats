@@ -55,7 +55,15 @@ router.get("/sports/events", async (req, res): Promise<void> => {
     const marketsByEventId = new Map(
       allMarkets.map((m) => [
         m.eventId,
-        { totalHomeSats: m.totalHomeSats, totalDrawSats: m.totalDrawSats, totalAwaySats: m.totalAwaySats, marketId: m.id, status: m.status },
+        {
+          totalHomeSats: m.totalHomeSats,
+          totalDrawSats: m.totalDrawSats,
+          totalAwaySats: m.totalAwaySats,
+          marketId: m.id,
+          status: m.status,
+          outcome: m.outcome,
+          settledAt: m.settledAt?.toISOString() ?? null,
+        },
       ]),
     );
 
@@ -69,6 +77,8 @@ router.get("/sports/events", async (req, res): Promise<void> => {
           totalDrawSats: market?.totalDrawSats ?? 0,
           totalAwaySats: market?.totalAwaySats ?? 0,
           marketStatus: market?.status ?? null,
+          marketOutcome: market?.outcome ?? null,
+          marketSettledAt: market?.settledAt ?? null,
         };
       }),
       finished: data.finished.map((ev: SportEvent) => {
@@ -80,6 +90,8 @@ router.get("/sports/events", async (req, res): Promise<void> => {
           totalDrawSats: market?.totalDrawSats ?? 0,
           totalAwaySats: market?.totalAwaySats ?? 0,
           marketStatus: market?.status ?? null,
+          marketOutcome: market?.outcome ?? null,
+          marketSettledAt: market?.settledAt ?? null,
         };
       }),
     };
