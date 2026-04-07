@@ -176,27 +176,27 @@ function WeatherGuide({ onDone }: { onDone?: () => void }) {
 
 function PoolBar({ yesSats, noSats, winner }: { yesSats: number; noSats: number; winner?: "yes" | "no" | null }) {
   const total = yesSats + noSats;
-  if (total === 0) {
-    return <div className="text-[10px] text-muted-foreground font-mono text-center">No bets yet — be first to bet!</div>;
-  }
-  const pY = (yesSats / total) * 100;
-  const pN = (noSats / total) * 100;
+  const pY = total > 0 ? (yesSats / total) * 100 : 50;
+  const pN = total > 0 ? (noSats / total) * 100 : 50;
+  const isEmpty = total === 0;
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
         <span>Pool</span>
-        <span className="font-bold text-foreground">{formatSats(total)} sats</span>
+        <span className={`font-bold ${isEmpty ? "text-muted-foreground/60" : "text-foreground"}`}>
+          {formatSats(total)} sats
+        </span>
       </div>
       <div className="flex h-2 rounded-full overflow-hidden gap-px">
-        {pY > 0 && <div className="bg-green-500 transition-all" style={{ width: `${pY}%` }} />}
-        {pN > 0 && <div className="bg-red-500 transition-all" style={{ width: `${pN}%` }} />}
+        <div className={`bg-green-500 transition-all ${isEmpty ? "opacity-30" : ""}`} style={{ width: `${pY}%` }} />
+        <div className={`bg-red-500 transition-all ${isEmpty ? "opacity-30" : ""}`} style={{ width: `${pN}%` }} />
       </div>
       <div className="flex justify-between text-[10px] font-mono">
-        <span className={`flex flex-col ${winner === "yes" ? "text-green-400 font-bold" : "text-green-500/70"}`}>
+        <span className={`flex flex-col ${winner === "yes" ? "text-green-400 font-bold" : isEmpty ? "text-green-500/40" : "text-green-500/70"}`}>
           <span>{pY.toFixed(1)}% YES</span>
           <span>{formatSats(yesSats)} sats</span>
         </span>
-        <span className={`flex flex-col items-end ${winner === "no" ? "text-red-400 font-bold" : "text-red-500/70"}`}>
+        <span className={`flex flex-col items-end ${winner === "no" ? "text-red-400 font-bold" : isEmpty ? "text-red-500/40" : "text-red-500/70"}`}>
           <span>{pN.toFixed(1)}% NO</span>
           <span>{formatSats(noSats)} sats</span>
         </span>

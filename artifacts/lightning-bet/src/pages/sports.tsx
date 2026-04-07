@@ -147,34 +147,34 @@ function TeamBadge({ src, name, size = "sm" }: { src: string | null; name: strin
 
 function PoolBar({ homeSats, drawSats, awaySats, winnerSide }: { homeSats: number; drawSats: number; awaySats: number; winnerSide?: string | null }) {
   const total = homeSats + drawSats + awaySats;
-  if (total === 0) {
-    return <div className="text-[10px] text-muted-foreground font-mono text-center">No bets in this market</div>;
-  }
-  const pH = (homeSats / total) * 100;
-  const pD = (drawSats / total) * 100;
-  const pA = (awaySats / total) * 100;
+  const pH = total > 0 ? (homeSats / total) * 100 : 100 / 3;
+  const pD = total > 0 ? (drawSats / total) * 100 : 100 / 3;
+  const pA = total > 0 ? (awaySats / total) * 100 : 100 / 3;
+  const isEmpty = total === 0;
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
         <span>Pool</span>
-        <span className="font-bold text-foreground">{formatSats(total)} sats</span>
+        <span className={`font-bold ${isEmpty ? "text-muted-foreground/60" : "text-foreground"}`}>
+          {formatSats(total)} sats
+        </span>
       </div>
       <div className="flex h-2 rounded-full overflow-hidden gap-px">
-        {pH > 0 && <div className="bg-green-500 transition-all" style={{ width: `${pH}%` }} />}
-        {pD > 0 && <div className="bg-yellow-400 transition-all" style={{ width: `${pD}%` }} />}
-        {pA > 0 && <div className="bg-blue-500 transition-all" style={{ width: `${pA}%` }} />}
+        <div className={`bg-green-500 transition-all ${isEmpty ? "opacity-30" : ""}`} style={{ width: `${pH}%` }} />
+        <div className={`bg-yellow-400 transition-all ${isEmpty ? "opacity-30" : ""}`} style={{ width: `${pD}%` }} />
+        <div className={`bg-blue-500 transition-all ${isEmpty ? "opacity-30" : ""}`} style={{ width: `${pA}%` }} />
       </div>
       <div className="flex justify-between text-[10px] font-mono">
-        <span className={`flex flex-col ${winnerSide === "home" ? "text-green-400 font-bold" : "text-green-500/70"}`}>
-          <span>{pH.toFixed(1)}%</span>
+        <span className={`flex flex-col ${winnerSide === "home" ? "text-green-400 font-bold" : isEmpty ? "text-green-500/40" : "text-green-500/70"}`}>
+          <span>{pH.toFixed(1)}% HOME</span>
           <span>{formatSats(homeSats)} sats</span>
         </span>
-        <span className={`flex flex-col items-center ${winnerSide === "draw" ? "text-yellow-400 font-bold" : "text-yellow-500/70"}`}>
-          <span>{pD.toFixed(1)}%</span>
+        <span className={`flex flex-col items-center ${winnerSide === "draw" ? "text-yellow-400 font-bold" : isEmpty ? "text-yellow-500/40" : "text-yellow-500/70"}`}>
+          <span>{pD.toFixed(1)}% DRAW</span>
           <span>{formatSats(drawSats)} sats</span>
         </span>
-        <span className={`flex flex-col items-end ${winnerSide === "away" ? "text-blue-400 font-bold" : "text-blue-500/70"}`}>
-          <span>{pA.toFixed(1)}%</span>
+        <span className={`flex flex-col items-end ${winnerSide === "away" ? "text-blue-400 font-bold" : isEmpty ? "text-blue-500/40" : "text-blue-500/70"}`}>
+          <span>{pA.toFixed(1)}% AWAY</span>
           <span>{formatSats(awaySats)} sats</span>
         </span>
       </div>
@@ -607,7 +607,6 @@ function OutcomeBadge({ outcome }: { outcome: SportEvent["outcome"] }) {
 function FinishedCard({ ev }: { ev: SportEvent }) {
   const settled = ev.marketStatus === "settled";
   const drawSats = ev.totalDrawSats ?? 0;
-  const hasPool = ev.totalHomeSats > 0 || drawSats > 0 || ev.totalAwaySats > 0;
   const winner = ev.marketOutcome ?? ev.outcome;
   const settledAt = ev.marketSettledAt;
 
@@ -639,15 +638,13 @@ function FinishedCard({ ev }: { ev: SportEvent }) {
         </div>
       </div>
 
-      {/* Pool + percentages */}
-      {hasPool && (
-        <PoolBar
-          homeSats={ev.totalHomeSats}
-          drawSats={drawSats}
-          awaySats={ev.totalAwaySats}
-          winnerSide={winner}
-        />
-      )}
+      {/* Pool + percentages — always shown (defaults to equal split when no bets) */}
+      <PoolBar
+        homeSats={ev.totalHomeSats}
+        drawSats={drawSats}
+        awaySats={ev.totalAwaySats}
+        winnerSide={winner}
+      />
 
       {/* Outcome description */}
       {ev.outcome && (
