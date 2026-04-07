@@ -9,7 +9,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const links = [
     { href: "/", label: "Live", icon: Activity },
     { href: "/history", label: "History", icon: History },
-    { href: "/stats", label: "Stats", icon: BarChart3 },
+    // { href: "/stats", label: "Stats", icon: BarChart3 }, // disabled — re-enable when ready
     { href: "/guide", label: "Guide", icon: HelpCircle },
   ];
 
@@ -20,9 +20,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="px-3 sm:px-6 flex h-14 items-center justify-between max-w-5xl mx-auto w-full">
 
           {/* Logo — shrinks to icon-only on very small screens */}
-          <div className="flex items-center gap-1 font-mono font-bold tracking-tight shrink-0">
-            <Zap className="h-4 w-4 text-yellow-400 fill-yellow-400 shrink-0" />
-            <span className="text-[11px] sm:text-xs">
+          <div className="flex items-center gap-1.5 font-mono font-bold tracking-tight shrink-0">
+            <Zap className="h-5 w-5 text-yellow-400 fill-yellow-400 shrink-0" />
+            <span className="text-sm sm:text-base">
               Prediction With <span className="text-yellow-400">SATS</span>
             </span>
           </div>
