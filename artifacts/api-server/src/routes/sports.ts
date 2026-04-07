@@ -1,14 +1,420 @@
+/**
+ * Sports Prediction Routes
+ *
+ * GET  /api/sports/events                    — list upcoming/finished events from TheSportsDB
+ * GET  /api/sports/markets                   — list open sport markets with pool totals
+ * POST /api/sports/bets                      — place a bet on a sport market (returns Lightning invoice)
+ * GET  /api/sports/bets/:hash                — check sport bet status + withdraw info
+ * POST /api/sports/bets/:hash/verify-preimage — WebLN preimage confirmation
+ * GET  /api/sports/withdraw/:token           — LNURL-Withdraw params (LUD-03)
+ * GET  /api/sports/withdraw/:token/callback  — wallet sends invoice here; we pay via Coinos
+ */
+
 import { Router, type IRouter } from "express";
-import { getSportsEvents } from "../lib/sports";
+import { randomUUID, createHash } from "node:crypto";
+import { db, sportBetsTable, sportMarketsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
+import { getSportsEvents, type SportEvent } from "../lib/sports";
+import { findOrCreateMarket, addToPool } from "../lib/sports-market";
+import { createInvoice } from "../lib/alby";
+import { coinosPayInvoice } from "../lib/coinos";
+import { logger } from "../lib/logger";
+import { bech32 } from "bech32";
 
 const router: IRouter = Router();
 
-router.get("/sports/events", async (_req, res): Promise<void> => {
+const MIN_AMOUNT_SATS = 546;
+const PAYOUT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function encodeLnurlSports(url: string): string {
+  const words = bech32.toWords(Buffer.from(url, "utf8"));
+  return bech32.encode("lnurl", words, 1500).toUpperCase();
+}
+
+type ExpressRequest = Parameters<Parameters<typeof router.get>[1]>[0];
+
+function getPublicBase(req: ExpressRequest): string {
+  const host = req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost";
+  const proto = req.headers["x-forwarded-proto"] ?? (req.secure ? "https" : "http");
+  return `${proto}://${host}`;
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/sports/events
+// ---------------------------------------------------------------------------
+
+router.get("/sports/events", async (req, res): Promise<void> => {
   try {
     const data = await getSportsEvents();
-    res.json(data);
+
+    const allMarkets = await db.select().from(sportMarketsTable);
+    const marketsByEventId = new Map(
+      allMarkets.map((m) => [
+        m.eventId,
+        { totalHomeSats: m.totalHomeSats, totalAwaySats: m.totalAwaySats, marketId: m.id, status: m.status },
+      ]),
+    );
+
+    const enriched = {
+      upcoming: data.upcoming.map((ev: SportEvent) => {
+        const market = marketsByEventId.get(ev.id);
+        return {
+          ...ev,
+          marketId: market?.marketId ?? null,
+          totalHomeSats: market?.totalHomeSats ?? 0,
+          totalAwaySats: market?.totalAwaySats ?? 0,
+          marketStatus: market?.status ?? null,
+        };
+      }),
+      finished: data.finished.map((ev: SportEvent) => {
+        const market = marketsByEventId.get(ev.id);
+        return {
+          ...ev,
+          marketId: market?.marketId ?? null,
+          totalHomeSats: market?.totalHomeSats ?? 0,
+          totalAwaySats: market?.totalAwaySats ?? 0,
+          marketStatus: market?.status ?? null,
+        };
+      }),
+    };
+
+    res.json(enriched);
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch sports events" });
+    req.log.error({ err }, "Failed to fetch sports events");
+    res.status(500).json({ error: "Failed to fetch events" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/sports/markets
+// ---------------------------------------------------------------------------
+
+router.get("/sports/markets", async (_req, res): Promise<void> => {
+  const markets = await db
+    .select()
+    .from(sportMarketsTable)
+    .where(eq(sportMarketsTable.status, "open"));
+  res.json(markets);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/sports/bets
+// ---------------------------------------------------------------------------
+
+router.post("/sports/bets", async (req, res): Promise<void> => {
+  const { eventId, direction, amountSats } = req.body ?? {};
+
+  if (!eventId || typeof eventId !== "string") {
+    res.status(400).json({ error: "eventId is required" });
+    return;
+  }
+  if (direction !== "home" && direction !== "away") {
+    res.status(400).json({ error: "direction must be 'home' or 'away'" });
+    return;
+  }
+  if (!amountSats || typeof amountSats !== "number" || amountSats < MIN_AMOUNT_SATS) {
+    res.status(400).json({ error: `Minimum bet is ${MIN_AMOUNT_SATS} sats` });
+    return;
+  }
+
+  const events = await getSportsEvents();
+  const event = events.upcoming.find((e: SportEvent) => e.id === eventId);
+  if (!event) {
+    res.status(404).json({ error: "Event not found or not available for betting" });
+    return;
+  }
+
+  const kickoff = new Date(event.startsAt).getTime();
+  if (Date.now() > kickoff - 5 * 60 * 1000) {
+    res.status(409).json({ error: "Betting is closed — match kicks off in less than 5 minutes" });
+    return;
+  }
+
+  const market = await findOrCreateMarket(event);
+  if (market.status !== "open") {
+    res.status(409).json({ error: "This market is already closed" });
+    return;
+  }
+
+  const tempHash = `pending_${randomUUID()}`;
+  const [bet] = await db
+    .insert(sportBetsTable)
+    .values({
+      marketId: market.id,
+      direction,
+      amountSats,
+      paymentHash: tempHash,
+      paymentRequest: "pending",
+      status: "pending",
+    })
+    .returning();
+
+  const teamLabel = direction === "home" ? market.homeTeam : market.awayTeam;
+  const memo = `PWSats — ${teamLabel} WINS (${market.league})`;
+
+  let invoice: { paymentHash: string; paymentRequest: string; expiresAt: string; verifyUrl: string | null };
+  try {
+    invoice = await createInvoice(amountSats, memo);
+  } catch (err) {
+    await db
+      .update(sportBetsTable)
+      .set({ status: "expired" })
+      .where(and(eq(sportBetsTable.id, bet.id), eq(sportBetsTable.paymentHash, tempHash)));
+    req.log.error({ err }, "Failed to create sport bet invoice");
+    res.status(502).json({ error: "Payment provider unavailable. Please try again." });
+    return;
+  }
+
+  const [updatedBet] = await db
+    .update(sportBetsTable)
+    .set({
+      paymentHash: invoice.paymentHash,
+      paymentRequest: invoice.paymentRequest,
+      verifyUrl: invoice.verifyUrl ?? null,
+    })
+    .where(eq(sportBetsTable.id, bet.id))
+    .returning();
+
+  res.status(201).json({
+    id: updatedBet.id,
+    paymentHash: updatedBet.paymentHash,
+    paymentRequest: updatedBet.paymentRequest,
+    amountSats: updatedBet.amountSats,
+    direction: updatedBet.direction,
+    expiresAt: invoice.expiresAt,
+    marketId: market.id,
+    homeTeam: market.homeTeam,
+    awayTeam: market.awayTeam,
+    eventName: market.eventName,
+    league: market.league,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/sports/bets/:hash
+// ---------------------------------------------------------------------------
+
+router.get("/sports/bets/:hash", async (req, res): Promise<void> => {
+  const { hash } = req.params;
+
+  const [bet] = await db
+    .select()
+    .from(sportBetsTable)
+    .where(eq(sportBetsTable.paymentHash, hash))
+    .limit(1);
+
+  if (!bet) {
+    res.status(404).json({ error: "Sport bet not found" });
+    return;
+  }
+
+  const [market] = await db
+    .select()
+    .from(sportMarketsTable)
+    .where(eq(sportMarketsTable.id, bet.marketId))
+    .limit(1);
+
+  let withdrawLnurl: string | null = null;
+  if (bet.withdrawToken && bet.withdrawStatus === "unclaimed") {
+    const base = getPublicBase(req);
+    const withdrawUrl = `${base}/api/sports/withdraw/${bet.withdrawToken}`;
+    withdrawLnurl = encodeLnurlSports(withdrawUrl);
+  }
+
+  res.json({
+    id: bet.id,
+    paymentHash: bet.paymentHash,
+    direction: bet.direction,
+    amountSats: bet.amountSats,
+    status: bet.status,
+    payoutSats: bet.payoutSats,
+    marketId: bet.marketId,
+    createdAt: bet.createdAt.toISOString(),
+    paidAt: bet.paidAt?.toISOString() ?? null,
+    withdrawToken: bet.withdrawToken ?? null,
+    withdrawStatus: bet.withdrawStatus ?? null,
+    withdrawLnurl,
+    market: market
+      ? {
+          eventName: market.eventName,
+          homeTeam: market.homeTeam,
+          awayTeam: market.awayTeam,
+          league: market.league,
+          status: market.status,
+          outcome: market.outcome,
+        }
+      : null,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/sports/bets/:hash/verify-preimage
+// ---------------------------------------------------------------------------
+
+router.post("/sports/bets/:hash/verify-preimage", async (req, res): Promise<void> => {
+  const { hash } = req.params;
+  const rawPreimage = req.body?.preimage;
+
+  if (typeof rawPreimage !== "string" || rawPreimage.length === 0) {
+    res.status(400).json({ error: "preimage field is required" });
+    return;
+  }
+
+  const derivedHash = createHash("sha256")
+    .update(Buffer.from(rawPreimage, "hex"))
+    .digest("hex");
+
+  if (derivedHash !== hash) {
+    res.status(400).json({ error: "Preimage does not match payment hash" });
+    return;
+  }
+
+  const [bet] = await db
+    .select()
+    .from(sportBetsTable)
+    .where(eq(sportBetsTable.paymentHash, hash))
+    .limit(1);
+
+  if (!bet) {
+    res.status(404).json({ error: "Sport bet not found" });
+    return;
+  }
+
+  if (bet.status !== "pending") {
+    res.json({ status: bet.status });
+    return;
+  }
+
+  const [updated] = await db
+    .update(sportBetsTable)
+    .set({ status: "paid", paidAt: new Date() })
+    .where(and(eq(sportBetsTable.id, bet.id), eq(sportBetsTable.status, "pending")))
+    .returning();
+
+  try {
+    await addToPool(bet.marketId, bet.direction as "home" | "away", Number(bet.amountSats));
+  } catch (err) {
+    logger.warn({ err, sportBetId: bet.id }, "Failed to update pool after preimage verify");
+  }
+
+  logger.info({ sportBetId: bet.id, hash }, "Sport bet confirmed via WebLN preimage");
+  res.json({ status: updated.status });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/sports/withdraw/:token  (LUD-03 params)
+// ---------------------------------------------------------------------------
+
+router.get("/sports/withdraw/:token", async (req, res): Promise<void> => {
+  const { token } = req.params;
+
+  const [bet] = await db
+    .select()
+    .from(sportBetsTable)
+    .where(eq(sportBetsTable.withdrawToken, token))
+    .limit(1);
+
+  if (!bet) {
+    res.status(404).json({ status: "ERROR", reason: "Withdraw token not found" });
+    return;
+  }
+
+  if (bet.status !== "won" && bet.status !== "refunded") {
+    res.status(400).json({ status: "ERROR", reason: "Bet not eligible for withdrawal" });
+    return;
+  }
+
+  if (bet.withdrawStatus !== "unclaimed") {
+    res.status(400).json({ status: "ERROR", reason: "Payout already claimed" });
+    return;
+  }
+
+  if (Date.now() - bet.createdAt.getTime() > PAYOUT_EXPIRY_MS) {
+    res.status(400).json({ status: "ERROR", reason: "Payout expired (30-day window passed)" });
+    return;
+  }
+
+  const [market] = await db
+    .select()
+    .from(sportMarketsTable)
+    .where(eq(sportMarketsTable.id, bet.marketId))
+    .limit(1);
+
+  const payoutSats = Number(bet.payoutSats ?? 0);
+  const base = getPublicBase(req);
+  const callbackUrl = `${base}/api/sports/withdraw/${token}/callback`;
+  const teamLabel =
+    bet.status === "refunded"
+      ? "DRAW refund"
+      : `${bet.direction === "home" ? market?.homeTeam : market?.awayTeam} WIN`;
+
+  res.json({
+    tag: "withdrawRequest",
+    callback: callbackUrl,
+    k1: token,
+    defaultDescription: `PWSats — ${teamLabel} — ${market?.eventName ?? "Sports Bet"}`,
+    minWithdrawable: payoutSats * 1000,
+    maxWithdrawable: payoutSats * 1000,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/sports/withdraw/:token/callback  (wallet sends invoice)
+// ---------------------------------------------------------------------------
+
+router.get("/sports/withdraw/:token/callback", async (req, res): Promise<void> => {
+  const { token } = req.params;
+  const { k1, pr } = req.query as { k1?: string; pr?: string };
+
+  if (k1 !== token || !pr) {
+    res.json({ status: "ERROR", reason: "Invalid callback parameters" });
+    return;
+  }
+
+  const [bet] = await db
+    .select()
+    .from(sportBetsTable)
+    .where(eq(sportBetsTable.withdrawToken, token))
+    .limit(1);
+
+  if (!bet || bet.withdrawStatus !== "unclaimed") {
+    res.json({ status: "ERROR", reason: "Token not found or already claimed" });
+    return;
+  }
+
+  if (bet.status !== "won" && bet.status !== "refunded") {
+    res.json({ status: "ERROR", reason: "Bet not eligible for withdrawal" });
+    return;
+  }
+
+  // Atomic claim guard — prevent double-spend
+  const [claimed] = await db
+    .update(sportBetsTable)
+    .set({ withdrawStatus: "claimed", claimedAt: new Date() })
+    .where(and(eq(sportBetsTable.withdrawToken, token), eq(sportBetsTable.withdrawStatus, "unclaimed")))
+    .returning();
+
+  if (!claimed) {
+    res.json({ status: "ERROR", reason: "Already claimed" });
+    return;
+  }
+
+  try {
+    await coinosPayInvoice(pr);
+    logger.info({ sportBetId: bet.id, token }, "Sport payout sent via Coinos");
+    res.json({ status: "OK" });
+  } catch (err) {
+    // Roll back on failure
+    await db
+      .update(sportBetsTable)
+      .set({ withdrawStatus: "unclaimed", claimedAt: null })
+      .where(eq(sportBetsTable.id, bet.id));
+    logger.error({ err, sportBetId: bet.id }, "Failed to pay sport payout via Coinos");
+    res.json({ status: "ERROR", reason: "Payment failed. Please try again." });
   }
 });
 
