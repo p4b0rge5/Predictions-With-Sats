@@ -28,7 +28,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Nav + Theme toggle */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 ml-6 sm:ml-10">
             <nav className="flex items-center gap-0.5">
               {links.map(({ href, label, icon: Icon }) => (
                 <NavLink
