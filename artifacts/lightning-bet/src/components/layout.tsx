@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Activity, History, BarChart3, Zap, Sun, Moon, HelpCircle } from "lucide-react";
+import { Activity, History, BarChart3, Zap, Sun, Moon, HelpCircle, Trophy } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 import { Button } from "@/components/ui/button";
 
@@ -9,6 +9,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const links = [
     { href: "/", label: "Live", icon: Activity },
     { href: "/history", label: "History", icon: History },
+    { href: "/sports", label: "Sports", icon: Trophy },
     // { href: "/stats", label: "Stats", icon: BarChart3 }, // disabled — re-enable when ready
     { href: "/guide", label: "Guide", icon: HelpCircle },
   ];

@@ -5,6 +5,7 @@ import betRouter from "./bet";
 import webhookRouter from "./webhook";
 import statsRouter from "./stats";
 import withdrawRouter from "./withdraw";
+import sportsRouter from "./sports";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(betRouter);
 router.use(webhookRouter);
 router.use(statsRouter);
 router.use(withdrawRouter);
+router.use(sportsRouter);
 
 export default router;
