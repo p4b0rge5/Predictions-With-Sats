@@ -1,6 +1,6 @@
 {
-  "name": "Lightning Bet",
-  "short_name": "LightningBet",
+  "name": "Prediction With Sats",
+  "short_name": "PWSats",
   "description": "Real-time Bitcoin price prediction — bet UP or DOWN via Lightning Network. No accounts, instant payouts.",
   "start_url": "/",
   "display": "standalone",

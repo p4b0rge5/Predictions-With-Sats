@@ -13,7 +13,7 @@ const STEPS = [
     icon: Zap,
     iconColor: "text-yellow-400",
     iconBg: "bg-yellow-400/10 border-yellow-400/30",
-    title: "Welcome to Lightning Bet",
+    title: "Welcome to Prediction With Sats",
     subtitle: "What is this?",
     body: "A real-time Bitcoin price prediction game. Every 5 minutes, predict whether BTC will go UP or DOWN. Bet any amount in satoshis via the Lightning Network. Winners split the pool — no accounts, no sign-up required.",
     visual: <WelcomeVisual />,

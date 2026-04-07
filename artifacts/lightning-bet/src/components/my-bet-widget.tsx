@@ -173,7 +173,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
     if (!bet) return;
     const sats = new Intl.NumberFormat().format(bet.payoutSats ?? 0);
     const dir = bet.direction === "up" ? "UP ↑" : "DOWN ↓";
-    const text = `⚡ Just won ${sats} sats on Lightning Bet! Called BTC ${dir} correctly in a 5-minute window. Try it at lightningbet — no accounts, instant Lightning payouts.`;
+    const text = `⚡ Just won ${sats} sats on Prediction With Sats! Called BTC ${dir} correctly in a 5-minute window. Try it at pwsats.com — no accounts, instant Lightning payouts.`;
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -181,7 +181,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
     if (!bet) return;
     const sats = new Intl.NumberFormat().format(bet.payoutSats ?? 0);
     const dir = bet.direction === "up" ? "UP ↑" : "DOWN ↓";
-    const text = `⚡ Just won ${sats} sats on Lightning Bet! Called BTC ${dir} correctly in a 5-minute prediction window. No accounts — bet and claim entirely via Lightning Network. #Bitcoin #Lightning`;
+    const text = `⚡ Just won ${sats} sats on Prediction With Sats! Called BTC ${dir} correctly in a 5-minute prediction window. No accounts — bet and claim entirely via Lightning Network. pwsats.com #Bitcoin #Lightning`;
     navigator.clipboard.writeText(text);
     toast({ title: "Copied for Nostr!", description: "Paste it in your Nostr client.", duration: 3000 });
   };

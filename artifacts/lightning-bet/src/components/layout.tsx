@@ -23,7 +23,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-1.5 font-mono font-bold tracking-tight shrink-0">
             <Zap className="h-5 w-5 text-yellow-400 fill-yellow-400 shrink-0" />
             <span className="text-sm sm:text-base">
-              LIGHTNING<span className="text-yellow-400">BET</span>
+              PW<span className="text-yellow-400">SATS</span>
             </span>
           </div>
 
