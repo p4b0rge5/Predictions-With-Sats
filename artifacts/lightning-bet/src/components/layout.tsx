@@ -20,15 +20,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="px-3 sm:px-6 flex h-14 items-center justify-between max-w-5xl mx-auto w-full">
 
           {/* Logo — shrinks to icon-only on very small screens */}
-          <div className="flex items-center gap-1.5 font-mono font-bold tracking-tight shrink-0">
-            <Zap className="h-5 w-5 text-yellow-400 fill-yellow-400 shrink-0" />
-            <span className="text-xs sm:text-sm">
-              <span className="hidden sm:inline">Prediction With </span><span className="text-yellow-400">SATS</span>
+          <div className="flex items-center gap-1 font-mono font-bold tracking-tight shrink-0">
+            <Zap className="h-4 w-4 text-yellow-400 fill-yellow-400 shrink-0" />
+            <span className="text-[11px] sm:text-xs">
+              Prediction With <span className="text-yellow-400">SATS</span>
             </span>
           </div>
 
           {/* Nav + Theme toggle */}
-          <div className="flex items-center gap-1 ml-6 sm:ml-10">
+          <div className="flex items-center gap-1">
             <nav className="flex items-center gap-0.5">
               {links.map(({ href, label, icon: Icon }) => (
                 <NavLink
