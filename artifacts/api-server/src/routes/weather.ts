@@ -35,44 +35,50 @@ interface CityTemp {
   tomorrowMax: number | null;
 }
 
-let tempsCache: { data: CityTemp[]; ts: number } | null = null;
-const TEMPS_TTL_MS = 30 * 60 * 1000;
+let tempsCache: { data: CityTemp[]; ts: number; complete: boolean } | null = null;
+const TEMPS_TTL_FULL_MS  = 30 * 60 * 1000; // 30 min when all cities have data
+const TEMPS_TTL_PARTIAL_MS = 2 * 60 * 1000; // 2 min when some are null (retry soon)
+
+async function fetchWithRetry(lat: number, lon: number, retries = 3): Promise<WeatherForecast | null> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fetchForecast(lat, lon);
+    } catch {
+      if (i < retries - 1) await new Promise((r) => setTimeout(r, 600));
+    }
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/weather/temps — current forecast max temps for all cities
 // ---------------------------------------------------------------------------
 
 router.get("/weather/temps", async (_req, res) => {
-  if (tempsCache && Date.now() - tempsCache.ts < TEMPS_TTL_MS) {
-    return res.json(tempsCache.data);
+  const now = Date.now();
+  if (tempsCache) {
+    const ttl = tempsCache.complete ? TEMPS_TTL_FULL_MS : TEMPS_TTL_PARTIAL_MS;
+    if (now - tempsCache.ts < ttl) return res.json(tempsCache.data);
   }
 
-  const results = await Promise.all(
-    WEATHER_CITIES.map(async (city) => {
-      try {
-        const forecast = await fetchForecast(city.latitude, city.longitude);
-        return {
-          key: city.key,
-          name: city.name,
-          emoji: city.emoji,
-          threshold: city.threshold,
-          todayMax: forecast.maxTemps[0] ?? null,
-          tomorrowMax: forecast.maxTemps[1] ?? null,
-        } as CityTemp;
-      } catch {
-        return {
-          key: city.key,
-          name: city.name,
-          emoji: city.emoji,
-          threshold: city.threshold,
-          todayMax: null,
-          tomorrowMax: null,
-        } as CityTemp;
-      }
-    }),
-  );
+  // Fetch sequentially to avoid rate-limiting (6 simultaneous requests get dropped)
+  const results: CityTemp[] = [];
+  for (const city of WEATHER_CITIES) {
+    const forecast = await fetchWithRetry(city.latitude, city.longitude);
+    results.push({
+      key: city.key,
+      name: city.name,
+      emoji: city.emoji,
+      threshold: city.threshold,
+      todayMax: forecast?.maxTemps[0] ?? null,
+      tomorrowMax: forecast?.maxTemps[1] ?? null,
+    } as CityTemp);
+    // Small pause between requests to be a good API citizen
+    await new Promise((r) => setTimeout(r, 200));
+  }
 
-  tempsCache = { data: results, ts: Date.now() };
+  const complete = results.every((r) => r.todayMax !== null);
+  tempsCache = { data: results, ts: now, complete };
   return res.json(results);
 });
 const PAYOUT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;

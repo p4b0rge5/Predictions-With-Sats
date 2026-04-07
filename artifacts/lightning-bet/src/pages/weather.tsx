@@ -505,7 +505,7 @@ function MiniTempBar({ temp, threshold }: { temp: number; threshold: number }) {
   const textColor = isAbove ? "text-green-400"  : isClose ? "text-amber-400"  : "text-red-400";
 
   return (
-    <div className="space-y-1 border-t border-border/30 pt-2">
+    <div className="space-y-1.5 border-t border-border/30 pt-2">
       <div className="flex items-center justify-between text-[10px] font-mono">
         <span className="flex items-center gap-1 text-muted-foreground">
           <Thermometer className="h-3 w-3" /> Forecast max today
@@ -515,13 +515,9 @@ function MiniTempBar({ temp, threshold }: { temp: number; threshold: number }) {
           <span className="text-muted-foreground font-normal"> / target {threshold}°C</span>
         </span>
       </div>
-      <div className="relative h-3 bg-muted/30 rounded-sm overflow-visible">
+      <div className="relative h-3 bg-muted/30 rounded-sm overflow-hidden">
         <div className={`h-full rounded-sm transition-all duration-500 ${barColor}`} style={{ width: `${tempPct}%` }} />
-        <div className="absolute top-0 bottom-0 w-[2px] bg-yellow-400 z-10" style={{ left: `${threshPct}%` }}>
-          <div className="absolute -top-3.5 -translate-x-1/2 text-[8px] font-mono text-yellow-400 whitespace-nowrap">
-            {threshold}°
-          </div>
-        </div>
+        <div className="absolute top-0 bottom-0 w-[2px] bg-yellow-400/80 z-10" style={{ left: `${threshPct}%` }} />
       </div>
     </div>
   );
