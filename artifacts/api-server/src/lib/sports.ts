@@ -84,7 +84,8 @@ const cache: { upcoming: SportEvent[]; finished: SportEvent[]; fetchedAt: number
   finished: [],
   fetchedAt: 0,
 };
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes — refresh faster so finished games leave the list
+const MAX_MATCH_DURATION_MS = 3 * 60 * 60 * 1000; // 3 hours — hide events older than this from "upcoming"
 
 async function fetchLeague(endpoint: string): Promise<SportEvent[]> {
   const seen = new Set<string>();
@@ -113,7 +114,19 @@ export async function getSportsEvents(): Promise<{ upcoming: SportEvent[]; finis
     fetchLeague("eventsnextleague.php"),
     fetchLeague("eventspastleague.php"),
   ]);
-  cache.upcoming  = upcoming.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+
+  const now = Date.now();
+
+  // Strip any "upcoming" event whose kickoff was more than MAX_MATCH_DURATION_MS ago.
+  // TheSportsDB sometimes returns recently-started/finished games in eventsnextleague.
+  const filteredUpcoming = upcoming
+    .filter((ev) => {
+      const kickoff = new Date(ev.startsAt).getTime();
+      return kickoff > now - MAX_MATCH_DURATION_MS;
+    })
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+
+  cache.upcoming  = filteredUpcoming;
   cache.finished  = finished.sort((a, b) => b.startsAt.localeCompare(a.startsAt)).slice(0, 20);
   cache.fetchedAt = Date.now();
   return { upcoming: cache.upcoming, finished: cache.finished };
