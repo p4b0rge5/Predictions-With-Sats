@@ -34,9 +34,9 @@ app.listen(port, (err) => {
   startMarketEngine();
   startPaymentPoller();
   startSportsPollers();
-  // Check Coinos token on startup; re-check every 6 hours
+  // Check Coinos token on startup; re-check every hour
   checkCoinosTokenHealth().catch(() => {});
-  setInterval(() => checkCoinosTokenHealth().catch(() => {}), 6 * 60 * 60 * 1000);
+  setInterval(() => checkCoinosTokenHealth().catch(() => {}), 60 * 60 * 1000);
 
   if (config.webhookUrl) {
     ensureWebhookRegistered(config.webhookUrl).catch((e) =>
