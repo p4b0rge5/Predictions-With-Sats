@@ -10,26 +10,16 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
-const STORAGE_KEY = "lightning_bet_hashes_v2";
+const STORAGE_KEY          = "lightning_bet_hashes_v2";
+const SPORTS_STORAGE_KEY   = "lightning_bet_sports_hashes_v1";
+const WEATHER_STORAGE_KEY  = "lightning_bet_weather_hashes_v1";
 const MAX_STORED = 30;
 
-// ── Storage helpers ────────────────────────────────────────────────────────────
+// ── Generic storage helper ──────────────────────────────────────────────────
 
-export function saveBetHash(paymentHash: string) {
-  const existing = getBetHashes();
-  if (existing.includes(paymentHash)) return;
-  const updated = [paymentHash, ...existing].slice(0, MAX_STORED);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-}
-
-/** @deprecated use saveBetHash */
-export function saveLastBetHash(paymentHash: string) {
-  saveBetHash(paymentHash);
-}
-
-export function getBetHashes(): string[] {
+function readHashes(key: string): string[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -38,20 +28,37 @@ export function getBetHashes(): string[] {
   }
 }
 
-/** @deprecated use getBetHashes */
-export function getLastBetHash(): string | null {
-  const hashes = getBetHashes();
-  return hashes[0] ?? null;
+function writeHash(key: string, paymentHash: string) {
+  const existing = readHashes(key);
+  if (existing.includes(paymentHash)) return;
+  localStorage.setItem(key, JSON.stringify([paymentHash, ...existing].slice(0, MAX_STORED)));
 }
 
-export function removeBetHash(paymentHash: string) {
-  const updated = getBetHashes().filter((h) => h !== paymentHash);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+function deleteHash(key: string, paymentHash: string) {
+  localStorage.setItem(key, JSON.stringify(readHashes(key).filter((h) => h !== paymentHash)));
 }
 
-export function clearLastBetHash() {
-  localStorage.removeItem(STORAGE_KEY);
-}
+// ── Crypto (Bitcoin/ETH/SOL) ─────────────────────────────────────────────────
+
+export function saveBetHash(paymentHash: string)    { writeHash(STORAGE_KEY, paymentHash); }
+export function getBetHashes(): string[]            { return readHashes(STORAGE_KEY); }
+export function removeBetHash(paymentHash: string)  { deleteHash(STORAGE_KEY, paymentHash); }
+
+/** @deprecated */ export function saveLastBetHash(paymentHash: string) { saveBetHash(paymentHash); }
+/** @deprecated */ export function getLastBetHash(): string | null { return getBetHashes()[0] ?? null; }
+export function clearLastBetHash() { localStorage.removeItem(STORAGE_KEY); }
+
+// ── Sports ────────────────────────────────────────────────────────────────────
+
+export function saveSportsBetHash(paymentHash: string)   { writeHash(SPORTS_STORAGE_KEY, paymentHash); }
+export function getSportsBetHashes(): string[]           { return readHashes(SPORTS_STORAGE_KEY); }
+export function removeSportsBetHash(paymentHash: string) { deleteHash(SPORTS_STORAGE_KEY, paymentHash); }
+
+// ── Weather ───────────────────────────────────────────────────────────────────
+
+export function saveWeatherBetHash(paymentHash: string)   { writeHash(WEATHER_STORAGE_KEY, paymentHash); }
+export function getWeatherBetHashes(): string[]           { return readHashes(WEATHER_STORAGE_KEY); }
+export function removeWeatherBetHash(paymentHash: string) { deleteHash(WEATHER_STORAGE_KEY, paymentHash); }
 
 // ── Sound helpers ──────────────────────────────────────────────────────────────
 

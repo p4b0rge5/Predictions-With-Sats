@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
-import { MyBetsList, getBetHashes, removeBetHash, saveBetHash } from "@/components/my-bet-widget";
+import { getSportsBetHashes, removeSportsBetHash, saveSportsBetHash } from "@/components/my-bet-widget";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -20,7 +20,7 @@ import { MyBetsList, getBetHashes, removeBetHash, saveBetHash } from "@/componen
 
 type Direction = "home" | "draw" | "away";
 type SportKey = "football";
-type ContentTab = "guide" | "upcoming" | "results";
+type ContentTab = "guide" | "my-bets" | "upcoming" | "results";
 
 interface SportDef {
   key: SportKey;
@@ -294,7 +294,7 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
         setBetStatus(data);
         if (data.status !== "pending") {
           clearInterval(pollRef.current!);
-          if (data.status === "paid" || data.status === "won") saveBetHash(paymentHash);
+          if (data.status === "paid" || data.status === "won") saveSportsBetHash(paymentHash);
         }
       } catch { /* ignore */ }
     }, 3000);
@@ -649,6 +649,121 @@ function FinishedCard({ ev }: { ev: SportEvent }) {
 }
 
 // ---------------------------------------------------------------------------
+// My Bets tab — Sports
+// ---------------------------------------------------------------------------
+
+interface SportBetRecord {
+  id: number;
+  paymentHash: string;
+  direction: string;
+  amountSats: number;
+  status: string;
+  payoutSats: number | null;
+  withdrawLnurl: string | null;
+  withdrawStatus: string | null;
+  market: { eventName: string; homeTeam: string; awayTeam: string; league: string; status: string; outcome: string | null } | null;
+}
+
+function SportBetStatusBadge({ status }: { status: string }) {
+  if (status === "pending")  return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[9px]">PENDING</Badge>;
+  if (status === "paid")     return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[9px]">PLACED</Badge>;
+  if (status === "won")      return <Badge className="bg-yellow-400/20 text-yellow-300 border-yellow-400/30 text-[9px]">WON 🏆</Badge>;
+  if (status === "lost")     return <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-[9px]">LOST</Badge>;
+  if (status === "expired")  return <Badge className="bg-muted text-muted-foreground text-[9px]">EXPIRED</Badge>;
+  return <Badge className="text-[9px]">{status.toUpperCase()}</Badge>;
+}
+
+function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () => void }) {
+  const [bet, setBet] = useState<SportBetRecord | null>(null);
+  const [notFound, setNotFound] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(apiUrl(`/api/sports/bets/${hash}`));
+        if (!res.ok) { setNotFound(true); return; }
+        const data = await res.json() as SportBetRecord;
+        setBet(data);
+        if (data.status === "pending") {
+          pollRef.current = setInterval(async () => {
+            const r = await fetch(apiUrl(`/api/sports/bets/${hash}`));
+            if (!r.ok) return;
+            const d = await r.json() as SportBetRecord;
+            setBet(d);
+            if (d.status !== "pending") clearInterval(pollRef.current!);
+          }, 3000);
+        }
+      } catch { setNotFound(true); }
+    };
+    load();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [hash]);
+
+  if (notFound) return null;
+  if (!bet) return <div className="h-16 rounded-xl border border-border/40 bg-card/30 animate-pulse" />;
+
+  const dirColor = DIRECTION_COLORS[bet.direction as Direction] ?? DIRECTION_COLORS.home;
+  const dirLabel = DIRECTION_LABELS[bet.direction as Direction] ?? bet.direction.toUpperCase();
+
+  return (
+    <div className="rounded-xl border border-border/40 bg-card/30 p-4 space-y-2 font-mono">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-bold ${dirColor.text}`}>
+            {bet.direction === "home" ? "↑" : bet.direction === "away" ? "↓" : "="} {dirLabel}
+          </span>
+          <SportBetStatusBadge status={bet.status} />
+        </div>
+        <button onClick={onDismiss} className="text-muted-foreground hover:text-foreground transition-colors">
+          <XCircle className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {bet.market && (
+        <>
+          <p className="text-xs text-foreground">{bet.market.homeTeam} vs {bet.market.awayTeam}</p>
+          <p className="text-[10px] text-muted-foreground">{bet.market.league}</p>
+        </>
+      )}
+      <p className="text-[10px] text-muted-foreground">{formatSats(bet.amountSats)} sats wagered</p>
+      {bet.status === "won" && bet.payoutSats && (
+        <div className="border-t border-border/30 pt-3 space-y-2 flex flex-col items-center">
+          <p className="text-xs text-yellow-400 font-bold">PAYOUT: {formatSats(Number(bet.payoutSats))} sats</p>
+          {bet.withdrawLnurl && (
+            <>
+              <div className="bg-white p-2 rounded-lg"><QRCodeSVG value={bet.withdrawLnurl} size={120} /></div>
+              <p className="text-[10px] text-muted-foreground text-center">Scan to withdraw via Lightning</p>
+            </>
+          )}
+          {!bet.withdrawLnurl && bet.withdrawStatus === "claimed" && (
+            <p className="text-[10px] text-green-400">Winnings claimed ✓</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SportMyBetsTab({ hashes, onDismiss }: { hashes: string[]; onDismiss: (h: string) => void }) {
+  if (hashes.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
+        <Trophy className="h-10 w-10" />
+        <p className="font-mono text-sm">No sports bets yet</p>
+        <p className="font-mono text-xs text-center opacity-60">Bets you place on upcoming matches will appear here.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {hashes.map((h) => (
+        <SportBetStatusCard key={h} hash={h} onDismiss={() => onDismiss(h)} />
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -662,7 +777,7 @@ export function Sports() {
   const [betHashes, setBetHashes] = useState<string[]>([]);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => { setBetHashes(getBetHashes()); }, []);
+  useEffect(() => { setBetHashes(getSportsBetHashes()); }, []);
 
   const fetchData = useCallback((quiet = false) => {
     if (!quiet) { setLoading(true); setError(false); }
@@ -705,9 +820,10 @@ export function Sports() {
       {/* ── Content tabs: Guide | Upcoming | Results ── */}
       <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40 mb-4">
         {([
-          { key: "guide", label: "Guide" },
-          { key: "upcoming", label: "Upcoming Matches" },
-          { key: "results", label: "Recent Results" },
+          { key: "guide",    label: "Guide" },
+          { key: "my-bets",  label: "My Bets" },
+          { key: "upcoming", label: "Upcoming" },
+          { key: "results",  label: "Results" },
         ] as { key: ContentTab; label: string }[]).map((t) => (
           <button
             key={t.key}
@@ -726,6 +842,11 @@ export function Sports() {
         activeSportDef.key === "football" ? <FootballGuide onDone={() => { setActiveTab("upcoming"); window.scrollTo({ top: 0, behavior: "smooth" }); }} /> : (
           <p className="text-center text-muted-foreground text-sm py-10 font-mono">Guide coming soon.</p>
         )
+      )}
+
+      {/* ── My Bets ── */}
+      {activeTab === "my-bets" && (
+        <SportMyBetsTab hashes={betHashes} onDismiss={(h) => { removeSportsBetHash(h); setBetHashes(getSportsBetHashes()); }} />
       )}
 
       {/* ── Upcoming Matches ── */}
@@ -806,13 +927,10 @@ export function Sports() {
         </div>
       )}
 
-      {/* My Bets */}
-      <MyBetsList hashes={betHashes} onDismiss={(hash) => { removeBetHash(hash); setBetHashes(getBetHashes()); }} />
-
       <SportBetModal
         event={betModal?.event ?? null}
         direction={betModal?.direction ?? null}
-        onClose={() => { setBetModal(null); setBetHashes(getBetHashes()); }}
+        onClose={() => { setBetModal(null); setBetHashes(getSportsBetHashes()); }}
       />
     </div>
   );

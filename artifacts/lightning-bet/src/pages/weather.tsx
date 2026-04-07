@@ -12,14 +12,14 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
-import { MyBetsList, getBetHashes, removeBetHash, saveBetHash } from "@/components/my-bet-widget";
+import { getWeatherBetHashes, removeWeatherBetHash, saveWeatherBetHash } from "@/components/my-bet-widget";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type Direction = "yes" | "no";
-type ContentTab = "guide" | "markets" | "results";
+type ContentTab = "guide" | "my-bets" | "markets" | "results";
 
 interface WeatherMarket {
   id: number;
@@ -229,7 +229,7 @@ function WeatherBetModal({
       }
       return res.json() as Promise<WeatherBetResult>;
     },
-    onSuccess: (data) => { setInvoice(data); saveBetHash(data.paymentHash); },
+    onSuccess: (data) => { setInvoice(data); saveWeatherBetHash(data.paymentHash); },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
@@ -453,6 +453,103 @@ const CITY_KEYS = ["all", "São Paulo", "New York", "London", "Miami", "Tokyo", 
 type CityFilter = (typeof CITY_KEYS)[number];
 
 // ---------------------------------------------------------------------------
+// My Bets tab — Weather
+// ---------------------------------------------------------------------------
+
+interface WeatherBetRecord {
+  id: number;
+  paymentHash: string;
+  direction: string;
+  amountSats: number;
+  status: string;
+  payoutSats: number | null;
+  withdrawLnurl: string | null;
+  withdrawStatus: string | null;
+  market: { city: string; date: string; threshold: number; status: string; outcome: string | null; actualTemp: number | null } | null;
+}
+
+function WeatherBetStatusBadge({ status }: { status: string }) {
+  if (status === "pending")  return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[9px]">PENDING</Badge>;
+  if (status === "paid")     return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[9px]">PLACED</Badge>;
+  if (status === "won")      return <Badge className="bg-yellow-400/20 text-yellow-300 border-yellow-400/30 text-[9px]">WON 🏆</Badge>;
+  if (status === "lost")     return <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-[9px]">LOST</Badge>;
+  if (status === "expired")  return <Badge className="bg-muted text-muted-foreground text-[9px]">EXPIRED</Badge>;
+  return <Badge className="text-[9px]">{status.toUpperCase()}</Badge>;
+}
+
+function WeatherBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () => void }) {
+  const [bet, setBet] = useState<WeatherBetRecord | null>(null);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/weather/bets/${hash}`)
+      .then((r) => { if (!r.ok) { setNotFound(true); return null; } return r.json(); })
+      .then((d) => { if (d) setBet(d as WeatherBetRecord); })
+      .catch(() => setNotFound(true));
+  }, [hash]);
+
+  if (notFound) return null;
+  if (!bet) return <div className="h-16 rounded-xl border border-border/40 bg-card/30 animate-pulse" />;
+
+  const dirColor  = bet.direction === "yes" ? "text-green-400" : "text-red-400";
+  const dirLabel  = bet.direction === "yes" ? "YES" : "NO";
+
+  return (
+    <div className="rounded-xl border border-border/40 bg-card/30 p-4 space-y-2 font-mono">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-bold ${dirColor}`}>{dirLabel}</span>
+          <WeatherBetStatusBadge status={bet.status} />
+        </div>
+        <button onClick={onDismiss} className="text-muted-foreground hover:text-foreground transition-colors">
+          <XCircle className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {bet.market && (
+        <>
+          <p className="text-xs text-foreground">{bet.market.city} · {format(new Date(bet.market.date + "T12:00:00"), "MMM d")}</p>
+          <p className="text-[10px] text-muted-foreground">Will max temp reach {bet.market.threshold}°C?</p>
+        </>
+      )}
+      <p className="text-[10px] text-muted-foreground">{bet.amountSats.toLocaleString()} sats wagered</p>
+      {bet.status === "won" && bet.payoutSats && (
+        <div className="border-t border-border/30 pt-3 space-y-2 flex flex-col items-center">
+          <p className="text-xs text-yellow-400 font-bold">PAYOUT: {bet.payoutSats.toLocaleString()} sats</p>
+          {bet.withdrawLnurl && (
+            <>
+              <div className="bg-white p-2 rounded-lg"><QRCodeSVG value={bet.withdrawLnurl} size={120} /></div>
+              <p className="text-[10px] text-muted-foreground text-center">Scan to withdraw via Lightning</p>
+            </>
+          )}
+          {!bet.withdrawLnurl && bet.withdrawStatus === "claimed" && (
+            <p className="text-[10px] text-green-400">Winnings claimed ✓</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WeatherMyBetsTab({ hashes, onDismiss }: { hashes: string[]; onDismiss: (h: string) => void }) {
+  if (hashes.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
+        <Cloud className="h-10 w-10" />
+        <p className="font-mono text-sm">No weather bets yet</p>
+        <p className="font-mono text-xs text-center opacity-60">Bets you place on weather markets will appear here.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {hashes.map((h) => (
+        <WeatherBetStatusCard key={h} hash={h} onDismiss={() => onDismiss(h)} />
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Weather Page
 // ---------------------------------------------------------------------------
 
@@ -461,7 +558,7 @@ export function Weather() {
   const [cityFilter, setCityFilter] = useState<CityFilter>("all");
   const [betHashes, setBetHashes] = useState<string[]>([]);
 
-  useEffect(() => { setBetHashes(getBetHashes()); }, []);
+  useEffect(() => { setBetHashes(getWeatherBetHashes()); }, []);
 
   const { data: markets, isLoading } = useQuery<WeatherMarket[]>({
     queryKey: ["/api/weather/markets"],
@@ -503,9 +600,10 @@ export function Weather() {
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40 mb-4">
         {([
-          { key: "guide",   label: "Guide" },
-          { key: "markets", label: "Upcoming" },
-          { key: "results", label: "Results" },
+          { key: "guide",    label: "Guide" },
+          { key: "my-bets",  label: "My Bets" },
+          { key: "markets",  label: "Upcoming" },
+          { key: "results",  label: "Results" },
         ] as { key: ContentTab; label: string }[]).map((t) => (
           <button
             key={t.key}
@@ -521,6 +619,10 @@ export function Weather() {
 
       {activeTab === "guide" && (
         <WeatherGuide onDone={() => { setActiveTab("markets"); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+      )}
+
+      {activeTab === "my-bets" && (
+        <WeatherMyBetsTab hashes={betHashes} onDismiss={(h) => { removeWeatherBetHash(h); setBetHashes(getWeatherBetHashes()); }} />
       )}
 
       {activeTab === "markets" && (
@@ -553,8 +655,6 @@ export function Weather() {
         </div>
       )}
 
-      {/* My Bets */}
-      <MyBetsList hashes={betHashes} onDismiss={(hash) => { removeBetHash(hash); setBetHashes(getBetHashes()); }} />
     </div>
   );
 }

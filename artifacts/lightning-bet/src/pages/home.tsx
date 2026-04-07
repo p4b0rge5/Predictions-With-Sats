@@ -22,7 +22,7 @@ import { History } from "@/pages/history";
 // ---------------------------------------------------------------------------
 
 type CryptoKey = "bitcoin" | "ethereum" | "solana";
-type ContentTab = "guide" | "live" | "history";
+type ContentTab = "guide" | "my-bets" | "live" | "history";
 type AssetParam = "btc" | "eth" | "sol";
 
 interface PricePoint { time: number; price: number }
@@ -484,9 +484,6 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
         </>
       )}
 
-      {/* My Bets */}
-      <MyBetsList hashes={betHashes} onDismiss={(hash) => { removeBetHash(hash); setBetHashes(getBetHashes()); }} />
-
       {/* Bet lookup */}
       <div className="rounded-xl border border-border/40 bg-card/20 font-mono overflow-hidden">
         <button onClick={() => setShowLookup(v => !v)}
@@ -565,9 +562,10 @@ export function Home() {
       {/* Content tabs */}
       <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40 mb-4">
         {([
-          { key: "guide",   label: "Guide" },
-          { key: "live",    label: "Live" },
-          { key: "history", label: "Window History" },
+          { key: "guide",    label: "Guide" },
+          { key: "my-bets",  label: "My Bets" },
+          { key: "live",     label: "Live" },
+          { key: "history",  label: "Window History" },
         ] as { key: ContentTab; label: string }[]).map((t) => (
           <button
             key={t.key}
@@ -587,6 +585,17 @@ export function Home() {
           onDone={() => { setActiveTab("live"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
         />
       )}
+      {activeTab === "my-bets" && (() => {
+        const hashes = getBetHashes();
+        if (hashes.length === 0) return (
+          <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
+            <Zap className="h-10 w-10" />
+            <p className="font-mono text-sm">No crypto bets yet</p>
+            <p className="font-mono text-xs text-center opacity-60">Bets you place on Bitcoin, ETH or SOL will appear here.</p>
+          </div>
+        );
+        return <MyBetsList hashes={hashes} onDismiss={(hash) => { removeBetHash(hash); setActiveTab("my-bets"); }} />;
+      })()}
       {activeTab === "live" && (
         <CryptoPrediction key={def.asset} def={def} onShowGuide={() => setActiveTab("guide")} />
       )}
