@@ -560,7 +560,6 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) =
           <span className="text-[9px] text-muted-foreground font-mono">AWAY</span>
         </div>
       </div>
-      <PoolBar homeSats={ev.totalHomeSats} drawSats={ev.totalDrawSats ?? 0} awaySats={ev.totalAwaySats} />
       {settled ? (
         <div className="text-center text-[11px] text-muted-foreground font-mono py-1">Market settled</div>
       ) : bettingClosed ? (
@@ -577,6 +576,7 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) =
           ))}
         </div>
       )}
+      <PoolBar homeSats={ev.totalHomeSats} drawSats={ev.totalDrawSats ?? 0} awaySats={ev.totalAwaySats} />
       <p className="text-[9px] text-muted-foreground text-center">2% house fee · settled automatically at full time</p>
     </div>
   );

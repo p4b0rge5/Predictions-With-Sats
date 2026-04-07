@@ -403,11 +403,6 @@ function MarketCard({ market }: { market: WeatherMarket }) {
         )}
       </div>
 
-      {/* Pool bar — only for open markets */}
-      {!isSettled && (
-        <PoolBar yesSats={market.totalYesSats} noSats={market.totalNoSats} />
-      )}
-
       {/* Settlement timestamp — only on settled markets */}
       {isSettled && market.settledAt && (
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono border-t border-border/30 pt-2">
@@ -422,22 +417,26 @@ function MarketCard({ market }: { market: WeatherMarket }) {
       )}
 
       {!isSettled && (
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            size="sm"
-            onClick={() => setBetDirection("yes")}
-            className="h-10 font-mono font-bold text-xs bg-green-500/10 text-green-400 border border-green-500/30 hover:bg-green-500/20 hover:border-green-500/60"
-          >
-            <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> BET YES
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => setBetDirection("no")}
-            className="h-10 font-mono font-bold text-xs bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 hover:border-red-500/60"
-          >
-            <XCircle className="h-3.5 w-3.5 mr-1" /> BET NO
-          </Button>
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              size="sm"
+              onClick={() => setBetDirection("yes")}
+              className="h-10 font-mono font-bold text-xs bg-green-500/10 text-green-400 border border-green-500/30 hover:bg-green-500/20 hover:border-green-500/60"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> BET YES
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setBetDirection("no")}
+              className="h-10 font-mono font-bold text-xs bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 hover:border-red-500/60"
+            >
+              <XCircle className="h-3.5 w-3.5 mr-1" /> BET NO
+            </Button>
+          </div>
+          {/* Pool bar — below buttons, matching Bitcoin pattern */}
+          <PoolBar yesSats={market.totalYesSats} noSats={market.totalNoSats} />
+        </>
       )}
 
       {betDirection && (
