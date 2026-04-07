@@ -119,9 +119,9 @@ const DIRECTION_LABELS: Record<Direction, string> = {
 };
 
 const DIRECTION_COLORS: Record<Direction, { btn: string; text: string }> = {
-  home: { btn: "bg-green-500/10 text-green-400 border-green-500/30 hover:bg-green-500/20 hover:border-green-500/60", text: "text-green-400" },
-  draw: { btn: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20 hover:border-yellow-500/60", text: "text-yellow-400" },
-  away: { btn: "bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20 hover:border-blue-500/60", text: "text-blue-400" },
+  home: { btn: "bg-green-600 hover:bg-green-700 text-white", text: "text-green-400" },
+  draw: { btn: "bg-yellow-500 hover:bg-yellow-600 text-black", text: "text-yellow-400" },
+  away: { btn: "bg-blue-600 hover:bg-blue-700 text-white", text: "text-blue-400" },
 };
 
 // ---------------------------------------------------------------------------
@@ -288,8 +288,8 @@ function AmountToggle({ mode, onChange }: { mode: InputMode; onChange: (m: Input
 
 function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
   const { toast } = useToast();
-  const [inputMode, setInputMode] = useState<InputMode>("sats");
-  const [rawAmount, setRawAmount] = useState("1000");
+  const [inputMode, setInputMode] = useState<InputMode>("usd");
+  const [rawAmount, setRawAmount] = useState("0.5");
   const [paymentHash, setPaymentHash] = useState<string | null>(null);
   const [paymentRequest, setPaymentRequest] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -338,12 +338,12 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
 
   const handleModeChange = (m: InputMode) => {
     setInputMode(m);
-    setRawAmount(m === "sats" ? "1000" : "1");
+    setRawAmount(m === "sats" ? "1000" : "0.5");
   };
 
   const handleClose = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
-    setInputMode("sats"); setRawAmount("1000");
+    setInputMode("usd"); setRawAmount("0.5");
     setPaymentHash(null); setPaymentRequest(null);
     setBetStatus(null); setShowPreimage(false); setPreimageInput(""); setCreating(false);
     onClose();

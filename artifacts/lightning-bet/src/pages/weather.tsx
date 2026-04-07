@@ -227,8 +227,8 @@ function WeatherBetModal({
   onClose: () => void;
 }) {
   const { toast } = useToast();
-  const [inputMode, setInputMode] = useState<InputMode>("sats");
-  const [rawAmount, setRawAmount] = useState("1000");
+  const [inputMode, setInputMode] = useState<InputMode>("usd");
+  const [rawAmount, setRawAmount] = useState("0.5");
   const [invoice, setInvoice] = useState<WeatherBetResult | null>(null);
   const [betPaid, setBetPaid] = useState(false);
   const [copying, setCopying] = useState(false);
@@ -275,7 +275,7 @@ function WeatherBetModal({
 
   const handleModeChange = (m: InputMode) => {
     setInputMode(m);
-    setRawAmount(m === "sats" ? "1000" : "1");
+    setRawAmount(m === "sats" ? "1000" : "0.5");
   };
 
   const generateMutation = useMutation({

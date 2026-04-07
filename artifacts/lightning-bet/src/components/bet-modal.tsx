@@ -52,8 +52,8 @@ function AmountToggle({ mode, onChange }: { mode: InputMode; onChange: (m: Input
 }
 
 export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: BetModalProps) {
-  const [inputMode, setInputMode]   = useState<InputMode>("sats");
-  const [rawAmount, setRawAmount]   = useState<string>("1000");
+  const [inputMode, setInputMode]   = useState<InputMode>("usd");
+  const [rawAmount, setRawAmount]   = useState<string>("0.5");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const createBet = useCreateBet();
@@ -98,7 +98,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
 
   const handleModeChange = (m: InputMode) => {
     setInputMode(m);
-    setRawAmount(m === "sats" ? "1000" : "1");
+    setRawAmount(m === "sats" ? "1000" : "0.5");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -171,7 +171,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
       toast({ title: "Pending invoice", description: "You can still pay this invoice from your wallet." });
     }
     setPaymentHash(null); setPaymentRequest(null);
-    setInputMode("sats"); setRawAmount("1000");
+    setInputMode("usd"); setRawAmount("0.5");
     setShowPreimageInput(false); setPreimageInput("");
     onClose();
   };
