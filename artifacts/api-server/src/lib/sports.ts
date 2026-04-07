@@ -117,10 +117,12 @@ export async function getSportsEvents(): Promise<{ upcoming: SportEvent[]; finis
 
   const now = Date.now();
 
-  // Strip any "upcoming" event whose kickoff was more than MAX_MATCH_DURATION_MS ago.
-  // TheSportsDB sometimes returns recently-started/finished games in eventsnextleague.
+  // TheSportsDB's eventsnextleague sometimes returns live/finished games.
+  // Only show events that are truly upcoming: status must be "upcoming" AND
+  // kickoff must not be more than MAX_MATCH_DURATION_MS in the past (safety net).
   const filteredUpcoming = upcoming
     .filter((ev) => {
+      if (ev.status !== "upcoming") return false;
       const kickoff = new Date(ev.startsAt).getTime();
       return kickoff > now - MAX_MATCH_DURATION_MS;
     })

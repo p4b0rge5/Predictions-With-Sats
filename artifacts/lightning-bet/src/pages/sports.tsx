@@ -940,7 +940,9 @@ export function Sports() {
           {!error && data && (() => {
             const now = Date.now();
             const visible = data.upcoming.filter(
-              (ev) => new Date(ev.startsAt).getTime() > now - 3 * 60 * 60 * 1000
+              (ev) =>
+                ev.status === "upcoming" &&
+                new Date(ev.startsAt).getTime() > now - 3 * 60 * 60 * 1000
             );
             return visible.length === 0
               ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No upcoming matches.</p>
