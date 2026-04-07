@@ -43,7 +43,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     }`
                   }
                 >
-                  <Icon className="h-4 w-4 shrink-0" />
+                  <Icon className={`h-4 w-4 shrink-0 ${href === "/" ? "text-green-400" : ""}`} />
                   {/* Label hidden on very small screens to prevent horizontal overflow */}
                   <span className="hidden min-[400px]:inline">{label}</span>
                 </NavLink>
