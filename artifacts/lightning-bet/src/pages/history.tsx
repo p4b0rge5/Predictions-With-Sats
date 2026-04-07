@@ -22,7 +22,28 @@ export function History() {
     );
   }
 
-  const OutcomeBadge = ({ outcome }: { outcome?: string }) => {
+  const DirectionBadge = ({ pct }: { pct?: number | null }) => {
+    if (pct == null) return null;
+    if (pct > 0)
+      return (
+        <span className="inline-flex items-center text-green-500 font-bold bg-green-500/10 px-2 py-0.5 rounded text-xs font-mono">
+          <ArrowUpRight className="h-3.5 w-3.5 mr-0.5" /> UP
+        </span>
+      );
+    if (pct < 0)
+      return (
+        <span className="inline-flex items-center text-red-500 font-bold bg-red-500/10 px-2 py-0.5 rounded text-xs font-mono">
+          <ArrowDownRight className="h-3.5 w-3.5 mr-0.5" /> DOWN
+        </span>
+      );
+    return (
+      <span className="inline-flex items-center text-yellow-500 font-bold bg-yellow-500/10 px-2 py-0.5 rounded text-xs font-mono">
+        <Minus className="h-3.5 w-3.5 mr-0.5" /> DRAW
+      </span>
+    );
+  };
+
+  const OutcomeBadge = ({ outcome, priceChangePercent }: { outcome?: string; priceChangePercent?: number | null }) => {
     if (outcome === "up")
       return (
         <span className="inline-flex items-center text-green-500 font-bold bg-green-500/10 px-2 py-0.5 rounded text-xs font-mono">
@@ -43,8 +64,11 @@ export function History() {
       );
     if (outcome === "no_liquidity")
       return (
-        <span className="inline-flex items-center text-blue-400 font-bold bg-blue-400/10 px-2 py-0.5 rounded text-xs font-mono">
-          <Minus className="h-3.5 w-3.5 mr-0.5" /> REFUND
+        <span className="inline-flex items-center gap-1">
+          <DirectionBadge pct={priceChangePercent} />
+          <span className="inline-flex items-center text-blue-400 font-bold bg-blue-400/10 px-2 py-0.5 rounded text-xs font-mono">
+            <Minus className="h-3.5 w-3.5 mr-0.5" /> REFUND
+          </span>
         </span>
       );
     return <span className="text-muted-foreground text-xs font-mono">PENDING</span>;
@@ -86,7 +110,7 @@ export function History() {
                       </span>
                       <span className="text-[10px] text-muted-foreground/50 font-mono">Window #{w.id}</span>
                     </div>
-                    <OutcomeBadge outcome={w.outcome} />
+                    <OutcomeBadge outcome={w.outcome} priceChangePercent={w.priceChangePercent} />
                   </div>
 
                   {/* Row 2: open → close (two stacked mini-labels, arrow centre) */}
@@ -150,7 +174,7 @@ export function History() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <OutcomeBadge outcome={w.outcome} />
+                          <OutcomeBadge outcome={w.outcome} priceChangePercent={w.priceChangePercent} />
                         </TableCell>
                         <TableCell className="text-right">
                           ${w.openPrice ? formatUsd(w.openPrice) : "—"}
