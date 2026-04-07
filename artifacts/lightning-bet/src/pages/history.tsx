@@ -1,14 +1,37 @@
-import { useGetMarketHistory, getGetMarketHistoryQueryKey } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 import { ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 
-export function History() {
-  const { data: history, isLoading } = useGetMarketHistory(
-    { limit: 50 },
-    { query: { refetchInterval: 15000, queryKey: getGetMarketHistoryQueryKey({ limit: 50 }) } }
-  );
+type AssetParam = "btc" | "eth" | "sol";
+
+interface HistoryItem {
+  id: number;
+  outcome: string | null;
+  openPrice: number | null;
+  closePrice: number | null;
+  priceChangePercent: number | null;
+  totalUpSats: number;
+  totalDownSats: number;
+  openedAt: string;
+  settledAt: string | null;
+}
+
+const API_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+
+async function fetchHistory(asset: AssetParam): Promise<HistoryItem[]> {
+  const res = await fetch(`${API_BASE}/api/market/history?limit=50&asset=${asset}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<HistoryItem[]>;
+}
+
+export function History({ asset = "btc" }: { asset?: AssetParam }) {
+  const { data: history, isLoading } = useQuery<HistoryItem[]>({
+    queryKey: ["/api/market/history", asset],
+    queryFn: () => fetchHistory(asset),
+    refetchInterval: 15000,
+  });
 
   const formatUsd = (n: number) =>
     n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -43,7 +66,7 @@ export function History() {
     );
   };
 
-  const OutcomeBadge = ({ outcome, priceChangePercent }: { outcome?: string; priceChangePercent?: number | null }) => {
+  const OutcomeBadge = ({ outcome, priceChangePercent }: { outcome?: string | null; priceChangePercent?: number | null }) => {
     if (outcome === "up")
       return (
         <span className="inline-flex items-center text-green-500 font-bold bg-green-500/10 px-2 py-0.5 rounded text-xs font-mono">
@@ -88,7 +111,7 @@ export function History() {
         </Card>
       ) : (
         <>
-          {/* ── Mobile: stacked cards (< md) ── */}
+          {/* Mobile: stacked cards */}
           <div className="md:hidden space-y-2">
             {history!.map((w) => {
               const totalSats = w.totalUpSats + w.totalDownSats;
@@ -102,7 +125,6 @@ export function History() {
                   className="rounded-xl border border-border/40 bg-card/40 px-4 py-3 font-mono flex flex-col gap-2"
                   data-testid={`row-history-${w.id}`}
                 >
-                  {/* Row 1: date + outcome badge */}
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col">
                       <span className="text-xs text-muted-foreground">
@@ -113,7 +135,6 @@ export function History() {
                     <OutcomeBadge outcome={w.outcome} priceChangePercent={w.priceChangePercent} />
                   </div>
 
-                  {/* Row 2: open → close (two stacked mini-labels, arrow centre) */}
                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Open</p>
@@ -126,7 +147,6 @@ export function History() {
                     </div>
                   </div>
 
-                  {/* Row 3: change % + pool (never overflows — both shrink-0 on own line) */}
                   <div className="flex items-center justify-between text-xs">
                     {w.priceChangePercent != null ? (
                       <span className={`font-bold ${changeColor}`}>
@@ -135,9 +155,7 @@ export function History() {
                       </span>
                     ) : <span />}
                     {totalSats > 0 && (
-                      <span className="text-muted-foreground">
-                        Pool: {formatSats(totalSats)} sats
-                      </span>
+                      <span className="text-muted-foreground">Pool: {formatSats(totalSats)} sats</span>
                     )}
                   </div>
                 </div>
@@ -145,7 +163,7 @@ export function History() {
             })}
           </div>
 
-          {/* ── Desktop: table (>= md) ── */}
+          {/* Desktop: table */}
           <Card className="hidden md:block">
             <CardContent className="p-0">
               <Table>

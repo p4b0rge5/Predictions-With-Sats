@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { Zap, Sun, Moon, Trophy, TrendingUp } from "lucide-react";
+import { Zap, Sun, Moon, Trophy, TrendingUp, Cloud } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 import { Button } from "@/components/ui/button";
 
@@ -22,6 +22,14 @@ const CATEGORIES = [
     href: "/sports",
     icon: <Trophy className="h-3.5 w-3.5 text-yellow-400 fill-yellow-400/20" />,
     routes: ["/sports"],
+    subNav: [] as { label: string; href: string }[],
+  },
+  {
+    key: "weather",
+    label: "Weather",
+    href: "/weather",
+    icon: <Cloud className="h-3.5 w-3.5 text-cyan-400" />,
+    routes: ["/weather"],
     subNav: [] as { label: string; href: string }[],
   },
 ];
@@ -103,7 +111,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground overflow-x-hidden selection:bg-primary selection:text-primary-foreground">
 
-      {/* ── Header — logo + theme toggle only ── */}
+      {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="px-3 sm:px-6 flex h-14 items-center justify-between max-w-5xl mx-auto w-full">
 
@@ -126,7 +134,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* ── Category + sub-nav ── */}
+      {/* Category + sub-nav */}
       <CategoryNav />
 
       <main

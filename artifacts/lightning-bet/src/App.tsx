@@ -8,6 +8,7 @@ import { History } from "@/pages/history";
 import { Stats } from "@/pages/stats";
 import { Guide } from "@/pages/guide";
 import { Sports } from "@/pages/sports";
+import { Weather } from "@/pages/weather";
 import NotFound from "@/pages/not-found";
 import { ThemeProvider } from "@/contexts/theme-context";
 
@@ -27,6 +28,7 @@ function App() {
                 <Route path="/history" element={<History />} />
                 <Route path="/stats" element={<Stats />} />
                 <Route path="/sports" element={<Sports />} />
+                <Route path="/weather" element={<Weather />} />
                 <Route path="/guide" element={<Guide />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

@@ -4,10 +4,15 @@ import { logger } from "./logger";
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/3";
 
 const LEAGUES = [
-  { id: "4396", name: "English League 1",    sport: "Soccer" },
-  { id: "4328", name: "Premier League",      sport: "Soccer" },
+  { id: "4328", name: "Premier League",        sport: "Soccer" },
+  { id: "4396", name: "English League 1",      sport: "Soccer" },
   { id: "4480", name: "UEFA Champions League", sport: "Soccer" },
-  { id: "4351", name: "Brazilian Série A",   sport: "Soccer" },
+  { id: "4351", name: "Brazilian Série A",     sport: "Soccer" },
+  { id: "4335", name: "La Liga",               sport: "Soccer" },
+  { id: "4332", name: "Serie A",               sport: "Soccer" },
+  { id: "4331", name: "Bundesliga",            sport: "Soccer" },
+  { id: "4334", name: "Ligue 1",               sport: "Soccer" },
+  { id: "4387", name: "MLS",                   sport: "Soccer" },
 ];
 
 export interface SportEvent {

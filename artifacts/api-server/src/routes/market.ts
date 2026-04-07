@@ -10,24 +10,35 @@ import {
   getWindowBetTotals,
   getWindowClosesAt,
 } from "../lib/market";
-import { getCachedBtcPrice, getLastKnownPrice } from "../lib/price";
+import { getCachedPrice, getLastKnownPrice, type CryptoAsset } from "../lib/price";
 
 const router: IRouter = Router();
 
+const VALID_ASSETS: CryptoAsset[] = ["btc", "eth", "sol"];
+
+function parseAsset(raw: unknown): CryptoAsset {
+  if (typeof raw === "string" && VALID_ASSETS.includes(raw as CryptoAsset)) {
+    return raw as CryptoAsset;
+  }
+  return "btc";
+}
+
 router.get("/market/current", async (req, res): Promise<void> => {
-  const [latestWin, btcPrice] = await Promise.allSettled([
-    getLatestWindow(),
-    getCachedBtcPrice(),
+  const asset = parseAsset(req.query.asset);
+
+  const [latestWin, assetPrice] = await Promise.allSettled([
+    getLatestWindow(asset),
+    getCachedPrice(asset),
   ]);
 
   const win = latestWin.status === "fulfilled" ? latestWin.value : null;
   const price =
-    btcPrice.status === "fulfilled"
-      ? btcPrice.value
-      : (getLastKnownPrice() ?? 0);
+    assetPrice.status === "fulfilled"
+      ? assetPrice.value
+      : (getLastKnownPrice(asset) ?? 0);
 
-  if (btcPrice.status === "rejected") {
-    req.log.warn({ err: btcPrice.reason }, "Failed to fetch BTC price for /market/current");
+  if (assetPrice.status === "rejected") {
+    req.log.warn({ err: assetPrice.reason, asset }, "Failed to fetch price for /market/current");
   }
 
   let windowId: number | null = null;
@@ -71,10 +82,11 @@ router.get("/market/history", async (req, res): Promise<void> => {
     return;
   }
 
-  const windows = await getSettledWindows(params.data.limit);
+  const asset = parseAsset(req.query.asset);
+  const windows = await getSettledWindows(params.data.limit, asset);
 
   const data = GetMarketHistoryResponse.parse(
-    windows.map(w => {
+    windows.map((w) => {
       const open = w.openPrice !== null ? parseFloat(w.openPrice) : null;
       const close = w.closePrice !== null ? parseFloat(w.closePrice) : null;
       const priceChangePercent =
