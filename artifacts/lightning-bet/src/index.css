@@ -257,3 +257,6 @@
 .font-mono {
   font-family: var(--app-font-mono);
 }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
