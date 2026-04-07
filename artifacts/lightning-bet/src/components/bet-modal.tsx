@@ -103,8 +103,8 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (satsAmount < 546) {
-      toast({ title: "Invalid amount", description: "Minimum bet is 546 sats (~$0.50)", variant: "destructive" });
+    if (usdAmount < 0.50) {
+      toast({ title: "Invalid amount", description: "Minimum bet is $0.50 USD", variant: "destructive" });
       return;
     }
     createBet.mutate(
@@ -210,7 +210,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                 </div>
               ) : (
                 <Input
-                  type="number" min="546" step="1"
+                  type="number" min="1" step="1"
                   value={rawAmount} onChange={(e) => setRawAmount(e.target.value)}
                   className="text-xl font-bold h-12 bg-card/50" autoFocus
                   data-testid="input-bet-amount"
@@ -218,7 +218,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
               )}
 
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Min: 546 sats (~$0.50)</span>
+                <span>Min: $0.50 USD</span>
                 {inputMode === "sats"
                   ? <span>≈ ${usdAmount.toFixed(2)} USD</span>
                   : <span>≈ {new Intl.NumberFormat("en-US").format(satsAmount)} sats</span>
@@ -248,7 +248,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
               className={`w-full h-12 text-base font-bold uppercase tracking-wider text-white ${
                 isUp ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
               }`}
-              disabled={createBet.isPending || satsAmount < 546}
+              disabled={createBet.isPending || usdAmount < 0.50}
               data-testid="button-submit-bet"
             >
               {createBet.isPending ? "Generating invoice..." : "Generate Invoice"}

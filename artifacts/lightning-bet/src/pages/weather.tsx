@@ -105,7 +105,7 @@ const GUIDE_STEPS = [
     color: "text-blue-400",
     bg: "bg-blue-400/10 border-blue-400/30",
     title: "Pay with Lightning",
-    body: "Choose a side, enter your amount, and scan the invoice QR code with any Lightning wallet (Phoenix, Alby, Wallet of Satoshi…). Minimum bet is 546 sats (~$0.50). No sign-up needed.",
+    body: "Choose a side, enter your amount, and scan the invoice QR code with any Lightning wallet (Phoenix, Alby, Wallet of Satoshi…). Minimum bet is $0.50 USD. No sign-up needed.",
   },
   {
     icon: CalendarDays,
@@ -239,7 +239,7 @@ function WeatherBetModal({
   const amountUsd = inputMode === "usd"
     ? (parseFloat(rawAmount) || 0)
     : (amountSats / BTC_SATS * APPROX_BTC_USD);
-  const isValid = amountSats >= MIN_SATS;
+  const isValid = amountUsd >= 0.50;
 
   const handleModeChange = (m: InputMode) => {
     setInputMode(m);
@@ -322,12 +322,12 @@ function WeatherBetModal({
                       className="pl-8 font-mono text-xl font-bold h-12 bg-card/50" placeholder="1.00" autoFocus />
                   </div>
                 ) : (
-                  <Input type="number" min={MIN_SATS} step="1"
+                  <Input type="number" min="1" step="1"
                     value={rawAmount} onChange={(e) => setRawAmount(e.target.value)}
                     className="font-mono text-xl font-bold h-12 bg-card/50" autoFocus />
                 )}
                 <div className="flex justify-between text-[10px] text-muted-foreground">
-                  <span>Min: 546 sats (~$0.50)</span>
+                  <span>Min: $0.50 USD</span>
                   {inputMode === "sats"
                     ? <span>≈ ${amountUsd.toFixed(2)} USD</span>
                     : <span>≈ {formatSats(amountSats)} sats</span>

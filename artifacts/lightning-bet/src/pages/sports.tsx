@@ -187,7 +187,7 @@ const GUIDE_STEPS = [
     color: "text-blue-400",
     bg: "bg-blue-400/10 border-blue-400/30",
     title: "Pay with Lightning",
-    body: "After picking a side, scan the QR code with any Lightning wallet (Phoenix, Wallet of Satoshi, Alby, etc.) or use WebLN if your browser supports it. Minimum bet is 546 sats (~$0.50).",
+    body: "After picking a side, scan the QR code with any Lightning wallet (Phoenix, Wallet of Satoshi, Alby, etc.) or use WebLN if your browser supports it. Minimum bet is $0.50 USD.",
   },
   {
     icon: Handshake,
@@ -344,8 +344,8 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const sats = satsNum;
-    if (!sats || sats < MIN_SATS) {
-      toast({ title: "Invalid amount", description: `Minimum is ${MIN_SATS} sats`, variant: "destructive" });
+    if (!sats || usdNum < 0.50) {
+      toast({ title: "Invalid amount", description: "Minimum bet is $0.50 USD", variant: "destructive" });
       return;
     }
     if (!event || !direction) return;
@@ -424,7 +424,7 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
   };
 
   const isOpen = !!event && !!direction;
-  const validSats = satsNum >= MIN_SATS;
+  const validSats = usdNum >= 0.50;
   const teamLabel = direction && event ? directionLabel(direction, event) : "";
   const colors = direction ? DIRECTION_COLORS[direction] : DIRECTION_COLORS.home;
 
@@ -458,12 +458,12 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
                     className="pl-8 text-xl font-bold h-12 bg-card/50" autoFocus />
                 </div>
               ) : (
-                <Input id="sport-amount" type="number" min={MIN_SATS} step="1"
+                <Input id="sport-amount" type="number" min="1" step="1"
                   value={rawAmount} onChange={(e) => setRawAmount(e.target.value)}
                   className="text-xl font-bold h-12 bg-card/50" autoFocus />
               )}
               <div className="flex justify-between text-[11px] text-muted-foreground">
-                <span>Min: {formatSats(MIN_SATS)} sats</span>
+                <span>Min: $0.50 USD</span>
                 {inputMode === "sats"
                   ? <span>≈ ${usdNum.toFixed(2)} USD</span>
                   : <span>≈ {formatSats(satsNum)} sats</span>

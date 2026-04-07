@@ -115,7 +115,7 @@ const GUIDE_STEPS = [
     color: "text-yellow-400",
     bg: "bg-yellow-400/10 border-yellow-400/30",
     title: "Enter Amount & Pay",
-    body: "Minimum is 546 sats (~$0.50). After choosing a direction, enter the amount and tap Generate Invoice. Scan the QR code with any Lightning wallet (Phoenix, Alby, Wallet of Satoshi…) or click Pay with WebLN.",
+    body: "Minimum is $0.50 USD. After choosing a direction, enter the amount and tap Generate Invoice. Scan the QR code with any Lightning wallet (Phoenix, Alby, Wallet of Satoshi…) or click Pay with WebLN.",
   },
   {
     icon: TrendingUp,
