@@ -22,7 +22,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {/* Logo — shrinks to icon-only on very small screens */}
           <div className="flex items-center gap-1.5 font-mono font-bold tracking-tight shrink-0">
             <Zap className="h-5 w-5 text-yellow-400 fill-yellow-400 shrink-0" />
-            <span className="text-sm sm:text-base">
+            <span className="text-xs sm:text-sm">
               Prediction With <span className="text-yellow-400">SATS</span>
             </span>
           </div>
