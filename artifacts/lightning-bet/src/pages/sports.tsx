@@ -215,7 +215,7 @@ const GUIDE_STEPS = [
   },
 ];
 
-function FootballGuide() {
+function FootballGuide({ onDone }: { onDone?: () => void } = {}) {
   return (
     <div className="space-y-3 max-w-xl mx-auto">
       <div className="flex items-center gap-2 mb-4">
@@ -236,6 +236,13 @@ function FootballGuide() {
           </div>
         );
       })}
+      <button
+        onClick={onDone}
+        className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-yellow-400/10 border border-yellow-400/30 text-yellow-400 font-mono font-bold text-sm uppercase tracking-wider hover:bg-yellow-400/20 transition-colors"
+      >
+        <Zap className="h-4 w-4 fill-yellow-400/30" />
+        Start Betting
+      </button>
     </div>
   );
 }
@@ -694,7 +701,7 @@ export function Sports() {
 
       {/* ── Guide ── */}
       {activeTab === "guide" && (
-        activeSportDef.key === "football" ? <FootballGuide /> : (
+        activeSportDef.key === "football" ? <FootballGuide onDone={() => setActiveTab("upcoming")} /> : (
           <p className="text-center text-muted-foreground text-sm py-10 font-mono">Guide coming soon.</p>
         )
       )}
