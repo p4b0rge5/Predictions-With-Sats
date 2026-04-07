@@ -56,6 +56,8 @@ export function Home() {
   const [transitioning, setTransitioning] = useState(false);
   const transitionedWindowId = useRef<number | null>(null);
   const didTransitionRef = useRef(false);
+  // Track previous secsLeft so we only trigger on the 0 transition, not on mount
+  const prevSecsLeftRef = useRef<number | null>(null);
 
   // When new window arrives from server, clear the transition
   useEffect(() => {
@@ -84,9 +86,16 @@ export function Home() {
     return () => clearInterval(id);
   }, []);
 
-  // When timer hits zero: immediately show next window & trigger refetch
+  // When timer hits zero: immediately show next window & trigger refetch.
+  // prevSecsLeftRef guards against firing on mount (secsLeft starts at 0).
   useEffect(() => {
-    if (secsLeft === 0 && !didTransitionRef.current && market?.windowId != null) {
+    if (
+      secsLeft === 0 &&
+      prevSecsLeftRef.current !== null &&
+      prevSecsLeftRef.current > 0 &&
+      !didTransitionRef.current &&
+      market?.windowId != null
+    ) {
       didTransitionRef.current = true;
       transitionedWindowId.current = market.windowId;
       setTransitioning(true);
@@ -94,6 +103,7 @@ export function Home() {
       setPricePoints([]);
       void refetch();
     }
+    prevSecsLeftRef.current = secsLeft;
   }, [secsLeft]);
   // ────────────────────────────────────────────────────────────────────────────
 
