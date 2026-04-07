@@ -37,7 +37,7 @@ function CurrentPriceDot({ cx, cy, index, dataLength }: CustomDotProps) {
 
 export function Home() {
   // Refetch every 3 s for responsive price/chart updates
-  const { data: market, isLoading } = useGetCurrentMarket({
+  const { data: market, isLoading, refetch } = useGetCurrentMarket({
     query: { refetchInterval: 3000, queryKey: getGetCurrentMarketQueryKey() },
   });
   const [betDirection, setBetDirection] = useState<"up" | "down" | null>(null);
@@ -52,9 +52,28 @@ export function Home() {
   // ── 1-second countdown ──────────────────────────────────────────────────────
   const [secsLeft, setSecsLeft] = useState<number>(0);
 
-  // Sync countdown whenever fresh server data arrives
+  // ── Optimistic window transition ────────────────────────────────────────────
+  const [transitioning, setTransitioning] = useState(false);
+  const transitionedWindowId = useRef<number | null>(null);
+  const didTransitionRef = useRef(false);
+
+  // When new window arrives from server, clear the transition
   useEffect(() => {
-    if (market) setSecsLeft(market.secondsRemaining ?? 0);
+    if (
+      market?.windowId != null &&
+      transitionedWindowId.current !== null &&
+      market.windowId !== transitionedWindowId.current
+    ) {
+      setTransitioning(false);
+      didTransitionRef.current = false;
+      transitionedWindowId.current = null;
+    }
+  }, [market?.windowId]);
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // Sync countdown whenever fresh server data arrives (skip during transition)
+  useEffect(() => {
+    if (market && !didTransitionRef.current) setSecsLeft(market.secondsRemaining ?? 0);
   }, [market?.secondsRemaining, market?.windowId]);
 
   // Local 1-second ticker — decrement until zero
@@ -64,6 +83,18 @@ export function Home() {
     }, 1000);
     return () => clearInterval(id);
   }, []);
+
+  // When timer hits zero: immediately show next window & trigger refetch
+  useEffect(() => {
+    if (secsLeft === 0 && !didTransitionRef.current && market?.windowId != null) {
+      didTransitionRef.current = true;
+      transitionedWindowId.current = market.windowId;
+      setTransitioning(true);
+      priceHistory.current = [];
+      setPricePoints([]);
+      void refetch();
+    }
+  }, [secsLeft]);
   // ────────────────────────────────────────────────────────────────────────────
 
 
@@ -99,13 +130,22 @@ export function Home() {
 
   const { status, btcPriceUsd, openPrice, totalUpSats, totalDownSats, closesAt, windowId } = market;
 
-  const isClosed = status === "closed" || secsLeft < 30;
-  const isNone = status === "none";
+  // ── Optimistic display values (override during transition) ──────────────────
+  const nextClosesAtMs = closesAt ? new Date(closesAt).getTime() + 5 * 60 * 1000 : null;
+  const displayWindowId  = transitioning ? (windowId ?? 0) + 1 : windowId;
+  const displayClosesAt  = transitioning && nextClosesAtMs ? new Date(nextClosesAtMs).toISOString() : closesAt;
+  const displayOpenPrice = transitioning ? null : openPrice;
+  const displayUpSats    = transitioning ? 0 : totalUpSats;
+  const displayDownSats  = transitioning ? 0 : totalDownSats;
+  const displaySecsLeft  = transitioning ? 300 : secsLeft;
+  const isClosed         = transitioning ? false : (status === "closed" || secsLeft < 30);
+  const isNone           = transitioning ? false : status === "none";
+  // ────────────────────────────────────────────────────────────────────────────
 
-  const totalSats = totalUpSats + totalDownSats;
-  const upPercent = totalSats > 0 ? (totalUpSats / totalSats) * 100 : 50;
+  const totalSats = displayUpSats + displayDownSats;
+  const upPercent = totalSats > 0 ? (displayUpSats / totalSats) * 100 : 50;
 
-  const priceChangeDollar = openPrice ? btcPriceUsd - openPrice : 0;
+  const priceChangeDollar = displayOpenPrice ? btcPriceUsd - displayOpenPrice : 0;
   const priceChangeAbs = Math.abs(priceChangeDollar);
   const priceUp = priceChangeDollar > 0;
   const priceDown = priceChangeDollar < 0;
@@ -114,19 +154,19 @@ export function Home() {
   const formatUsd = (n: number) =>
     n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const mins = Math.floor(secsLeft / 60);
-  const secs = secsLeft % 60;
+  const mins = Math.floor(displaySecsLeft / 60);
+  const secs = displaySecsLeft % 60;
 
   const windowTimeLabel = (() => {
-    if (!closesAt) return "";
-    const closeDate = new Date(closesAt);
+    if (!displayClosesAt) return "";
+    const closeDate = new Date(displayClosesAt);
     const openDate = new Date(closeDate.getTime() - 5 * 60 * 1000);
     return `${format(openDate, "MMM d")}, ${format(openDate, "HH:mm")}–${format(closeDate, "HH:mm")} ET`;
   })();
 
   const chartData = pricePoints.map((p) => ({ time: p.time, price: p.price }));
 
-  const allPrices = [...chartData.map((d) => d.price), ...(openPrice ? [openPrice] : [])];
+  const allPrices = [...chartData.map((d) => d.price), ...(displayOpenPrice ? [displayOpenPrice] : [])];
   const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : btcPriceUsd - 50;
   const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) : btcPriceUsd + 50;
   const pad = Math.max((maxPrice - minPrice) * 0.2, 20);
@@ -153,7 +193,7 @@ export function Home() {
               </h1>
               <p className="text-xs text-muted-foreground font-mono mt-0.5">
                 {windowTimeLabel}
-                {windowId && <span className="ml-2 opacity-50">· Window #{windowId}</span>}
+                {displayWindowId && <span className="ml-2 opacity-50">· Window #{displayWindowId}</span>}
               </p>
             </div>
           </div>
@@ -166,7 +206,7 @@ export function Home() {
                 Price to beat
               </p>
               <p className="text-sm sm:text-xl font-mono font-bold leading-tight truncate" data-testid="text-open-price">
-                ${openPrice ? formatUsd(openPrice) : "—"}
+                ${displayOpenPrice ? formatUsd(displayOpenPrice) : "—"}
               </p>
             </div>
 
@@ -176,7 +216,7 @@ export function Home() {
                 <p className="text-[9px] sm:text-xs text-muted-foreground font-mono uppercase tracking-wider">
                   Now
                 </p>
-                {openPrice && (
+                {displayOpenPrice && (
                   <span
                     className={`flex items-center gap-0.5 text-[9px] sm:text-xs font-mono font-bold ${
                       priceUp ? "text-green-400" : priceDown ? "text-red-400" : "text-muted-foreground"
@@ -202,7 +242,7 @@ export function Home() {
               </p>
               <div
                 className={`flex items-baseline justify-end gap-0.5 sm:gap-1 font-mono font-bold leading-tight ${
-                  secsLeft < 30 ? "text-red-500 animate-pulse" : "text-red-400"
+                  displaySecsLeft < 30 ? "text-red-500 animate-pulse" : "text-red-400"
                 }`}
                 data-testid="text-countdown"
               >
@@ -262,9 +302,9 @@ export function Home() {
                     formatter={(v: number) => [`$${formatUsd(v)}`, "BTC"]}
                     cursor={{ stroke: "rgba(249,115,22,0.3)", strokeWidth: 1 }}
                   />
-                  {openPrice && (
+                  {displayOpenPrice && (
                     <ReferenceLine
-                      y={openPrice}
+                      y={displayOpenPrice}
                       stroke="#f59e0b"
                       strokeDasharray="6 4"
                       strokeWidth={1.5}
@@ -313,7 +353,7 @@ export function Home() {
                 >
                   {isClosed ? "Settling" : "Live"}: ${formatUsd(btcPriceUsd)}
                 </span>
-                {openPrice && (
+                {displayOpenPrice && (
                   <span
                     className={`text-[10px] sm:text-xs font-mono ${
                       priceUp ? "text-green-400" : priceDown ? "text-red-400" : "text-muted-foreground"
@@ -339,7 +379,7 @@ export function Home() {
                 BET UP
               </div>
               <span className="text-[10px] sm:text-xs font-normal opacity-70">
-                {formatSats(totalUpSats)} sats in pool
+                {formatSats(displayUpSats)} sats in pool
               </span>
             </Button>
 
@@ -354,7 +394,7 @@ export function Home() {
                 BET DOWN
               </div>
               <span className="text-[10px] sm:text-xs font-normal opacity-70">
-                {formatSats(totalDownSats)} sats in pool
+                {formatSats(displayDownSats)} sats in pool
               </span>
             </Button>
           </div>
