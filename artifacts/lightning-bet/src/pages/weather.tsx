@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -230,15 +230,47 @@ function WeatherBetModal({
   const [inputMode, setInputMode] = useState<InputMode>("sats");
   const [rawAmount, setRawAmount] = useState("1000");
   const [invoice, setInvoice] = useState<WeatherBetResult | null>(null);
-  const [webLnPaid, setWebLnPaid] = useState(false);
+  const [betPaid, setBetPaid] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [btcPrice, setBtcPrice] = useState(APPROX_BTC_USD);
+  const [weblnAvailable, setWeblnAvailable] = useState(false);
+  const [showPreimage, setShowPreimage] = useState(false);
+  const [preimageInput, setPreimageInput] = useState("");
+  const [verifyingPreimage, setVerifyingPreimage] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => { setWeblnAvailable(typeof window.webln !== "undefined"); }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/market/current?asset=btc`)
+      .then((r) => r.json())
+      .then((d: { btcPriceUsd?: number }) => { if (d.btcPriceUsd && d.btcPriceUsd > 0) setBtcPrice(d.btcPriceUsd); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const hash = invoice?.paymentHash;
+    if (!hash || betPaid) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/weather/bets/${hash}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { status: string };
+        if (data.status === "paid" || data.status === "won") {
+          setBetPaid(true);
+          clearInterval(pollRef.current!);
+        }
+      } catch { /* ignore */ }
+    }, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [invoice?.paymentHash, betPaid]);
 
   const amountSats = inputMode === "sats"
     ? (parseInt(rawAmount, 10) || 0)
-    : usdToSats(parseFloat(rawAmount) || 0);
+    : Math.round((parseFloat(rawAmount) || 0) / btcPrice * BTC_SATS);
   const amountUsd = inputMode === "usd"
     ? (parseFloat(rawAmount) || 0)
-    : (amountSats / BTC_SATS * APPROX_BTC_USD);
+    : (amountSats / BTC_SATS * btcPrice);
   const isValid = amountUsd >= 0.50;
 
   const handleModeChange = (m: InputMode) => {
@@ -268,7 +300,7 @@ function WeatherBetModal({
     try {
       await window.webln.enable();
       await window.webln.sendPayment(invoice.paymentRequest);
-      setWebLnPaid(true);
+      setBetPaid(true);
       toast({ title: "Payment sent!", description: "Your weather bet is confirmed." });
     } catch {
       toast({ title: "WebLN failed", description: "Please scan the QR code instead.", variant: "destructive" });
@@ -282,13 +314,32 @@ function WeatherBetModal({
     setTimeout(() => setCopying(false), 2000);
   };
 
+  const handleManualVerify = async () => {
+    if (!invoice || preimageInput.trim().length !== 64) return;
+    setVerifyingPreimage(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/weather/bets/${invoice.paymentHash}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preimage: preimageInput.trim() }),
+      });
+      if (!res.ok) throw new Error("Verification failed");
+      setBetPaid(true);
+      toast({ title: "Payment verified!", description: "Your weather bet is confirmed." });
+    } catch {
+      toast({ title: "Verification failed", description: "Invalid preimage or payment not found.", variant: "destructive" });
+    } finally {
+      setVerifyingPreimage(false);
+    }
+  };
+
   const directionLabel = direction === "yes" ? "YES" : "NO";
   const directionColor = direction === "yes" ? "text-green-400" : "text-red-400";
   const directionBg = direction === "yes" ? "bg-green-500/10 border-green-500/30" : "bg-red-500/10 border-red-500/30";
 
   return (
     <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-sm font-mono">
+      <DialogContent className="sm:max-w-md border-2 border-primary/20 bg-background/95 backdrop-blur font-mono max-h-[85dvh] overflow-y-auto w-[calc(100vw-2rem)] sm:w-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="font-mono text-sm uppercase tracking-widest flex items-center gap-2">
             <Cloud className="h-4 w-4 text-cyan-400" />
@@ -351,43 +402,76 @@ function WeatherBetModal({
                 }
               </div>
               <Button
-                className="w-full"
+                className={`w-full h-12 text-base font-bold uppercase tracking-wider text-white ${direction === "yes" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}`}
                 disabled={!isValid || generateMutation.isPending}
                 onClick={() => generateMutation.mutate()}
               >
                 {generateMutation.isPending ? "Generating…" : "Generate Invoice"}
               </Button>
             </>
-          ) : webLnPaid ? (
+          ) : betPaid ? (
             <div className="flex flex-col items-center gap-3 py-4">
               <CheckCircle2 className="h-12 w-12 text-green-400" />
-              <p className="text-sm font-bold text-green-400">Bet confirmed!</p>
+              <p className="text-sm font-bold text-green-400 uppercase tracking-wider">Bet Confirmed!</p>
               <p className="text-xs text-muted-foreground text-center">
                 Check results on the day after {formatDate(market.date)}.
               </p>
               <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="pt-1 space-y-3">
+              <div className="text-center">
+                <p className="text-xl font-bold text-yellow-400">Pay {formatSats(invoice.amountSats)} sats</p>
+                <p className={`text-xs mt-0.5 ${directionColor}`}>
+                  {directionLabel} · {market.city} · {formatDate(market.date)}
+                </p>
+              </div>
               <div className="flex justify-center">
-                <QRCodeSVG value={invoice.paymentRequest.toUpperCase()} size={200} className="rounded-lg" />
+                <div className="bg-white p-2.5 rounded-xl shadow-lg cursor-pointer relative group" onClick={copyInvoice}>
+                  <QRCodeSVG value={invoice.paymentRequest} size={180} level="M" includeMargin={false} />
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
+                    <Copy className="h-8 w-8 text-white" />
+                  </div>
+                </div>
               </div>
-              <p className="text-[10px] text-muted-foreground text-center">
-                Scan with any Lightning wallet · {formatSats(invoice.amountSats)} sats
-              </p>
-              <div className="flex gap-2">
-                {window.webln && (
-                  <Button size="sm" className="flex-1 text-xs" onClick={handleWebLn}>
-                    <Zap className="h-3 w-3 mr-1 fill-yellow-400/30" /> Pay WebLN
-                  </Button>
-                )}
-                <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={copyInvoice}>
-                  <Copy className="h-3 w-3 mr-1" /> {copying ? "Copied!" : "Copy"}
+              <button type="button" onClick={copyInvoice}
+                className="w-full flex items-center gap-2 px-3 py-2.5 bg-muted/50 rounded-lg border border-border/60 hover:bg-muted/80 transition-colors text-left overflow-hidden">
+                <span className="flex-1 min-w-0 text-xs font-mono text-muted-foreground truncate">{invoice.paymentRequest.slice(0, 30)}…</span>
+                <span className="shrink-0 flex items-center gap-1.5 text-xs text-primary font-bold uppercase tracking-wider">
+                  <Copy className="h-3.5 w-3.5" /> {copying ? "Copied!" : "Copy"}
+                </span>
+              </button>
+              <div className="flex items-center justify-center gap-2 text-yellow-500 text-sm animate-pulse uppercase tracking-wider font-bold">
+                <Clock className="h-4 w-4 shrink-0" /> Waiting for payment…
+              </div>
+              {weblnAvailable && (
+                <Button onClick={handleWebLn}
+                  className="w-full h-10 font-bold uppercase tracking-wider bg-yellow-500 hover:bg-yellow-400 text-black text-sm">
+                  <Zap className="h-4 w-4 mr-2" />
+                  Pay with WebLN
                 </Button>
+              )}
+              <div className="border border-muted rounded-lg overflow-hidden">
+                <button type="button" onClick={() => setShowPreimage(!showPreimage)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-[11px] text-muted-foreground uppercase tracking-wider hover:bg-muted/30 transition-colors">
+                  <span className="flex items-center gap-2"><ShieldCheck className="h-3.5 w-3.5" /> Already paid? Verify manually</span>
+                  {showPreimage ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+                {showPreimage && (
+                  <div className="px-3 pb-3 space-y-2 bg-muted/10 border-t border-muted">
+                    <p className="text-xs text-muted-foreground pt-2 leading-relaxed">
+                      Paste the 64-char hex <strong className="text-foreground">preimage</strong> shown by your wallet after payment.
+                    </p>
+                    <Input placeholder="Paste 64-char preimage…" value={preimageInput}
+                      onChange={(e) => setPreimageInput(e.target.value)} className="font-mono text-xs bg-background" />
+                    <Button onClick={handleManualVerify} disabled={verifyingPreimage || preimageInput.trim().length !== 64}
+                      className="w-full font-bold uppercase tracking-wider" variant="outline" size="sm">
+                      <ShieldCheck className="h-4 w-4 mr-2" />
+                      {verifyingPreimage ? "Verifying…" : "Confirm Payment"}
+                    </Button>
+                  </div>
+                )}
               </div>
-              <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={onClose}>
-                Close
-              </Button>
             </div>
           )}
         </div>

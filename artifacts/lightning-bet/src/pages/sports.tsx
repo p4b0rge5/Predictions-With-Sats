@@ -299,9 +299,17 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
   const [showPreimage, setShowPreimage] = useState(false);
   const [preimageInput, setPreimageInput] = useState("");
   const [verifyingPreimage, setVerifyingPreimage] = useState(false);
+  const [btcPrice, setBtcPrice] = useState(APPROX_BTC_USD);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => { setWeblnAvailable(typeof window.webln !== "undefined"); }, []);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/market/current?asset=btc"))
+      .then((r) => r.json())
+      .then((d: { btcPriceUsd?: number }) => { if (d.btcPriceUsd && d.btcPriceUsd > 0) setBtcPrice(d.btcPriceUsd); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!paymentHash) return;
@@ -323,10 +331,10 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
 
   const satsNum = inputMode === "sats"
     ? (parseInt(rawAmount, 10) || 0)
-    : Math.round((parseFloat(rawAmount) || 0) / APPROX_BTC_USD * BTC_SATS);
+    : Math.round((parseFloat(rawAmount) || 0) / btcPrice * BTC_SATS);
   const usdNum = inputMode === "usd"
     ? (parseFloat(rawAmount) || 0)
-    : (satsNum / BTC_SATS * APPROX_BTC_USD);
+    : (satsNum / BTC_SATS * btcPrice);
 
   const handleModeChange = (m: InputMode) => {
     setInputMode(m);
