@@ -198,6 +198,25 @@ function PoolBar({ yesSats, noSats }: { yesSats: number; noSats: number }) {
 // Bet Modal
 // ---------------------------------------------------------------------------
 
+type InputMode = "sats" | "usd";
+const SATS_PRESETS_W = [546, 1000, 5000, 10000];
+const USD_PRESETS_W  = [0.5, 1, 5, 10];
+
+function WeatherAmountToggle({ mode, onChange }: { mode: InputMode; onChange: (m: InputMode) => void }) {
+  return (
+    <div className="flex gap-0 p-0.5 rounded-md bg-muted/50 border border-border/40 w-fit self-end">
+      {(["sats", "usd"] as InputMode[]).map((m) => (
+        <button key={m} type="button" onClick={() => onChange(m)}
+          className={`px-3 py-1 rounded text-[11px] font-mono font-bold uppercase tracking-wider transition-colors ${
+            mode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+          }`}>
+          {m === "sats" ? "⚡ Sats" : "$ USD"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function WeatherBetModal({
   market,
   direction,
@@ -208,20 +227,31 @@ function WeatherBetModal({
   onClose: () => void;
 }) {
   const { toast } = useToast();
-  const [amountUsd, setAmountUsd] = useState("1.00");
+  const [inputMode, setInputMode] = useState<InputMode>("sats");
+  const [rawAmount, setRawAmount] = useState("1000");
   const [invoice, setInvoice] = useState<WeatherBetResult | null>(null);
   const [webLnPaid, setWebLnPaid] = useState(false);
   const [copying, setCopying] = useState(false);
 
-  const amountSats = usdToSats(parseFloat(amountUsd) || 0);
-  const isValid = amountSats >= MIN_SATS && parseFloat(amountUsd) > 0;
+  const amountSats = inputMode === "sats"
+    ? (parseInt(rawAmount, 10) || 0)
+    : usdToSats(parseFloat(rawAmount) || 0);
+  const amountUsd = inputMode === "usd"
+    ? (parseFloat(rawAmount) || 0)
+    : (amountSats / BTC_SATS * APPROX_BTC_USD);
+  const isValid = amountSats >= MIN_SATS;
+
+  const handleModeChange = (m: InputMode) => {
+    setInputMode(m);
+    setRawAmount(m === "sats" ? "1000" : "1");
+  };
 
   const generateMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`${API_BASE}/api/weather/bets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ marketId: market.id, direction, amountUsd: parseFloat(amountUsd) }),
+        body: JSON.stringify({ marketId: market.id, direction, amountUsd }),
       });
       if (!res.ok) {
         const err = (await res.json()) as { error?: string };
@@ -277,20 +307,48 @@ function WeatherBetModal({
 
           {!invoice ? (
             <>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground uppercase tracking-wider">Amount (USD)</label>
-                <Input
-                  type="number"
-                  min="0.50"
-                  step="0.50"
-                  value={amountUsd}
-                  onChange={(e) => setAmountUsd(e.target.value)}
-                  className="font-mono text-sm"
-                  placeholder="1.00"
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  ≈ {formatSats(amountSats)} sats · min 546 sats (~$0.50)
-                </p>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Amount ({inputMode === "sats" ? "Sats" : "USD"})
+                  </label>
+                  <WeatherAmountToggle mode={inputMode} onChange={handleModeChange} />
+                </div>
+                {inputMode === "usd" ? (
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                    <Input type="number" min="0" step="any"
+                      value={rawAmount} onChange={(e) => setRawAmount(e.target.value)}
+                      className="pl-8 font-mono text-xl font-bold h-12 bg-card/50" placeholder="1.00" autoFocus />
+                  </div>
+                ) : (
+                  <Input type="number" min={MIN_SATS} step="1"
+                    value={rawAmount} onChange={(e) => setRawAmount(e.target.value)}
+                    className="font-mono text-xl font-bold h-12 bg-card/50" autoFocus />
+                )}
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>Min: 546 sats (~$0.50)</span>
+                  {inputMode === "sats"
+                    ? <span>≈ ${amountUsd.toFixed(2)} USD</span>
+                    : <span>≈ {formatSats(amountSats)} sats</span>
+                  }
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {inputMode === "sats"
+                  ? SATS_PRESETS_W.map((v) => (
+                      <button type="button" key={v} onClick={() => setRawAmount(String(v))}
+                        className="py-1.5 rounded-md border border-border/50 text-[11px] font-mono hover:bg-muted/50 transition-colors">
+                        {v >= 1000 ? `${v / 1000}k` : v}
+                      </button>
+                    ))
+                  : USD_PRESETS_W.map((v) => (
+                      <button type="button" key={v} onClick={() => setRawAmount(String(v))}
+                        className="py-1.5 rounded-md border border-border/50 text-[11px] font-mono hover:bg-muted/50 transition-colors">
+                        ${v}
+                      </button>
+                    ))
+                }
               </div>
               <Button
                 className="w-full"

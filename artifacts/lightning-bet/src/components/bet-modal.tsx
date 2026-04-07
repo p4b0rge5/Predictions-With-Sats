@@ -27,27 +27,53 @@ declare global {
   }
 }
 
+type InputMode = "sats" | "usd";
+
+const SATS_PRESETS = [546, 1000, 5000, 10000];
+const USD_PRESETS  = [0.5, 1, 5, 10];
+
+function AmountToggle({ mode, onChange }: { mode: InputMode; onChange: (m: InputMode) => void }) {
+  return (
+    <div className="flex gap-0 p-0.5 rounded-md bg-muted/50 border border-border/40 w-fit self-end">
+      {(["sats", "usd"] as InputMode[]).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => onChange(m)}
+          className={`px-3 py-1 rounded text-[11px] font-mono font-bold uppercase tracking-wider transition-colors ${
+            mode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {m === "sats" ? "⚡ Sats" : "$ USD"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: BetModalProps) {
-  const [amountUsd, setAmountUsd] = useState<string>("1");
+  const [inputMode, setInputMode]   = useState<InputMode>("sats");
+  const [rawAmount, setRawAmount]   = useState<string>("1000");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const createBet = useCreateBet();
 
-  const [paymentHash, setPaymentHash] = useState<string | null>(null);
+  const [paymentHash, setPaymentHash]   = useState<string | null>(null);
   const [paymentRequest, setPaymentRequest] = useState<string | null>(null);
   const [weblnAvailable, setWeblnAvailable] = useState(false);
-  const [weblnPaying, setWeblnPaying] = useState(false);
-
+  const [weblnPaying, setWeblnPaying]   = useState(false);
   const [showPreimageInput, setShowPreimageInput] = useState(false);
   const [preimageInput, setPreimageInput] = useState("");
   const [verifyingPreimage, setVerifyingPreimage] = useState(false);
 
-  const amountNum = parseFloat(amountUsd);
-  const satsAmount = !isNaN(amountNum) && amountNum > 0 ? Math.floor((amountNum / btcPriceUsd) * 100000000) : 0;
+  const satsAmount = inputMode === "sats"
+    ? (parseInt(rawAmount, 10) || 0)
+    : (btcPriceUsd > 0 ? Math.floor((parseFloat(rawAmount) || 0) / btcPriceUsd * 100_000_000) : 0);
+  const usdAmount = inputMode === "usd"
+    ? (parseFloat(rawAmount) || 0)
+    : (satsAmount / 100_000_000 * btcPriceUsd);
 
-  useEffect(() => {
-    setWeblnAvailable(typeof window.webln !== "undefined");
-  }, []);
+  useEffect(() => { setWeblnAvailable(typeof window.webln !== "undefined"); }, []);
 
   const { data: betStatus } = useGetBetStatus(paymentHash || "", {
     query: {
@@ -64,32 +90,28 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
   useEffect(() => {
     if (betStatus?.status === "paid" && paymentHash) {
       saveBetHash(paymentHash);
-      toast({
-        title: "Payment confirmed!",
-        description: "Your bet is confirmed. Check the result on the home page.",
-        duration: 4000,
-      });
+      toast({ title: "Payment confirmed!", description: "Your bet is confirmed. Check the result on the home page.", duration: 4000 });
     }
   }, [betStatus?.status, paymentHash]);
 
   const isUp = direction === "up";
 
+  const handleModeChange = (m: InputMode) => {
+    setInputMode(m);
+    setRawAmount(m === "sats" ? "1000" : "1");
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amountNum || amountNum < 0.5) {
-      toast({ title: "Invalid amount", description: "Minimum bet is $0.50", variant: "destructive" });
+    if (satsAmount < 546) {
+      toast({ title: "Invalid amount", description: "Minimum bet is 546 sats (~$0.50)", variant: "destructive" });
       return;
     }
     createBet.mutate(
-      { data: { amountUsd: amountNum, direction } },
+      { data: { amountUsd: usdAmount, direction } },
       {
-        onSuccess: (data) => {
-          setPaymentHash(data.paymentHash);
-          setPaymentRequest(data.paymentRequest);
-        },
-        onError: (err) => {
-          toast({ title: "Error creating bet", description: err.message || "Unknown error", variant: "destructive" });
-        },
+        onSuccess: (data) => { setPaymentHash(data.paymentHash); setPaymentRequest(data.paymentRequest); },
+        onError: (err) => { toast({ title: "Error creating bet", description: err.message || "Unknown error", variant: "destructive" }); },
       }
     );
   };
@@ -106,9 +128,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
       if (!msg.toLowerCase().includes("user rejected") && !msg.toLowerCase().includes("cancelled")) {
         toast({ title: "Payment failed", description: msg, variant: "destructive" });
       }
-    } finally {
-      setWeblnPaying(false);
-    }
+    } finally { setWeblnPaying(false); }
   };
 
   const submitPreimage = async (preimage: string) => {
@@ -139,27 +159,20 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Verification failed";
       toast({ title: "Verification failed", description: msg, variant: "destructive" });
-    } finally {
-      setVerifyingPreimage(false);
-    }
+    } finally { setVerifyingPreimage(false); }
   };
 
   const copyToClipboard = () => {
-    if (paymentRequest) {
-      navigator.clipboard.writeText(paymentRequest);
-      toast({ title: "Copied!", duration: 2000 });
-    }
+    if (paymentRequest) { navigator.clipboard.writeText(paymentRequest); toast({ title: "Copied!", duration: 2000 }); }
   };
 
   const handleClose = () => {
     if (betStatus?.status === "pending") {
       toast({ title: "Pending invoice", description: "You can still pay this invoice from your wallet." });
     }
-    setPaymentHash(null);
-    setPaymentRequest(null);
-    setAmountUsd("1");
-    setShowPreimageInput(false);
-    setPreimageInput("");
+    setPaymentHash(null); setPaymentRequest(null);
+    setInputMode("sats"); setRawAmount("1000");
+    setShowPreimageInput(false); setPreimageInput("");
     onClose();
   };
 
@@ -176,29 +189,58 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
         </DialogHeader>
 
         {!paymentRequest ? (
-          /* ── Amount form ── */
           <form onSubmit={handleSubmit} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label htmlFor="amount" className="text-muted-foreground uppercase text-xs tracking-wider">
-                Amount (USD)
-              </Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+              <div className="flex items-center justify-between">
+                <Label className="text-muted-foreground uppercase text-xs tracking-wider">
+                  Amount ({inputMode === "sats" ? "Sats" : "USD"})
+                </Label>
+                <AmountToggle mode={inputMode} onChange={handleModeChange} />
+              </div>
+
+              {inputMode === "usd" ? (
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <Input
+                    type="number" min="0" step="any"
+                    value={rawAmount} onChange={(e) => setRawAmount(e.target.value)}
+                    className="pl-8 text-xl font-bold h-12 bg-card/50" autoFocus
+                    data-testid="input-bet-amount"
+                  />
+                </div>
+              ) : (
                 <Input
-                  id="amount"
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={amountUsd}
-                  onChange={(e) => setAmountUsd(e.target.value)}
-                  className="pl-8 text-xl font-bold h-12 bg-card/50"
-                  autoFocus
+                  type="number" min="546" step="1"
+                  value={rawAmount} onChange={(e) => setRawAmount(e.target.value)}
+                  className="text-xl font-bold h-12 bg-card/50" autoFocus
                   data-testid="input-bet-amount"
                 />
+              )}
+
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Min: 546 sats (~$0.50)</span>
+                {inputMode === "sats"
+                  ? <span>≈ ${usdAmount.toFixed(2)} USD</span>
+                  : <span>≈ {new Intl.NumberFormat().format(satsAmount)} sats</span>
+                }
               </div>
-              <div className="text-right text-xs text-muted-foreground">
-                ≈ {new Intl.NumberFormat().format(satsAmount)} sats
-              </div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-1.5">
+              {inputMode === "sats"
+                ? SATS_PRESETS.map((v) => (
+                    <button type="button" key={v} onClick={() => setRawAmount(String(v))}
+                      className="py-1.5 rounded-md border border-border/50 text-[11px] font-mono hover:bg-muted/50 transition-colors">
+                      {v >= 1000 ? `${v / 1000}k` : v}
+                    </button>
+                  ))
+                : USD_PRESETS.map((v) => (
+                    <button type="button" key={v} onClick={() => setRawAmount(String(v))}
+                      className="py-1.5 rounded-md border border-border/50 text-[11px] font-mono hover:bg-muted/50 transition-colors">
+                      ${v}
+                    </button>
+                  ))
+              }
             </div>
 
             <Button
@@ -206,32 +248,25 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
               className={`w-full h-12 text-base font-bold uppercase tracking-wider text-white ${
                 isUp ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
               }`}
-              disabled={createBet.isPending || !satsAmount}
+              disabled={createBet.isPending || satsAmount < 546}
               data-testid="button-submit-bet"
             >
               {createBet.isPending ? "Generating invoice..." : "Generate Invoice"}
             </Button>
           </form>
         ) : (
-          /* ── Invoice / payment screen ── */
           <div className="pt-1 space-y-3">
             {betStatus?.status === "pending" || !betStatus ? (
               <>
-                {/* 1 — Amount info (above QR) */}
                 <div className="text-center">
                   <p className="text-xl font-bold text-yellow-400 leading-tight">
                     Pay {new Intl.NumberFormat().format(satsAmount)} sats
                   </p>
-                  <p className="text-sm text-muted-foreground mt-0.5">≈ ${amountUsd} USD</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">≈ ${usdAmount.toFixed(2)} USD</p>
                 </div>
 
-                {/* 2 — QR code (center, tappable to copy) */}
                 <div className="flex justify-center">
-                  <div
-                    className="bg-white p-2.5 rounded-xl shadow-lg cursor-pointer relative group"
-                    onClick={copyToClipboard}
-                    title="Click to copy"
-                  >
+                  <div className="bg-white p-2.5 rounded-xl shadow-lg cursor-pointer relative group" onClick={copyToClipboard} title="Click to copy">
                     <QRCodeSVG value={paymentRequest} size={180} level="M" includeMargin={false} />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
                       <Copy className="h-8 w-8 text-white" />
@@ -239,75 +274,48 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                   </div>
                 </div>
 
-                {/* 3 — Invoice link + copy (below QR) */}
-                <button
-                  type="button"
-                  onClick={copyToClipboard}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-muted/50 rounded-lg border border-border/60 hover:bg-muted/80 transition-colors text-left overflow-hidden"
-                >
-                  <span className="flex-1 min-w-0 text-xs font-mono text-muted-foreground truncate">
-                    {paymentRequest.slice(0, 28)}…
-                  </span>
+                <button type="button" onClick={copyToClipboard}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-muted/50 rounded-lg border border-border/60 hover:bg-muted/80 transition-colors text-left overflow-hidden">
+                  <span className="flex-1 min-w-0 text-xs font-mono text-muted-foreground truncate">{paymentRequest.slice(0, 28)}…</span>
                   <span className="shrink-0 flex items-center gap-1.5 text-xs text-primary font-bold uppercase tracking-wider">
-                    <Copy className="h-3.5 w-3.5" />
-                    Copy
+                    <Copy className="h-3.5 w-3.5" /> Copy
                   </span>
                 </button>
 
-                {/* 4 — Waiting status */}
                 <div className="flex items-center justify-center gap-2 text-yellow-500 text-sm animate-pulse uppercase tracking-wider font-bold">
-                  <Clock className="h-4 w-4 shrink-0" />
-                  Waiting for payment...
+                  <Clock className="h-4 w-4 shrink-0" /> Waiting for payment...
                 </div>
 
-                {/* WebLN */}
                 {weblnAvailable && (
-                  <Button
-                    onClick={handleWeblnPay}
-                    disabled={weblnPaying}
+                  <Button onClick={handleWeblnPay} disabled={weblnPaying}
                     className="w-full h-10 font-bold uppercase tracking-wider bg-yellow-500 hover:bg-yellow-400 text-black text-sm"
-                    data-testid="button-webln-pay"
-                  >
+                    data-testid="button-webln-pay">
                     <Zap className="h-4 w-4 mr-2" />
                     {weblnPaying ? "Paying..." : "Pay with WebLN"}
                   </Button>
                 )}
 
-                {/* Manual preimage verify — collapsible */}
                 <div className="border border-muted rounded-lg overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setShowPreimageInput(!showPreimageInput)}
+                  <button type="button" onClick={() => setShowPreimageInput(!showPreimageInput)}
                     className="w-full flex items-center justify-between px-3 py-2.5 text-[11px] text-muted-foreground uppercase tracking-wider hover:bg-muted/30 transition-colors"
-                    data-testid="button-toggle-preimage"
-                  >
+                    data-testid="button-toggle-preimage">
                     <span className="flex items-center gap-2">
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      Already paid? Verify manually
+                      <ShieldCheck className="h-3.5 w-3.5" /> Already paid? Verify manually
                     </span>
                     {showPreimageInput ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                   </button>
-
                   {showPreimageInput && (
                     <div className="px-3 pb-3 space-y-2 bg-muted/10 border-t border-muted">
                       <p className="text-xs text-muted-foreground pt-2 text-left leading-relaxed">
                         After payment, your wallet shows a <strong className="text-foreground">preimage</strong> (proof of payment). Paste the 64-char hex below.
                       </p>
-                      <Input
-                        placeholder="Paste 64-char preimage..."
-                        value={preimageInput}
+                      <Input placeholder="Paste 64-char preimage..." value={preimageInput}
                         onChange={(e) => setPreimageInput(e.target.value)}
-                        className="font-mono text-xs bg-background"
-                        data-testid="input-preimage"
-                      />
-                      <Button
-                        onClick={handleManualVerify}
+                        className="font-mono text-xs bg-background" data-testid="input-preimage" />
+                      <Button onClick={handleManualVerify}
                         disabled={verifyingPreimage || preimageInput.trim().length !== 64}
-                        className="w-full font-bold uppercase tracking-wider"
-                        variant="outline"
-                        size="sm"
-                        data-testid="button-verify-preimage"
-                      >
+                        className="w-full font-bold uppercase tracking-wider" variant="outline" size="sm"
+                        data-testid="button-verify-preimage">
                         <ShieldCheck className="h-4 w-4 mr-2" />
                         {verifyingPreimage ? "Verifying..." : "Confirm Payment"}
                       </Button>
@@ -320,17 +328,13 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
                 <CheckCircle2 className="h-14 w-14 text-green-500" />
                 <div className="text-xl font-bold uppercase tracking-wider text-green-500">Payment Received!</div>
                 <p className="text-muted-foreground text-sm text-center">Your bet is confirmed. Good luck!</p>
-                <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">
-                  Close
-                </Button>
+                <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">Close</Button>
               </div>
             ) : (
               <div className="space-y-4 py-4 flex flex-col items-center">
                 <XCircle className="h-14 w-14 text-red-500" />
                 <div className="text-xl font-bold uppercase tracking-wider text-red-500">Payment Failed or Expired</div>
-                <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">
-                  Close
-                </Button>
+                <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">Close</Button>
               </div>
             )}
           </div>

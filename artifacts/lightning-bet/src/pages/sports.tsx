@@ -267,9 +267,29 @@ interface SportBetModalProps {
   onClose: () => void;
 }
 
+type InputMode = "sats" | "usd";
+const SATS_PRESETS = [546, 1000, 5000, 10000];
+const USD_PRESETS  = [0.5, 1, 5, 10];
+
+function AmountToggle({ mode, onChange }: { mode: InputMode; onChange: (m: InputMode) => void }) {
+  return (
+    <div className="flex gap-0 p-0.5 rounded-md bg-muted/50 border border-border/40 w-fit self-end">
+      {(["sats", "usd"] as InputMode[]).map((m) => (
+        <button key={m} type="button" onClick={() => onChange(m)}
+          className={`px-3 py-1 rounded text-[11px] font-mono font-bold uppercase tracking-wider transition-colors ${
+            mode === m ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+          }`}>
+          {m === "sats" ? "⚡ Sats" : "$ USD"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
   const { toast } = useToast();
-  const [amountSats, setAmountSats] = useState("1000");
+  const [inputMode, setInputMode] = useState<InputMode>("sats");
+  const [rawAmount, setRawAmount] = useState("1000");
   const [paymentHash, setPaymentHash] = useState<string | null>(null);
   const [paymentRequest, setPaymentRequest] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -301,16 +321,29 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [paymentHash, betStatus?.status]);
 
+  const satsNum = inputMode === "sats"
+    ? (parseInt(rawAmount, 10) || 0)
+    : Math.round((parseFloat(rawAmount) || 0) / APPROX_BTC_USD * BTC_SATS);
+  const usdNum = inputMode === "usd"
+    ? (parseFloat(rawAmount) || 0)
+    : (satsNum / BTC_SATS * APPROX_BTC_USD);
+
+  const handleModeChange = (m: InputMode) => {
+    setInputMode(m);
+    setRawAmount(m === "sats" ? "1000" : "1");
+  };
+
   const handleClose = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
-    setAmountSats("1000"); setPaymentHash(null); setPaymentRequest(null);
+    setInputMode("sats"); setRawAmount("1000");
+    setPaymentHash(null); setPaymentRequest(null);
     setBetStatus(null); setShowPreimage(false); setPreimageInput(""); setCreating(false);
     onClose();
   }, [onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const sats = parseInt(amountSats, 10);
+    const sats = satsNum;
     if (!sats || sats < MIN_SATS) {
       toast({ title: "Invalid amount", description: `Minimum is ${MIN_SATS} sats`, variant: "destructive" });
       return;
@@ -391,8 +424,7 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
   };
 
   const isOpen = !!event && !!direction;
-  const satsNum = parseInt(amountSats, 10);
-  const validSats = !isNaN(satsNum) && satsNum >= MIN_SATS;
+  const validSats = satsNum >= MIN_SATS;
   const teamLabel = direction && event ? directionLabel(direction, event) : "";
   const colors = direction ? DIRECTION_COLORS[direction] : DIRECTION_COLORS.home;
 
@@ -412,21 +444,47 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
         {!paymentRequest && (
           <form onSubmit={handleSubmit} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label htmlFor="sport-amount" className="text-muted-foreground uppercase text-xs tracking-wider">Amount (sats)</Label>
-              <Input id="sport-amount" type="number" min={MIN_SATS} step="1" value={amountSats}
-                onChange={(e) => setAmountSats(e.target.value)} className="text-xl font-bold h-12 bg-card/50" autoFocus />
+              <div className="flex items-center justify-between">
+                <Label className="text-muted-foreground uppercase text-xs tracking-wider">
+                  Amount ({inputMode === "sats" ? "Sats" : "USD"})
+                </Label>
+                <AmountToggle mode={inputMode} onChange={handleModeChange} />
+              </div>
+              {inputMode === "usd" ? (
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <Input id="sport-amount" type="number" min="0" step="any"
+                    value={rawAmount} onChange={(e) => setRawAmount(e.target.value)}
+                    className="pl-8 text-xl font-bold h-12 bg-card/50" autoFocus />
+                </div>
+              ) : (
+                <Input id="sport-amount" type="number" min={MIN_SATS} step="1"
+                  value={rawAmount} onChange={(e) => setRawAmount(e.target.value)}
+                  className="text-xl font-bold h-12 bg-card/50" autoFocus />
+              )}
               <div className="flex justify-between text-[11px] text-muted-foreground">
                 <span>Min: {formatSats(MIN_SATS)} sats</span>
-                <span>≈ ${((!isNaN(satsNum) ? satsNum : 0) / BTC_SATS * APPROX_BTC_USD).toFixed(2)} USD</span>
+                {inputMode === "sats"
+                  ? <span>≈ ${usdNum.toFixed(2)} USD</span>
+                  : <span>≈ {formatSats(satsNum)} sats</span>
+                }
               </div>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
-              {[546, 1000, 5000, 10000].map((v) => (
-                <button type="button" key={v} onClick={() => setAmountSats(String(v))}
-                  className="py-1.5 rounded-md border border-border/50 text-[11px] font-mono hover:bg-muted/50 transition-colors">
-                  {v >= 1000 ? `${v / 1000}k` : v}
-                </button>
-              ))}
+              {inputMode === "sats"
+                ? SATS_PRESETS.map((v) => (
+                    <button type="button" key={v} onClick={() => setRawAmount(String(v))}
+                      className="py-1.5 rounded-md border border-border/50 text-[11px] font-mono hover:bg-muted/50 transition-colors">
+                      {v >= 1000 ? `${v / 1000}k` : v}
+                    </button>
+                  ))
+                : USD_PRESETS.map((v) => (
+                    <button type="button" key={v} onClick={() => setRawAmount(String(v))}
+                      className="py-1.5 rounded-md border border-border/50 text-[11px] font-mono hover:bg-muted/50 transition-colors">
+                      ${v}
+                    </button>
+                  ))
+              }
             </div>
             <Button type="submit" disabled={creating || !validSats}
               className={`w-full h-12 text-base font-bold uppercase tracking-wider ${colors.btn}`}>
