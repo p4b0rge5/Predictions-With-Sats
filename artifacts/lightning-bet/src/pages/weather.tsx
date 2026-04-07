@@ -600,7 +600,7 @@ export function Weather() {
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40 mb-4">
         {([
-          { key: "markets",  label: "Upcoming" },
+          { key: "markets",  label: "Markets" },
           { key: "guide",    label: "Guide" },
           { key: "my-bets",  label: "My Bets" },
           { key: "results",  label: "Results" },

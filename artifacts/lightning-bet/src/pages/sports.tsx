@@ -820,7 +820,7 @@ export function Sports() {
       {/* ── Content tabs: Guide | Upcoming | Results ── */}
       <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40 mb-4">
         {([
-          { key: "upcoming", label: "Upcoming" },
+          { key: "upcoming", label: "Markets" },
           { key: "guide",    label: "Guide" },
           { key: "my-bets",  label: "My Bets" },
           { key: "results",  label: "Results" },
