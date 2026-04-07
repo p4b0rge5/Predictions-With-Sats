@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { Zap, Sun, Moon, Trophy } from "lucide-react";
+import { Zap, Sun, Moon, Trophy, TrendingUp } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 import { Button } from "@/components/ui/button";
 
@@ -12,7 +12,7 @@ const CATEGORIES = [
     key: "crypto",
     label: "Crypto",
     href: "/",
-    icon: <span className="text-sm leading-none font-bold">₿</span>,
+    icon: <TrendingUp className="h-3.5 w-3.5" />,
     routes: ["/", "/history", "/guide", "/stats"],
     subNav: [] as { label: string; href: string }[],
   },
