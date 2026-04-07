@@ -174,32 +174,22 @@ function WeatherGuide({ onDone }: { onDone?: () => void }) {
 // Pool Bar (2-way: YES / NO)
 // ---------------------------------------------------------------------------
 
-function PoolBar({ yesSats, noSats, winner }: { yesSats: number; noSats: number; winner?: "yes" | "no" | null }) {
+function PoolBar({ yesSats, noSats }: { yesSats: number; noSats: number }) {
   const total = yesSats + noSats;
   const pY = total > 0 ? (yesSats / total) * 100 : 50;
   const pN = total > 0 ? (noSats / total) * 100 : 50;
   const isEmpty = total === 0;
+  const dim = isEmpty ? "opacity-30" : "";
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
-        <span>Pool</span>
-        <span className={`font-bold ${isEmpty ? "text-muted-foreground/60" : "text-foreground"}`}>
-          {formatSats(total)} sats
-        </span>
+      <div className="flex justify-between items-center font-mono text-xs mb-1">
+        <span className={`font-bold ${isEmpty ? "text-green-500/50" : "text-green-500"}`}>{pY.toFixed(1)}% YES</span>
+        <span className={`text-[10px] ${isEmpty ? "text-muted-foreground/50" : "text-muted-foreground"}`}>Pool: {formatSats(total)} sats</span>
+        <span className={`font-bold ${isEmpty ? "text-red-500/50" : "text-red-500"}`}>{pN.toFixed(1)}% NO</span>
       </div>
       <div className="flex h-2 rounded-full overflow-hidden gap-px">
-        <div className={`bg-green-500 transition-all ${isEmpty ? "opacity-30" : ""}`} style={{ width: `${pY}%` }} />
-        <div className={`bg-red-500 transition-all ${isEmpty ? "opacity-30" : ""}`} style={{ width: `${pN}%` }} />
-      </div>
-      <div className="flex justify-between text-[10px] font-mono">
-        <span className={`flex flex-col ${winner === "yes" ? "text-green-400 font-bold" : isEmpty ? "text-green-500/40" : "text-green-500/70"}`}>
-          <span>{pY.toFixed(1)}% YES</span>
-          <span>{formatSats(yesSats)} sats</span>
-        </span>
-        <span className={`flex flex-col items-end ${winner === "no" ? "text-red-400 font-bold" : isEmpty ? "text-red-500/40" : "text-red-500/70"}`}>
-          <span>{pN.toFixed(1)}% NO</span>
-          <span>{formatSats(noSats)} sats</span>
-        </span>
+        <div className={`bg-green-500 transition-all ${dim}`} style={{ width: `${pY}%` }} />
+        <div className={`bg-red-500 transition-all ${dim}`} style={{ width: `${pN}%` }} />
       </div>
     </div>
   );
@@ -413,12 +403,9 @@ function MarketCard({ market }: { market: WeatherMarket }) {
         )}
       </div>
 
-      {totalSats > 0 && (
-        <PoolBar
-          yesSats={market.totalYesSats}
-          noSats={market.totalNoSats}
-          winner={isSettled ? market.outcome : undefined}
-        />
+      {/* Pool bar — only for open markets */}
+      {!isSettled && (
+        <PoolBar yesSats={market.totalYesSats} noSats={market.totalNoSats} />
       )}
 
       {/* Settlement timestamp — only on settled markets */}
