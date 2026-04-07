@@ -490,107 +490,44 @@ function WeatherBetModal({
 }
 
 // ---------------------------------------------------------------------------
-// Temperature Chart — forecast max temps vs thresholds
+// Mini temperature bar — shown inside each individual market card
 // ---------------------------------------------------------------------------
 
-function TemperatureChart() {
-  const { data: temps, isLoading } = useQuery<CityTemp[]>({
-    queryKey: ["/api/weather/temps"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/weather/temps`);
-      if (!res.ok) throw new Error("Failed to fetch temps");
-      return res.json() as Promise<CityTemp[]>;
-    },
-    staleTime: 25 * 60 * 1000,
-    refetchInterval: 30 * 60 * 1000,
-  });
-
-  if (isLoading) {
-    return (
-      <div className="rounded-xl border border-border/40 bg-card/20 p-3 animate-pulse h-36" />
-    );
-  }
-  if (!temps || temps.every((t) => t.todayMax === null)) return null;
-
-  const allValues = temps.flatMap((t) => [t.todayMax ?? t.threshold, t.threshold]).filter(Boolean) as number[];
-  const minVal = Math.floor(Math.min(...allValues)) - 3;
-  const maxVal = Math.ceil(Math.max(...allValues)) + 3;
-  const range = maxVal - minVal;
-
-  function pct(v: number) {
-    return Math.min(100, Math.max(0, ((v - minVal) / range) * 100));
-  }
+function MiniTempBar({ temp, threshold }: { temp: number; threshold: number }) {
+  const isAbove = temp >= threshold;
+  const isClose = !isAbove && temp >= threshold - 2;
+  const low  = Math.min(temp, threshold) - 4;
+  const high = Math.max(temp, threshold) + 4;
+  const range = high - low;
+  const tempPct   = Math.min(100, Math.max(2, ((temp - low) / range) * 100));
+  const threshPct = Math.min(99, Math.max(1, ((threshold - low) / range) * 100));
+  const barColor  = isAbove ? "bg-green-500/70" : isClose ? "bg-amber-500/70" : "bg-red-500/60";
+  const textColor = isAbove ? "text-green-400"  : isClose ? "text-amber-400"  : "text-red-400";
 
   return (
-    <div className="rounded-xl border border-border/40 bg-card/20 p-3 space-y-3">
-      <div className="flex items-center gap-2">
-        <Thermometer className="h-3.5 w-3.5 text-cyan-400" />
-        <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-muted-foreground">
-          Today's Forecast Max Temperature
+    <div className="space-y-1 border-t border-border/30 pt-2">
+      <div className="flex items-center justify-between text-[10px] font-mono">
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <Thermometer className="h-3 w-3" /> Forecast max today
+        </span>
+        <span className={`font-bold ${textColor}`}>
+          {temp.toFixed(1)}°C
+          <span className="text-muted-foreground font-normal"> / target {threshold}°C</span>
         </span>
       </div>
-
-      <div className="space-y-2.5">
-        {temps.map((city) => {
-          const temp = city.todayMax;
-          const isAbove = temp !== null && temp >= city.threshold;
-          const isClose = temp !== null && !isAbove && temp >= city.threshold - 2;
-          const barColor = isAbove
-            ? "bg-green-500/70"
-            : isClose
-            ? "bg-amber-500/70"
-            : "bg-red-500/60";
-          const textColor = isAbove ? "text-green-400" : isClose ? "text-amber-400" : "text-red-400";
-
-          return (
-            <div key={city.key} className="space-y-1">
-              <div className="flex items-center justify-between text-[10px] font-mono">
-                <span className="text-foreground/80">
-                  {city.emoji} {city.name}
-                </span>
-                <span className={textColor}>
-                  {temp !== null ? `${temp.toFixed(1)}°C` : "—"}
-                  <span className="text-muted-foreground ml-1">/ {city.threshold}°C</span>
-                </span>
-              </div>
-              <div className="relative h-4 bg-muted/30 rounded-sm overflow-visible">
-                {temp !== null && (
-                  <div
-                    className={`h-full rounded-sm transition-all duration-500 ${barColor}`}
-                    style={{ width: `${pct(temp)}%` }}
-                  >
-                    {pct(temp) > 20 && (
-                      <span className="absolute right-1.5 top-0 bottom-0 flex items-center text-[9px] font-mono font-bold text-white/90">
-                        {temp.toFixed(1)}°
-                      </span>
-                    )}
-                  </div>
-                )}
-                {/* Threshold marker */}
-                <div
-                  className="absolute top-0 bottom-0 w-[2px] bg-yellow-400 z-10"
-                  style={{ left: `${pct(city.threshold)}%` }}
-                >
-                  <div className="absolute -top-3 left-1 text-[8px] font-mono text-yellow-400 whitespace-nowrap">
-                    {city.threshold}°
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <div className="relative h-3 bg-muted/30 rounded-sm overflow-visible">
+        <div className={`h-full rounded-sm transition-all duration-500 ${barColor}`} style={{ width: `${tempPct}%` }} />
+        <div className="absolute top-0 bottom-0 w-[2px] bg-yellow-400 z-10" style={{ left: `${threshPct}%` }}>
+          <div className="absolute -top-3.5 -translate-x-1/2 text-[8px] font-mono text-yellow-400 whitespace-nowrap">
+            {threshold}°
+          </div>
+        </div>
       </div>
-
-      <p className="text-[9px] text-muted-foreground text-center leading-tight">
-        <span className="inline-block w-2 h-2 bg-yellow-400 mr-1 align-middle" /> threshold ·{" "}
-        <span className="text-green-400">green</span> = forecast above ·{" "}
-        <span className="text-red-400">red</span> = forecast below · Open-Meteo
-      </p>
     </div>
   );
 }
 
-function MarketCard({ market }: { market: WeatherMarket }) {
+function MarketCard({ market, cityTemp }: { market: WeatherMarket; cityTemp?: CityTemp }) {
   const [betDirection, setBetDirection] = useState<Direction | null>(null);
   const today = new Date().toISOString().slice(0, 10);
   const isToday = market.date === today;
@@ -649,6 +586,11 @@ function MarketCard({ market }: { market: WeatherMarket }) {
           </span>
         )}
       </div>
+
+      {/* Mini forecast bar — only for open today markets with available data */}
+      {!isSettled && isToday && cityTemp?.todayMax !== null && cityTemp?.todayMax !== undefined && (
+        <MiniTempBar temp={cityTemp.todayMax} threshold={market.threshold} />
+      )}
 
       {/* Settlement timestamp — only on settled markets */}
       {isSettled && market.settledAt && (
@@ -814,8 +756,31 @@ export function Weather() {
     refetchInterval: 60_000,
   });
 
+  const { data: cityTemps } = useQuery<CityTemp[]>({
+    queryKey: ["/api/weather/temps"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/weather/temps`);
+      if (!res.ok) throw new Error("Failed to fetch temps");
+      return res.json() as Promise<CityTemp[]>;
+    },
+    staleTime: 25 * 60 * 1000,
+    refetchInterval: 30 * 60 * 1000,
+  });
+
+  // Build city name → CityTemp lookup
+  const tempByCity = Object.fromEntries(
+    (cityTemps ?? []).map((t) => [t.name, t])
+  );
+
+  const today    = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+
   const openMarkets    = (markets ?? []).filter((m) => m.status === "open");
   const settledMarkets = (markets ?? []).filter((m) => m.status === "settled");
+
+  // Split open markets into today vs tomorrow to avoid looking like duplicates
+  const todayOpen    = openMarkets.filter((m) => m.date === today);
+  const tomorrowOpen = openMarkets.filter((m) => m.date === tomorrow);
 
   const filterByCity = (list: WeatherMarket[]) =>
     cityFilter === "all" ? list : list.filter((m) => m.city === cityFilter);
@@ -875,7 +840,6 @@ export function Weather() {
 
       {activeTab === "markets" && (
         <div className="space-y-3">
-          <TemperatureChart />
           {isLoading ? (
             <div className="flex items-center justify-center h-40">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-cyan-400 border-t-transparent" />
@@ -886,7 +850,32 @@ export function Weather() {
               <p className="font-mono text-sm">No open markets right now</p>
             </div>
           ) : (
-            filterByCity(openMarkets).map((m) => <MarketCard key={m.id} market={m} />)
+            <>
+              {/* Today's markets */}
+              {filterByCity(todayOpen).length > 0 && (
+                <>
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-cyan-400">Today</span>
+                    <div className="flex-1 h-px bg-border/40" />
+                  </div>
+                  {filterByCity(todayOpen).map((m) => (
+                    <MarketCard key={m.id} market={m} cityTemp={tempByCity[m.city]} />
+                  ))}
+                </>
+              )}
+              {/* Tomorrow's markets */}
+              {filterByCity(tomorrowOpen).length > 0 && (
+                <>
+                  <div className="flex items-center gap-2 pt-2">
+                    <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-muted-foreground">Tomorrow</span>
+                    <div className="flex-1 h-px bg-border/40" />
+                  </div>
+                  {filterByCity(tomorrowOpen).map((m) => (
+                    <MarketCard key={m.id} market={m} />
+                  ))}
+                </>
+              )}
+            </>
           )}
         </div>
       )}
