@@ -510,7 +510,7 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
 
       {betDirection && market.windowId && (
         <BetModal isOpen={true} onClose={() => { setBetDirection(null); setBetHashes(getBetHashes()); }}
-          direction={betDirection} btcPriceUsd={assetPrice} windowId={market.windowId} />
+          direction={betDirection} btcPriceUsd={assetPrice} windowId={market.windowId} asset={def.asset} />
       )}
 
       <button onClick={onShowGuide}

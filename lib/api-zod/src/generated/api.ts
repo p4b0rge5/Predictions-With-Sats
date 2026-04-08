@@ -64,6 +64,7 @@ export const CreateBetBody = zod.object({
     .min(0.5)
     .describe("Bet amount in USD (converted to sats by server)"),
   direction: zod.enum(["up", "down"]).describe("Bet direction"),
+  asset: zod.enum(["btc", "eth", "sol"]).describe("Which crypto market to bet on"),
 });
 
 /**

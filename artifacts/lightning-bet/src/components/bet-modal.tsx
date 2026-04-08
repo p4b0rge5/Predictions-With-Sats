@@ -16,6 +16,7 @@ interface BetModalProps {
   direction: "up" | "down";
   btcPriceUsd: number;
   windowId: number;
+  asset: "btc" | "eth" | "sol";
 }
 
 declare global {
@@ -53,7 +54,7 @@ function AmountToggle({ mode, onChange }: { mode: InputMode; onChange: (m: Input
 
 const API_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
-export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: BetModalProps) {
+export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId, asset }: BetModalProps) {
   const [inputMode, setInputMode]   = useState<InputMode>("usd");
   const [rawAmount, setRawAmount]   = useState<string>("0.5");
   const { toast } = useToast();
@@ -122,7 +123,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
       return;
     }
     createBet.mutate(
-      { data: { amountUsd: usdAmount, direction } },
+      { data: { amountUsd: usdAmount, direction, asset } },
       {
         onSuccess: (data) => { setPaymentHash(data.paymentHash); setPaymentRequest(data.paymentRequest); },
         onError: (err) => { toast({ title: "Error creating bet", description: err.message || "Unknown error", variant: "destructive" }); },

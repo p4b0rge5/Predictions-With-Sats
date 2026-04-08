@@ -105,13 +105,14 @@ async function settleWindow(windowId: number, asset: CryptoAsset): Promise<void>
   if (hasNoLiquidity) {
     outcome = "no_liquidity";
     for (const bet of paidBets) {
-      const refundSats = Math.floor(bet.amountSats * (1 - PLATFORM_FEE));
+      // Full refund — no platform fee when there is no counterpart to match the bet
+      const refundSats = bet.amountSats;
       await db
         .update(betsTable)
         .set({ status: "won", payoutSats: refundSats, withdrawToken: randomUUID(), withdrawStatus: "unclaimed" })
         .where(eq(betsTable.id, bet.id));
     }
-    logger.info({ windowId, asset, refundedBets: paidBets.length }, "No-liquidity — refunded");
+    logger.info({ windowId, asset, refundedBets: paidBets.length }, "No-liquidity — full refund (no fee)");
   } else {
     if (closePrice > openPriceNum) outcome = "up";
     else if (closePrice < openPriceNum) outcome = "down";

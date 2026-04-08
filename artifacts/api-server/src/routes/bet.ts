@@ -25,10 +25,10 @@ router.post("/bet", async (req, res): Promise<void> => {
     return;
   }
 
-  const { amountUsd, direction } = parsed.data;
+  const { amountUsd, direction, asset } = parsed.data;
 
   const [win, btcPriceUsd] = await Promise.all([
-    getActiveWindow(),
+    getActiveWindow(asset),
     getCachedBtcPrice(),
   ]);
 
@@ -76,7 +76,7 @@ router.post("/bet", async (req, res): Promise<void> => {
     })
     .returning();
 
-  const memo = `Lightning Bet — ${direction.toUpperCase()} on BTC (window #${win.id})`;
+  const memo = `Lightning Bet — ${direction.toUpperCase()} on ${asset.toUpperCase()} (window #${win.id})`;
 
   let invoice: { paymentHash: string; paymentRequest: string; expiresAt: string; verifyUrl: string | null };
   try {

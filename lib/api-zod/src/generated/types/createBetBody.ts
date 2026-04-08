@@ -15,4 +15,6 @@ export interface CreateBetBody {
   amountUsd: number;
   /** Bet direction */
   direction: CreateBetBodyDirection;
+  /** Which crypto market to bet on */
+  asset: "btc" | "eth" | "sol";
 }
