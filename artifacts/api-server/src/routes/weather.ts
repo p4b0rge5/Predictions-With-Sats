@@ -32,6 +32,7 @@ interface CityTemp {
   name: string;
   emoji: string;
   threshold: number;
+  currentTemp: number | null;
   todayMax: number | null;
   tomorrowMax: number | null;
 }
@@ -71,6 +72,7 @@ router.get("/weather/temps", async (_req, res) => {
       name: city.name,
       emoji: city.emoji,
       threshold: city.threshold,
+      currentTemp: forecast?.currentTemp ?? null,
       todayMax: forecast?.maxTemps[0] ?? null,
       tomorrowMax: forecast?.maxTemps[1] ?? null,
     } as CityTemp);

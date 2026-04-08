@@ -43,6 +43,7 @@ interface CityTemp {
   name: string;
   emoji: string;
   threshold: number;
+  currentTemp: number | null;
   todayMax: number | null;
   tomorrowMax: number | null;
 }
@@ -493,7 +494,15 @@ function WeatherBetModal({
 // Mini temperature bar — shown inside each individual market card
 // ---------------------------------------------------------------------------
 
-function MiniTempBar({ temp, threshold }: { temp: number; threshold: number }) {
+function MiniTempBar({
+  temp,
+  threshold,
+  currentTemp,
+}: {
+  temp: number;
+  threshold: number;
+  currentTemp?: number | null;
+}) {
   const isAbove = temp >= threshold;
   const isClose = !isAbove && temp >= threshold - 2;
   const low  = Math.min(temp, threshold) - 4;
@@ -504,20 +513,54 @@ function MiniTempBar({ temp, threshold }: { temp: number; threshold: number }) {
   const barColor  = isAbove ? "bg-green-500/70" : isClose ? "bg-amber-500/70" : "bg-red-500/60";
   const textColor = isAbove ? "text-green-400"  : isClose ? "text-amber-400"  : "text-red-400";
 
+  // Position of current temp indicator on the bar (if available)
+  const currentPct = currentTemp !== null && currentTemp !== undefined
+    ? Math.min(99, Math.max(1, ((currentTemp - low) / range) * 100))
+    : null;
+
   return (
     <div className="space-y-1.5 border-t border-border/30 pt-2">
-      <div className="flex items-center justify-between text-[10px] font-mono">
-        <span className="flex items-center gap-1 text-muted-foreground">
+      {/* Row 1: labels */}
+      <div className="flex items-center justify-between text-[10px] font-mono gap-2">
+        <span className="flex items-center gap-1 text-muted-foreground shrink-0">
           <Thermometer className="h-3 w-3" /> Forecast max today
         </span>
-        <span className={`font-bold ${textColor}`}>
-          {temp.toFixed(1)}°C
-          <span className="text-muted-foreground font-normal"> / target {threshold}°C</span>
-        </span>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {currentTemp !== null && currentTemp !== undefined && (
+            <span className="text-cyan-400 font-medium">
+              Now {currentTemp.toFixed(1)}°C
+            </span>
+          )}
+          <span className={`font-bold ${textColor}`}>
+            Max {temp.toFixed(1)}°C
+            <span className="text-muted-foreground font-normal"> / target {threshold}°C</span>
+          </span>
+        </div>
       </div>
+      {/* Row 2: bar */}
       <div className="relative h-3 bg-muted/30 rounded-sm overflow-hidden">
         <div className={`h-full rounded-sm transition-all duration-500 ${barColor}`} style={{ width: `${tempPct}%` }} />
+        {/* Target threshold marker */}
         <div className="absolute top-0 bottom-0 w-[2px] bg-yellow-400/80 z-10" style={{ left: `${threshPct}%` }} />
+        {/* Current temp marker */}
+        {currentPct !== null && (
+          <div
+            className="absolute top-0 bottom-0 w-[2px] bg-cyan-400 z-20"
+            style={{ left: `${currentPct}%` }}
+            title={`Now: ${currentTemp?.toFixed(1)}°C`}
+          />
+        )}
+      </div>
+      {/* Row 3: legend */}
+      <div className="flex items-center gap-3 text-[9px] font-mono text-muted-foreground">
+        {currentTemp !== null && currentTemp !== undefined && (
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-2 h-2 rounded-sm bg-cyan-400" /> Now
+          </span>
+        )}
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-sm bg-yellow-400/80" /> Target
+        </span>
       </div>
     </div>
   );
@@ -627,7 +670,20 @@ function MarketCard({ market, cityTemp }: { market: WeatherMarket; cityTemp?: Ci
 
       {/* Mini forecast bar — only for open today markets with available data */}
       {!isSettled && isToday && cityTemp?.todayMax !== null && cityTemp?.todayMax !== undefined && (
-        <MiniTempBar temp={cityTemp.todayMax} threshold={market.threshold} />
+        <MiniTempBar
+          temp={cityTemp.todayMax}
+          threshold={market.threshold}
+          currentTemp={cityTemp.currentTemp}
+        />
+      )}
+
+      {/* Current temp chip — for open tomorrow markets (no bar, just current conditions) */}
+      {!isSettled && !isToday && cityTemp?.currentTemp !== null && cityTemp?.currentTemp !== undefined && (
+        <div className="flex items-center gap-1.5 text-[10px] font-mono border-t border-border/30 pt-2 text-muted-foreground">
+          <Thermometer className="h-3 w-3 text-cyan-400" />
+          <span>Current conditions:</span>
+          <span className="text-cyan-400 font-bold">{cityTemp.currentTemp.toFixed(1)}°C</span>
+        </div>
       )}
 
       {/* Settlement timestamp — only on settled markets */}

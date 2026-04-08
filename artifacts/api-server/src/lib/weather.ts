@@ -39,6 +39,7 @@ export const WEATHER_CITIES: CityDef[] = [
 export interface WeatherForecast {
   dates: string[];
   maxTemps: number[];
+  currentTemp: number | null;
 }
 
 export async function fetchForecast(lat: number, lon: number): Promise<WeatherForecast> {
@@ -46,16 +47,19 @@ export async function fetchForecast(lat: number, lon: number): Promise<WeatherFo
     `https://api.open-meteo.com/v1/forecast` +
     `?latitude=${lat}&longitude=${lon}` +
     `&daily=temperature_2m_max` +
+    `&current=temperature_2m` +
     `&timezone=UTC` +
     `&forecast_days=3`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
   const data = (await res.json()) as {
+    current?: { temperature_2m?: number };
     daily: { time: string[]; temperature_2m_max: number[] };
   };
   return {
     dates: data.daily.time,
     maxTemps: data.daily.temperature_2m_max,
+    currentTemp: data.current?.temperature_2m ?? null,
   };
 }
 
