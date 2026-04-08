@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 import { ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
@@ -18,6 +17,12 @@ interface HistoryItem {
   settledAt: string | null;
 }
 
+const ASSET_CARD_TINT: Record<AssetParam, string> = {
+  btc: "bg-orange-500/15 border-orange-500/35",
+  eth: "bg-indigo-500/15 border-indigo-500/35",
+  sol: "bg-purple-500/15 border-purple-500/35",
+};
+
 const API_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
 async function fetchHistory(asset: AssetParam): Promise<HistoryItem[]> {
@@ -32,6 +37,8 @@ export function History({ asset = "btc" }: { asset?: AssetParam }) {
     queryFn: () => fetchHistory(asset),
     refetchInterval: 15000,
   });
+
+  const cardTint = ASSET_CARD_TINT[asset];
 
   const formatUsd = (n: number) =>
     n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -104,11 +111,9 @@ export function History({ asset = "btc" }: { asset?: AssetParam }) {
       <h1 className="text-2xl sm:text-3xl font-mono font-bold tracking-tight">Window History</h1>
 
       {emptyState ? (
-        <Card>
-          <CardContent className="h-32 flex items-center justify-center text-muted-foreground font-mono text-sm">
-            No history available
-          </CardContent>
-        </Card>
+        <div className={`rounded-xl border ${cardTint} h-32 flex items-center justify-center text-muted-foreground font-mono text-sm`}>
+          No history available
+        </div>
       ) : (
         <>
           {/* Mobile: stacked cards */}
@@ -122,7 +127,7 @@ export function History({ asset = "btc" }: { asset?: AssetParam }) {
               return (
                 <div
                   key={w.id}
-                  className="rounded-xl border border-border/40 bg-card/40 px-4 py-3 font-mono flex flex-col gap-2"
+                  className={`rounded-xl border ${cardTint} px-4 py-3 font-mono flex flex-col gap-2`}
                   data-testid={`row-history-${w.id}`}
                 >
                   <div className="flex items-center justify-between">
@@ -164,8 +169,8 @@ export function History({ asset = "btc" }: { asset?: AssetParam }) {
           </div>
 
           {/* Desktop: table */}
-          <Card className="hidden md:block">
-            <CardContent className="p-0">
+          <div className={`hidden md:block rounded-xl border ${cardTint} overflow-hidden`}>
+            <div className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow className="font-mono text-xs uppercase hover:bg-transparent">
@@ -213,8 +218,8 @@ export function History({ asset = "btc" }: { asset?: AssetParam }) {
                   })}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </>
       )}
     </div>
