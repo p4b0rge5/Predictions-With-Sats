@@ -40,11 +40,27 @@ All prediction cards (Crypto, Sports, Weather) follow the same vertical order:
 ```
 {X}% HOME/UP/YES    Pool: N sats    {Y}% AWAY/DOWN/NO
 [========= colored bar =========]
-         {Z}% DRAW  ← Sports only, centered below bar
+         {Z}% DRAW  ← Football only (hasDraw=true), centered below bar
 ```
-- Empty pool defaults to equal split (50/50 or 33.3%) — always rendered at FULL color, never dimmed
+- Empty pool defaults to equal split (50/50 for NBA, 33.3% for Football) — always at FULL color, never dimmed
 - Pool bar is NEVER shown on finished/settled/results cards
-- Do NOT add "2% house fee" or similar footnotes to prediction cards — it does not exist on the Bitcoin reference screen
+- Do NOT add "2% house fee" or similar footnotes to prediction cards
+
+## Sports — Multi-sport Architecture
+
+Sports category supports multiple sports via `SportDef` in `sports.tsx`:
+- **Football** (Soccer): `sport: "Soccer"`, `hasDraw: true`, green cards, 3-column buttons (HOME/DRAW/AWAY)
+- **NBA** (Basketball): `sport: "Basketball"`, `hasDraw: false`, orange cards, 2-column buttons (HOME/AWAY)
+
+**Backend libs:**
+- `lib/sports.ts` — Football via `v3.football.api-sports.io` (IDs prefixed without namespace)
+- `lib/nba.ts` — Basketball via `v1.basketball.api-sports.io` (IDs prefixed with `nba_`)
+- `routes/sports.ts` — Combines both, enriches with market pool data from DB
+- `lib/sports-pollers.ts` — Settlement uses combined cache (0 extra API requests when warm)
+
+**Event IDs are namespaced:** `nba_<id>` for basketball to avoid collisions with football IDs.
+
+**NBA league IDs:** 12 = Regular Season, 13 = Playoffs
 
 ## My Bets — standard for all categories
 

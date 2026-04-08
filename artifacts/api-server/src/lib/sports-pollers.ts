@@ -15,6 +15,7 @@ import { eq, and, lt } from "drizzle-orm";
 import { logger } from "./logger";
 import { settleMarket } from "./sports-market";
 import { getSportsEvents } from "./sports";
+import { getNbaEvents } from "./nba";
 
 const PAYMENT_POLL_INTERVAL_MS = 5_000;
 // 15-min settlement interval conserves the 100 req/day API-Football free plan budget
@@ -103,11 +104,10 @@ async function pollSportSettlement(): Promise<void> {
 
   if (openMarkets.length === 0) return;
 
-  // Use the shared cache instead of 1 API call per market.
-  // getSportsEvents() costs 0 extra requests when the cache is warm (≤1h old).
-  // This avoids burning the 100 req/day free budget on settlement polling.
-  const { finished } = await getSportsEvents();
-  const finishedById = new Map(finished.map((e) => [e.id, e]));
+  // Use shared caches — 0 extra API requests when caches are warm (≤1h old).
+  const [soccer, nba] = await Promise.all([getSportsEvents(), getNbaEvents()]);
+  const allFinished = [...soccer.finished, ...nba.finished];
+  const finishedById = new Map(allFinished.map((e) => [e.id, e]));
 
   for (const market of openMarkets) {
     try {

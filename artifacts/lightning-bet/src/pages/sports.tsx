@@ -20,18 +20,38 @@ import { getSportsBetHashes, removeSportsBetHash, saveSportsBetHash } from "@/co
 // ---------------------------------------------------------------------------
 
 type Direction = "home" | "draw" | "away";
-type SportKey = "football";
+type SportKey = "football" | "nba";
 type ContentTab = "guide" | "my-bets" | "upcoming" | "results";
 
 interface SportDef {
   key: SportKey;
   label: string;
   icon: string;
-  apiFilter?: string;
+  sportName: string;       // matches SportEvent.sport from API
+  hasDraw: boolean;        // basketball has no draws
+  cardClass: string;       // upcoming card bg + border
+  resultCardClass: string; // finished card bg + border
 }
 
 const SPORTS: SportDef[] = [
-  { key: "football", label: "Football", icon: "⚽", apiFilter: "soccer" },
+  {
+    key: "football",
+    label: "Football",
+    icon: "⚽",
+    sportName: "Soccer",
+    hasDraw: true,
+    cardClass: "bg-green-500/15 border-green-500/35",
+    resultCardClass: "bg-green-500/10 border-green-500/25",
+  },
+  {
+    key: "nba",
+    label: "NBA",
+    icon: "🏀",
+    sportName: "Basketball",
+    hasDraw: false,
+    cardClass: "bg-orange-500/15 border-orange-500/35",
+    resultCardClass: "bg-orange-500/10 border-orange-500/25",
+  },
 ];
 
 interface SportEvent {
@@ -148,11 +168,12 @@ function TeamBadge({ src, name, size = "sm" }: { src: string | null; name: strin
 // Three-way pool bar
 // ---------------------------------------------------------------------------
 
-function PoolBar({ homeSats, drawSats, awaySats }: { homeSats: number; drawSats: number; awaySats: number }) {
+function PoolBar({ homeSats, drawSats, awaySats, hasDraw = true }: { homeSats: number; drawSats: number; awaySats: number; hasDraw?: boolean }) {
   const total = homeSats + drawSats + awaySats;
-  const pH = total > 0 ? (homeSats / total) * 100 : 100 / 3;
-  const pD = total > 0 ? (drawSats / total) * 100 : 100 / 3;
-  const pA = total > 0 ? (awaySats / total) * 100 : 100 / 3;
+  const defaultShare = hasDraw ? 100 / 3 : 50;
+  const pH = total > 0 ? (homeSats / total) * 100 : defaultShare;
+  const pD = total > 0 ? (drawSats / total) * 100 : (hasDraw ? defaultShare : 0);
+  const pA = total > 0 ? (awaySats / total) * 100 : defaultShare;
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-center font-mono text-xs mb-1">
@@ -162,12 +183,14 @@ function PoolBar({ homeSats, drawSats, awaySats }: { homeSats: number; drawSats:
       </div>
       <div className="flex h-2 rounded-full overflow-hidden gap-px">
         <div className="bg-green-500 transition-all" style={{ width: `${pH}%` }} />
-        <div className="bg-yellow-400 transition-all" style={{ width: `${pD}%` }} />
+        {hasDraw && <div className="bg-yellow-400 transition-all" style={{ width: `${pD}%` }} />}
         <div className="bg-blue-500 transition-all" style={{ width: `${pA}%` }} />
       </div>
-      <div className="text-center text-[10px] font-mono font-bold text-yellow-400">
-        {pD.toFixed(1)}% DRAW
-      </div>
+      {hasDraw && (
+        <div className="text-center text-[10px] font-mono font-bold text-yellow-400">
+          {pD.toFixed(1)}% DRAW
+        </div>
+      )}
     </div>
   );
 }
@@ -247,6 +270,80 @@ function FootballGuide({ onDone }: { onDone?: () => void } = {}) {
         className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-yellow-400/10 border border-yellow-400/30 text-yellow-400 font-mono font-bold text-sm uppercase tracking-wider hover:bg-yellow-400/20 transition-colors"
       >
         <Zap className="h-4 w-4 fill-yellow-400/30" />
+        Start Betting
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NBA Guide
+// ---------------------------------------------------------------------------
+
+const NBA_GUIDE_STEPS = [
+  {
+    icon: BookOpen,
+    color: "text-orange-400",
+    bg: "bg-orange-400/10 border-orange-400/30",
+    title: "How NBA Predictions Work",
+    body: "Pick an upcoming NBA game and predict the winner: HOME team or AWAY team. Basketball has no draws — overtime is played until a winner is decided. Pay via Lightning, winners split the pool.",
+  },
+  {
+    icon: Wallet,
+    color: "text-blue-400",
+    bg: "bg-blue-400/10 border-blue-400/30",
+    title: "Pay with Lightning",
+    body: "Scan the QR code with any Lightning wallet (Phoenix, Wallet of Satoshi, Alby, etc.) or use WebLN if your browser supports it. Minimum bet is $0.50 USD.",
+  },
+  {
+    icon: Coins,
+    color: "text-purple-400",
+    bg: "bg-purple-400/10 border-purple-400/30",
+    title: "Pool & Payout",
+    body: "All bets on a game flow into one shared pool. After the final buzzer, winners split the total pool proportional to their stake (minus 2% house fee). Claim your sats via the withdrawal QR code.",
+  },
+  {
+    icon: Award,
+    color: "text-green-400",
+    bg: "bg-green-400/10 border-green-400/30",
+    title: "Automatic Settlement",
+    body: "Our system checks game results every 15 minutes. Once the final score is confirmed, payouts are calculated and withdrawal QR codes are generated automatically.",
+  },
+  {
+    icon: ListChecks,
+    color: "text-red-400",
+    bg: "bg-red-400/10 border-red-400/30",
+    title: "Tips & Rules",
+    body: "• Betting closes 5 minutes before tip-off.\n• If nobody bets on the winning team, the house keeps the pool.\n• Keep your payment proof — you can verify your bet manually.\n• Bet early for better value when the pool is thin.",
+  },
+];
+
+function NBAGuide({ onDone }: { onDone?: () => void } = {}) {
+  return (
+    <div className="space-y-3 max-w-xl mx-auto">
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-2xl">🏀</span>
+        <h2 className="text-base font-bold font-mono uppercase tracking-wider">NBA Betting Guide</h2>
+      </div>
+      {NBA_GUIDE_STEPS.map((step, i) => {
+        const Icon = step.icon;
+        return (
+          <div key={i} className="flex gap-3 p-3 rounded-xl border border-border/40 bg-card/30">
+            <div className={`mt-0.5 shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center ${step.bg}`}>
+              <Icon className={`h-4 w-4 ${step.color}`} />
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs font-bold font-mono uppercase tracking-wider text-foreground">{step.title}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">{step.body}</p>
+            </div>
+          </div>
+        );
+      })}
+      <button
+        onClick={onDone}
+        className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-orange-400/10 border border-orange-400/30 text-orange-400 font-mono font-bold text-sm uppercase tracking-wider hover:bg-orange-400/20 transition-colors"
+      >
+        <Zap className="h-4 w-4 fill-orange-400/30" />
         Start Betting
       </button>
     </div>
@@ -605,11 +702,12 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
 // Upcoming match card
 // ---------------------------------------------------------------------------
 
-function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) => void }) {
+function UpcomingCard({ ev, onBet, sportDef }: { ev: SportEvent; onBet: (dir: Direction) => void; sportDef: SportDef }) {
   const bettingClosed = msTillKickoff(ev.startsAt) < 5 * 60 * 1000;
   const settled = ev.marketStatus === "settled";
+  const dirs: Direction[] = sportDef.hasDraw ? ["home", "draw", "away"] : ["home", "away"];
   return (
-    <div className="rounded-xl border bg-green-500/15 border-green-500/35 p-4 space-y-3">
+    <div className={`rounded-xl border ${sportDef.cardClass} p-4 space-y-3`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
           {ev.leagueLogo && <img src={ev.leagueLogo} alt={ev.league} className="h-4 w-4 object-contain shrink-0" />}
@@ -636,11 +734,11 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) =
         <div className="text-center text-[11px] text-muted-foreground font-mono py-1">Market settled</div>
       ) : bettingClosed ? (
         <div className="text-center text-[11px] text-yellow-500/80 font-mono py-1 animate-pulse">
-          ⏳ Betting closed — match imminent
+          ⏳ Betting closed — {sportDef.hasDraw ? "match" : "game"} imminent
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-1.5">
-          {(["home", "draw", "away"] as Direction[]).map((dir) => (
+        <div className={`grid gap-1.5 ${sportDef.hasDraw ? "grid-cols-3" : "grid-cols-2"}`}>
+          {dirs.map((dir) => (
             <Button key={dir} size="sm" onClick={() => onBet(dir)}
               className={`h-11 text-[11px] font-mono font-bold transition-all ${DIRECTION_COLORS[dir].btn}`}>
               {dir === "home" ? "↑" : dir === "away" ? "↓" : "="} {DIRECTION_LABELS[dir]}
@@ -648,7 +746,7 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) =
           ))}
         </div>
       )}
-      <PoolBar homeSats={ev.totalHomeSats} drawSats={ev.totalDrawSats ?? 0} awaySats={ev.totalAwaySats} />
+      <PoolBar homeSats={ev.totalHomeSats} drawSats={ev.totalDrawSats ?? 0} awaySats={ev.totalAwaySats} hasDraw={sportDef.hasDraw} />
     </div>
   );
 }
@@ -664,14 +762,12 @@ function OutcomeBadge({ outcome }: { outcome: SportEvent["outcome"] }) {
   return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[10px]">DRAW</Badge>;
 }
 
-function FinishedCard({ ev }: { ev: SportEvent }) {
+function FinishedCard({ ev, sportDef }: { ev: SportEvent; sportDef: SportDef }) {
   const settled = ev.marketStatus === "settled";
-  const drawSats = ev.totalDrawSats ?? 0;
-  const winner = ev.marketOutcome ?? ev.outcome;
   const settledAt = ev.marketSettledAt;
 
   return (
-    <div className="rounded-xl border bg-green-500/10 border-green-500/25 p-3 space-y-2.5">
+    <div className={`rounded-xl border ${sportDef.resultCardClass} p-3 space-y-2.5`}>
       {/* League + badges */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
@@ -1104,7 +1200,7 @@ function SportMyBetsTab({ hashes, onDismiss }: { hashes: string[]; onDismiss: (h
 export function Sports() {
   const [activeSport, setActiveSport] = useState<SportKey>("football");
   const [activeTab, setActiveTab] = useState<ContentTab>("upcoming");
-  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean } | null>(null);
+  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean; nbaSuspended?: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
@@ -1173,9 +1269,9 @@ export function Sports() {
 
       {/* ── Guide ── */}
       {activeTab === "guide" && (
-        activeSportDef.key === "football" ? <FootballGuide onDone={() => { setActiveTab("upcoming"); window.scrollTo({ top: 0, behavior: "smooth" }); }} /> : (
-          <p className="text-center text-muted-foreground text-sm py-10 font-mono">Guide coming soon.</p>
-        )
+        activeSportDef.key === "football"
+          ? <FootballGuide onDone={() => { setActiveTab("upcoming"); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+          : <NBAGuide onDone={() => { setActiveTab("upcoming"); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       )}
 
       {/* ── My Bets ── */}
@@ -1203,35 +1299,39 @@ export function Sports() {
           {loading && !data && (
             <div className="flex items-center justify-center h-40 gap-3 text-muted-foreground">
               <RefreshCw className="h-5 w-5 animate-spin" />
-              <span className="font-mono text-sm">Fetching matches…</span>
+              <span className="font-mono text-sm">Fetching {activeSportDef.key === "nba" ? "games" : "matches"}…</span>
             </div>
           )}
           {error && !loading && (
             <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
               <AlertCircle className="h-8 w-8" />
-              <p className="font-mono text-sm">Failed to load matches.</p>
+              <p className="font-mono text-sm">Failed to load {activeSportDef.key === "nba" ? "games" : "matches"}.</p>
               <Button variant="outline" size="sm" onClick={() => fetchData()}>Retry</Button>
             </div>
           )}
           {!error && data && (() => {
             const now = Date.now();
+            const isSuspended = activeSportDef.key === "nba" ? (data.nbaSuspended ?? false) : data.suspended;
             const visible = data.upcoming.filter(
               (ev) =>
+                ev.sport === activeSportDef.sportName &&
                 ev.status === "upcoming" &&
                 new Date(ev.startsAt).getTime() > now - 3 * 60 * 60 * 1000
             );
-            if (data.suspended)
+            if (isSuspended)
               return (
                 <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
                   <AlertCircle className="h-7 w-7 text-amber-400" />
                   <p className="font-mono text-sm text-amber-400">Sports data temporarily unavailable</p>
-                  <p className="font-mono text-xs opacity-60 text-center">The football data provider is currently unreachable.<br/>Retrying automatically every 15 minutes.</p>
+                  <p className="font-mono text-xs opacity-60 text-center">
+                    The {activeSportDef.label} data provider is currently unreachable.<br/>Retrying automatically every 15 minutes.
+                  </p>
                 </div>
               );
             return visible.length === 0
-              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No upcoming matches.</p>
+              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No upcoming {activeSportDef.key === "nba" ? "games" : "matches"}.</p>
               : visible.map((ev) => (
-                  <UpcomingCard key={ev.id} ev={ev} onBet={(dir) => setBetModal({ event: ev, direction: dir })} />
+                  <UpcomingCard key={ev.id} ev={ev} sportDef={activeSportDef} onBet={(dir) => setBetModal({ event: ev, direction: dir })} />
                 ));
           })()}
         </div>
@@ -1267,19 +1367,23 @@ export function Sports() {
               <Button variant="outline" size="sm" onClick={() => fetchData()}>Retry</Button>
             </div>
           )}
-          {!error && data && (
-            data.suspended
-              ? (
+          {!error && data && (() => {
+            const isSuspended = activeSportDef.key === "nba" ? (data.nbaSuspended ?? false) : data.suspended;
+            const visible = data.finished.filter((ev) => ev.sport === activeSportDef.sportName);
+            if (isSuspended)
+              return (
                 <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
                   <AlertCircle className="h-7 w-7 text-amber-400" />
                   <p className="font-mono text-sm text-amber-400">Sports data temporarily unavailable</p>
-                  <p className="font-mono text-xs opacity-60 text-center">The football data provider is currently unreachable.<br/>Retrying automatically every 15 minutes.</p>
+                  <p className="font-mono text-xs opacity-60 text-center">
+                    The {activeSportDef.label} data provider is currently unreachable.<br/>Retrying automatically every 15 minutes.
+                  </p>
                 </div>
-              )
-              : data.finished.length === 0
-                ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No recent results.</p>
-                : data.finished.map((ev) => <FinishedCard key={ev.id} ev={ev} />)
-          )}
+              );
+            return visible.length === 0
+              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No recent results.</p>
+              : visible.map((ev) => <FinishedCard key={ev.id} ev={ev} sportDef={activeSportDef} />);
+          })()}
         </div>
       )}
 
