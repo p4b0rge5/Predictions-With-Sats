@@ -609,7 +609,7 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) =
   const bettingClosed = msTillKickoff(ev.startsAt) < 5 * 60 * 1000;
   const settled = ev.marketStatus === "settled";
   return (
-    <div className="rounded-xl border border-border/40 bg-card/30 p-4 space-y-3">
+    <div className="rounded-xl border bg-green-500/15 border-green-500/35 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
           {ev.leagueLogo && <img src={ev.leagueLogo} alt={ev.league} className="h-4 w-4 object-contain shrink-0" />}
@@ -671,7 +671,7 @@ function FinishedCard({ ev }: { ev: SportEvent }) {
   const settledAt = ev.marketSettledAt;
 
   return (
-    <div className="rounded-xl border border-border/40 bg-card/20 p-3 space-y-2.5">
+    <div className="rounded-xl border bg-green-500/10 border-green-500/25 p-3 space-y-2.5">
       {/* League + badges */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">

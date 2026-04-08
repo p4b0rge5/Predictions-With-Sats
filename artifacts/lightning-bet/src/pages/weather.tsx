@@ -575,7 +575,7 @@ function MarketCard({ market, cityTemp }: { market: WeatherMarket; cityTemp?: Ci
   );
 
   return (
-    <div className="rounded-xl border border-border/40 bg-card/30 p-4 space-y-3">
+    <div className="rounded-xl border bg-cyan-500/15 border-cyan-500/35 p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-0.5 min-w-0">
           <div className="flex items-center gap-1.5">

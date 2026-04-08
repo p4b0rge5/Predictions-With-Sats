@@ -43,6 +43,7 @@ interface CryptoDef {
   chartColor: string;
   gradientId: string;
   dotColor: string;
+  cardTint: string;
 }
 
 const CRYPTOS: CryptoDef[] = [
@@ -57,6 +58,7 @@ const CRYPTOS: CryptoDef[] = [
     chartColor: "#f97316",
     gradientId: "priceGradBtc",
     dotColor: "#f97316",
+    cardTint: "bg-orange-500/15 border-orange-500/35",
   },
   {
     key: "ethereum",
@@ -69,6 +71,7 @@ const CRYPTOS: CryptoDef[] = [
     chartColor: "#818cf8",
     gradientId: "priceGradEth",
     dotColor: "#818cf8",
+    cardTint: "bg-indigo-500/15 border-indigo-500/35",
   },
   {
     key: "solana",
@@ -81,6 +84,7 @@ const CRYPTOS: CryptoDef[] = [
     chartColor: "#a855f7",
     gradientId: "priceGradSol",
     dotColor: "#a855f7",
+    cardTint: "bg-purple-500/15 border-purple-500/35",
   },
 ];
 
@@ -364,7 +368,7 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
           </div>
 
           {/* Stats Row */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-4 rounded-xl bg-card/30 border border-border/40 px-3 py-3 sm:px-5 sm:py-4">
+          <div className={`grid grid-cols-3 gap-2 sm:gap-4 rounded-xl border ${def.cardTint} px-3 py-3 sm:px-5 sm:py-4`}>
             <div className="space-y-1 min-w-0">
               <p className="text-[9px] sm:text-xs text-muted-foreground font-mono uppercase tracking-wider truncate">Price to beat</p>
               <p className="text-sm sm:text-xl font-mono font-bold leading-tight truncate">
@@ -400,7 +404,7 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
           </div>
 
           {/* Price Chart */}
-          <div className="border border-border/40 rounded-xl overflow-hidden bg-card/30 pb-2">
+          <div className={`border rounded-xl overflow-hidden pb-2 ${def.cardTint}`}>
             <div className="h-48 sm:h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
@@ -471,7 +475,7 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
           </div>
 
           {/* Pool Bar */}
-          <div className="rounded-xl bg-card/30 border border-border/40 px-3 sm:px-4 py-3">
+          <div className={`rounded-xl border ${def.cardTint} px-3 sm:px-4 py-3`}>
             <div className="flex justify-between font-mono text-xs sm:text-sm mb-2">
               <span className="text-green-500 font-bold">{upPercent.toFixed(1)}% UP</span>
               <span className="text-muted-foreground text-[10px] sm:text-xs">Pool: {formatSats(totalSats)} sats</span>
@@ -485,7 +489,7 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
       )}
 
       {/* Bet lookup */}
-      <div className="rounded-xl border border-border/40 bg-card/20 font-mono overflow-hidden">
+      <div className={`rounded-xl border ${def.cardTint} font-mono overflow-hidden`}>
         <button onClick={() => setShowLookup(v => !v)}
           className="w-full px-4 py-3 flex items-center justify-between text-xs text-muted-foreground hover:text-foreground transition-colors">
           <span className="flex items-center gap-1.5"><Search className="h-3 w-3" /> Look up bet by hash</span>
