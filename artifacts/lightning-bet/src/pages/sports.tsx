@@ -26,7 +26,7 @@ import { GuidePager, type GuideStep } from "@/components/guide-pager";
 // ---------------------------------------------------------------------------
 
 type Direction = "home" | "draw" | "away";
-type SportKey = "football" | "nba";
+type SportKey = "football" | "nba" | "nfl";
 type ContentTab = "guide" | "my-bets" | "upcoming" | "results";
 
 interface SportDef {
@@ -34,9 +34,10 @@ interface SportDef {
   label: string;
   icon: string;
   sportName: string;       // matches SportEvent.sport from API
-  hasDraw: boolean;        // basketball has no draws
+  hasDraw: boolean;        // basketball/nfl have no draws
   cardClass: string;       // upcoming card bg + border
   resultCardClass: string; // finished card bg + border
+  suspendedKey: string;    // key in API response for suspended flag
 }
 
 const SPORTS: SportDef[] = [
@@ -48,6 +49,7 @@ const SPORTS: SportDef[] = [
     hasDraw: true,
     cardClass: "bg-green-500/15 border-green-500/35",
     resultCardClass: "bg-green-500/10 border-green-500/25",
+    suspendedKey: "suspended",
   },
   {
     key: "nba",
@@ -57,6 +59,17 @@ const SPORTS: SportDef[] = [
     hasDraw: false,
     cardClass: "bg-orange-500/15 border-orange-500/35",
     resultCardClass: "bg-orange-500/10 border-orange-500/25",
+    suspendedKey: "nbaSuspended",
+  },
+  {
+    key: "nfl",
+    label: "NFL",
+    icon: "🏈",
+    sportName: "American Football",
+    hasDraw: false,
+    cardClass: "bg-indigo-500/15 border-indigo-500/35",
+    resultCardClass: "bg-indigo-500/10 border-indigo-500/25",
+    suspendedKey: "nflSuspended",
   },
 ];
 
@@ -342,6 +355,74 @@ function NBAGuide({ onDone }: { onDone?: () => void } = {}) {
         </>
       }
       ctaClass="bg-orange-400/10 border-orange-400/30 text-orange-400 hover:bg-orange-400/20"
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NFL Guide
+// ---------------------------------------------------------------------------
+
+const NFL_GUIDE_STEPS: GuideStep[] = [
+  {
+    icon: BookOpen,
+    color: "text-indigo-400",
+    iconBg: "bg-indigo-400/15 border-indigo-400/40",
+    cardTint: "bg-indigo-400/5",
+    cardBorder: "border-indigo-400/30",
+    title: "How NFL Predictions Work",
+    body: "Pick an upcoming NFL game and predict the winner: HOME team or AWAY team. American football has no draws — overtime is always played until a winner is decided. Pay via Lightning, winners split the entire pool.",
+  },
+  {
+    icon: Wallet,
+    color: "text-blue-400",
+    iconBg: "bg-blue-400/15 border-blue-400/40",
+    cardTint: "bg-blue-400/5",
+    cardBorder: "border-blue-400/30",
+    title: "Pay with Lightning",
+    body: "Scan the QR code with any Lightning wallet (Phoenix, Wallet of Satoshi, Alby, etc.) or use WebLN if your browser supports it. Minimum bet is $0.50 USD.",
+  },
+  {
+    icon: Coins,
+    color: "text-purple-400",
+    iconBg: "bg-purple-400/15 border-purple-400/40",
+    cardTint: "bg-purple-400/5",
+    cardBorder: "border-purple-400/30",
+    title: "Pool & Payout",
+    body: "All bets on a game flow into one shared pool. After the final whistle, winners split the total pool proportional to their stake (minus 2% house fee). Claim your sats via the withdrawal QR code.",
+  },
+  {
+    icon: Award,
+    color: "text-green-400",
+    iconBg: "bg-green-400/15 border-green-400/40",
+    cardTint: "bg-green-400/5",
+    cardBorder: "border-green-400/30",
+    title: "Automatic Settlement",
+    body: "Our system checks game results regularly. Once the final score is confirmed, payouts are calculated and withdrawal QR codes are generated automatically. NFL games can run up to 4 hours with overtime.",
+  },
+  {
+    icon: ListChecks,
+    color: "text-red-400",
+    iconBg: "bg-red-400/15 border-red-400/40",
+    cardTint: "bg-red-400/5",
+    cardBorder: "border-red-400/30",
+    title: "Tips & Rules",
+    body: "• Betting closes 5 minutes before kickoff.\n• If nobody bets on the winning team, the house keeps the pool.\n• Keep your payment proof — you can verify your bet manually.\n• NFL season runs September to February. Off-season: no games available.\n• Bet early for better value when the pool is thin.",
+  },
+];
+
+function NFLGuide({ onDone }: { onDone?: () => void } = {}) {
+  return (
+    <GuidePager
+      steps={NFL_GUIDE_STEPS}
+      onDone={onDone}
+      header={
+        <>
+          <span className="text-2xl leading-none">🏈</span>
+          <h2 className="text-base font-bold font-mono uppercase tracking-wider">NFL Betting Guide</h2>
+        </>
+      }
+      ctaClass="bg-indigo-400/10 border-indigo-400/30 text-indigo-400 hover:bg-indigo-400/20"
     />
   );
 }
@@ -1207,7 +1288,7 @@ function SportMyBetsTab({ hashes, onDismiss }: { hashes: string[]; onDismiss: (h
 export function Sports() {
   const [activeSport, setActiveSport] = useState<SportKey>("football");
   const [activeTab, setActiveTab] = useState<ContentTab>("upcoming");
-  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean; nbaSuspended?: boolean } | null>(null);
+  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean; nbaSuspended?: boolean; nflSuspended?: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
@@ -1279,11 +1360,12 @@ export function Sports() {
       </div>
 
       {/* ── Guide ── */}
-      {activeTab === "guide" && (
-        activeSportDef.key === "football"
-          ? <FootballGuide onDone={() => { setActiveTab("upcoming"); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
-          : <NBAGuide onDone={() => { setActiveTab("upcoming"); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
-      )}
+      {activeTab === "guide" && (() => {
+        const props = { onDone: () => { setActiveTab("upcoming"); window.scrollTo({ top: 0, behavior: "smooth" }); } };
+        if (activeSportDef.key === "football") return <FootballGuide {...props} />;
+        if (activeSportDef.key === "nba")      return <NBAGuide {...props} />;
+        return <NFLGuide {...props} />;
+      })()}
 
       {/* ── My Bets ── */}
       {activeTab === "my-bets" && (
@@ -1310,19 +1392,20 @@ export function Sports() {
           {loading && !data && (
             <div className="flex items-center justify-center h-40 gap-3 text-muted-foreground">
               <RefreshCw className="h-5 w-5 animate-spin" />
-              <span className="font-mono text-sm">Fetching {activeSportDef.key === "nba" ? "games" : "matches"}…</span>
+              <span className="font-mono text-sm">Fetching {activeSportDef.hasDraw ? "matches" : "games"}…</span>
             </div>
           )}
           {error && !loading && (
             <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
               <AlertCircle className="h-8 w-8" />
-              <p className="font-mono text-sm">Failed to load {activeSportDef.key === "nba" ? "games" : "matches"}.</p>
+              <p className="font-mono text-sm">Failed to load {activeSportDef.hasDraw ? "matches" : "games"}.</p>
               <Button variant="outline" size="sm" onClick={() => fetchData()}>Retry</Button>
             </div>
           )}
           {!error && data && (() => {
             const now = Date.now();
-            const isSuspended = activeSportDef.key === "nba" ? (data.nbaSuspended ?? false) : data.suspended;
+            const rawData = data as Record<string, unknown>;
+            const isSuspended = (rawData[activeSportDef.suspendedKey] as boolean | undefined) ?? false;
             const visible = data.upcoming.filter(
               (ev) =>
                 ev.sport === activeSportDef.sportName &&
@@ -1339,8 +1422,19 @@ export function Sports() {
                   </p>
                 </div>
               );
+            if (visible.length === 0 && activeSportDef.key === "nfl")
+              return (
+                <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
+                  <span className="text-4xl">🏈</span>
+                  <p className="font-mono text-sm font-semibold">No NFL games available</p>
+                  <p className="font-mono text-xs text-center opacity-60 max-w-xs">
+                    The NFL regular season runs September through January, with playoffs in February.<br/>
+                    Check back when the season starts!
+                  </p>
+                </div>
+              );
             return visible.length === 0
-              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No upcoming {activeSportDef.key === "nba" ? "games" : "matches"}.</p>
+              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No upcoming {activeSportDef.hasDraw ? "matches" : "games"}.</p>
               : visible.map((ev) => (
                   <UpcomingCard key={ev.id} ev={ev} sportDef={activeSportDef} onBet={(dir) => setBetModal({ event: ev, direction: dir })} />
                 ));
@@ -1379,7 +1473,8 @@ export function Sports() {
             </div>
           )}
           {!error && data && (() => {
-            const isSuspended = activeSportDef.key === "nba" ? (data.nbaSuspended ?? false) : data.suspended;
+            const rawData = data as Record<string, unknown>;
+            const isSuspended = (rawData[activeSportDef.suspendedKey] as boolean | undefined) ?? false;
             const visible = data.finished.filter((ev) => ev.sport === activeSportDef.sportName);
             if (isSuspended)
               return (

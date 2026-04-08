@@ -16,6 +16,7 @@ import { db, sportBetsTable, sportMarketsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getSportsEvents, type SportEvent } from "../lib/sports";
 import { getNbaEvents } from "../lib/nba";
+import { getNflEvents } from "../lib/nfl";
 import { findOrCreateMarket, addToPool } from "../lib/sports-market";
 import { createInvoice } from "../lib/alby";
 import { coinosPayInvoice } from "../lib/coinos";
@@ -50,7 +51,7 @@ function getPublicBase(req: ExpressRequest): string {
 
 router.get("/sports/events", async (req, res): Promise<void> => {
   try {
-    const [soccer, nba] = await Promise.all([getSportsEvents(), getNbaEvents()]);
+    const [soccer, nba, nfl] = await Promise.all([getSportsEvents(), getNbaEvents(), getNflEvents()]);
 
     const allMarkets = await db.select().from(sportMarketsTable);
     const marketsByEventId = new Map(
@@ -83,10 +84,11 @@ router.get("/sports/events", async (req, res): Promise<void> => {
     };
 
     const enriched = {
-      upcoming:  [...soccer.upcoming, ...nba.upcoming].map(enrich),
-      finished:  [...soccer.finished, ...nba.finished].map(enrich),
-      suspended: soccer.suspended,
+      upcoming:     [...soccer.upcoming, ...nba.upcoming, ...nfl.upcoming].map(enrich),
+      finished:     [...soccer.finished, ...nba.finished, ...nfl.finished].map(enrich),
+      suspended:    soccer.suspended,
       nbaSuspended: nba.suspended,
+      nflSuspended: nfl.suspended,
     };
 
     res.json(enriched);
@@ -128,8 +130,8 @@ router.post("/sports/bets", async (req, res): Promise<void> => {
     return;
   }
 
-  const [soccer, nba] = await Promise.all([getSportsEvents(), getNbaEvents()]);
-  const allUpcoming = [...soccer.upcoming, ...nba.upcoming];
+  const [soccer, nba, nfl] = await Promise.all([getSportsEvents(), getNbaEvents(), getNflEvents()]);
+  const allUpcoming = [...soccer.upcoming, ...nba.upcoming, ...nfl.upcoming];
   const event = allUpcoming.find((e: SportEvent) => e.id === eventId);
   if (!event) {
     res.status(404).json({ error: "Event not found or not available for betting" });

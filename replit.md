@@ -51,16 +51,24 @@ All prediction cards (Crypto, Sports, Weather) follow the same vertical order:
 Sports category supports multiple sports via `SportDef` in `sports.tsx`:
 - **Football** (Soccer): `sport: "Soccer"`, `hasDraw: true`, green cards, 3-column buttons (HOME/DRAW/AWAY)
 - **NBA** (Basketball): `sport: "Basketball"`, `hasDraw: false`, orange cards, 2-column buttons (HOME/AWAY)
+- **NFL** (American Football): `sport: "American Football"`, `hasDraw: false`, indigo cards, 2-column buttons (HOME/AWAY)
 
 **Backend libs:**
-- `lib/sports.ts` — Football via `v3.football.api-sports.io` (IDs prefixed without namespace)
-- `lib/nba.ts` — Basketball via `v1.basketball.api-sports.io` (IDs prefixed with `nba_`)
-- `routes/sports.ts` — Combines both, enriches with market pool data from DB
-- `lib/sports-pollers.ts` — Settlement uses force-refresh + direct API fallback (see Settlement Standard below)
+- `lib/sports.ts` — Football via `v3.football.api-sports.io` (IDs without namespace)
+- `lib/nba.ts` — Basketball via `v1.basketball.api-sports.io` (IDs prefixed `nba_`)
+- `lib/nfl.ts` — American Football via `v1.american-football.api-sports.io` (IDs prefixed `nfl_`)
+- `routes/sports.ts` — Combines all three, enriches with market pool data from DB; returns `nflSuspended` field
+- `lib/sports-pollers.ts` — Settlement uses per-sport `getExpectedDurationMs()` + force-refresh + direct API fallback
 
-**Event IDs are namespaced:** `nba_<id>` for basketball to avoid collisions with football IDs.
+**Event IDs are namespaced:** `nba_<id>` for basketball, `nfl_<id>` for NFL, no prefix for soccer.
 
 **NBA league IDs:** 12 = Regular Season, 13 = Playoffs
+**NFL league IDs:** 1 = NFL Regular Season, 2 = NFL Playoffs
+**NFL off-season guard:** April–July → `getNflEvents()` returns empty immediately without API calls (no games scheduled).
+**NFL cache TTL:** 3 hours (weekly games; ~24 req/day vs 100/day budget).
+**NFL expected game duration:** 240 min (4h with OT) — used by settlement poller `getExpectedDurationMs("nfl_...")`.
+
+**`SportDef.suspendedKey`:** Each sport declares which field in the API response holds its suspended state (`"suspended"` for soccer, `"nbaSuspended"` for NBA, `"nflSuspended"` for NFL). `isSuspended` in the frontend reads this generically.
 
 ## Settlement Standard — ALL categories and subcategories
 
