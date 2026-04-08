@@ -19,6 +19,7 @@ import {
   removeSportBetHashForKey,
   migrateLegacySportsBetHashes,
 } from "@/components/my-bet-widget";
+import { GuidePager, type GuideStep } from "@/components/guide-pager";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -204,46 +205,58 @@ function PoolBar({ homeSats, drawSats, awaySats, hasDraw = true }: { homeSats: n
 // Football Guide
 // ---------------------------------------------------------------------------
 
-const GUIDE_STEPS = [
+const FOOTBALL_GUIDE_STEPS: GuideStep[] = [
   {
     icon: BookOpen,
-    color: "text-yellow-400",
-    bg: "bg-yellow-400/10 border-yellow-400/30",
+    color: "text-green-400",
+    iconBg: "bg-green-400/15 border-green-400/40",
+    cardTint: "bg-green-400/5",
+    cardBorder: "border-green-400/30",
     title: "How Sports Predictions Work",
     body: "Choose an upcoming football match and predict the outcome: HOME win, DRAW, or AWAY win. Pay your bet via the Lightning Network (no account needed). Winners split the entire pool minus a 2% house fee.",
   },
   {
     icon: Wallet,
     color: "text-blue-400",
-    bg: "bg-blue-400/10 border-blue-400/30",
+    iconBg: "bg-blue-400/15 border-blue-400/40",
+    cardTint: "bg-blue-400/5",
+    cardBorder: "border-blue-400/30",
     title: "Pay with Lightning",
     body: "After picking a side, scan the QR code with any Lightning wallet (Phoenix, Wallet of Satoshi, Alby, etc.) or use WebLN if your browser supports it. Minimum bet is $0.50 USD.",
   },
   {
     icon: Handshake,
-    color: "text-green-400",
-    bg: "bg-green-400/10 border-green-400/30",
+    color: "text-yellow-400",
+    iconBg: "bg-yellow-400/15 border-yellow-400/40",
+    cardTint: "bg-yellow-400/5",
+    cardBorder: "border-yellow-400/30",
     title: "Three Outcomes — All Real",
     body: "Unlike some platforms, DRAW is a fully supported outcome. If the match ends in a draw, only bettors who picked DRAW collect. No partial refunds — every bet counts.",
   },
   {
     icon: Coins,
     color: "text-purple-400",
-    bg: "bg-purple-400/10 border-purple-400/30",
+    iconBg: "bg-purple-400/15 border-purple-400/40",
+    cardTint: "bg-purple-400/5",
+    cardBorder: "border-purple-400/30",
     title: "Pool & Payout",
     body: "All bets on a match flow into one shared pool. After the final whistle, winners split the total pool proportional to their stake (minus 2% fee). Payout arrives via Lightning — scan the withdrawal QR to claim your sats.",
   },
   {
     icon: Award,
     color: "text-orange-400",
-    bg: "bg-orange-400/10 border-orange-400/30",
+    iconBg: "bg-orange-400/15 border-orange-400/40",
+    cardTint: "bg-orange-400/5",
+    cardBorder: "border-orange-400/30",
     title: "Automatic Settlement",
     body: "Our system checks match results every 5 minutes. Once a result is confirmed, payouts are calculated and withdrawal QR codes are generated automatically. No manual action needed.",
   },
   {
     icon: ListChecks,
     color: "text-red-400",
-    bg: "bg-red-400/10 border-red-400/30",
+    iconBg: "bg-red-400/15 border-red-400/40",
+    cardTint: "bg-red-400/5",
+    cardBorder: "border-red-400/30",
     title: "Tips & Rules",
     body: "• Betting closes 5 minutes before kick-off.\n• If nobody bets on the winning side, the house keeps the pool.\n• Keep your preimage (payment proof) — you can verify your bet manually if needed.\n• Odds are implied by the pool: bet early for better value.",
   },
@@ -251,33 +264,17 @@ const GUIDE_STEPS = [
 
 function FootballGuide({ onDone }: { onDone?: () => void } = {}) {
   return (
-    <div className="space-y-3 max-w-xl mx-auto">
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-2xl">⚽</span>
-        <h2 className="text-base font-bold font-mono uppercase tracking-wider">Football Betting Guide</h2>
-      </div>
-      {GUIDE_STEPS.map((step, i) => {
-        const Icon = step.icon;
-        return (
-          <div key={i} className="flex gap-3 p-3 rounded-xl border border-border/40 bg-card/30">
-            <div className={`mt-0.5 shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center ${step.bg}`}>
-              <Icon className={`h-4 w-4 ${step.color}`} />
-            </div>
-            <div className="space-y-0.5">
-              <p className="text-xs font-bold font-mono uppercase tracking-wider text-foreground">{step.title}</p>
-              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">{step.body}</p>
-            </div>
-          </div>
-        );
-      })}
-      <button
-        onClick={onDone}
-        className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-yellow-400/10 border border-yellow-400/30 text-yellow-400 font-mono font-bold text-sm uppercase tracking-wider hover:bg-yellow-400/20 transition-colors"
-      >
-        <Zap className="h-4 w-4 fill-yellow-400/30" />
-        Start Betting
-      </button>
-    </div>
+    <GuidePager
+      steps={FOOTBALL_GUIDE_STEPS}
+      onDone={onDone}
+      header={
+        <>
+          <span className="text-2xl leading-none">⚽</span>
+          <h2 className="text-base font-bold font-mono uppercase tracking-wider">Football Betting Guide</h2>
+        </>
+      }
+      ctaClass="bg-green-400/10 border-green-400/30 text-green-400 hover:bg-green-400/20"
+    />
   );
 }
 
@@ -285,39 +282,49 @@ function FootballGuide({ onDone }: { onDone?: () => void } = {}) {
 // NBA Guide
 // ---------------------------------------------------------------------------
 
-const NBA_GUIDE_STEPS = [
+const NBA_GUIDE_STEPS: GuideStep[] = [
   {
     icon: BookOpen,
     color: "text-orange-400",
-    bg: "bg-orange-400/10 border-orange-400/30",
+    iconBg: "bg-orange-400/15 border-orange-400/40",
+    cardTint: "bg-orange-400/5",
+    cardBorder: "border-orange-400/30",
     title: "How NBA Predictions Work",
     body: "Pick an upcoming NBA game and predict the winner: HOME team or AWAY team. Basketball has no draws — overtime is played until a winner is decided. Pay via Lightning, winners split the pool.",
   },
   {
     icon: Wallet,
     color: "text-blue-400",
-    bg: "bg-blue-400/10 border-blue-400/30",
+    iconBg: "bg-blue-400/15 border-blue-400/40",
+    cardTint: "bg-blue-400/5",
+    cardBorder: "border-blue-400/30",
     title: "Pay with Lightning",
     body: "Scan the QR code with any Lightning wallet (Phoenix, Wallet of Satoshi, Alby, etc.) or use WebLN if your browser supports it. Minimum bet is $0.50 USD.",
   },
   {
     icon: Coins,
     color: "text-purple-400",
-    bg: "bg-purple-400/10 border-purple-400/30",
+    iconBg: "bg-purple-400/15 border-purple-400/40",
+    cardTint: "bg-purple-400/5",
+    cardBorder: "border-purple-400/30",
     title: "Pool & Payout",
     body: "All bets on a game flow into one shared pool. After the final buzzer, winners split the total pool proportional to their stake (minus 2% house fee). Claim your sats via the withdrawal QR code.",
   },
   {
     icon: Award,
     color: "text-green-400",
-    bg: "bg-green-400/10 border-green-400/30",
+    iconBg: "bg-green-400/15 border-green-400/40",
+    cardTint: "bg-green-400/5",
+    cardBorder: "border-green-400/30",
     title: "Automatic Settlement",
     body: "Our system checks game results every 15 minutes. Once the final score is confirmed, payouts are calculated and withdrawal QR codes are generated automatically.",
   },
   {
     icon: ListChecks,
     color: "text-red-400",
-    bg: "bg-red-400/10 border-red-400/30",
+    iconBg: "bg-red-400/15 border-red-400/40",
+    cardTint: "bg-red-400/5",
+    cardBorder: "border-red-400/30",
     title: "Tips & Rules",
     body: "• Betting closes 5 minutes before tip-off.\n• If nobody bets on the winning team, the house keeps the pool.\n• Keep your payment proof — you can verify your bet manually.\n• Bet early for better value when the pool is thin.",
   },
@@ -325,35 +332,20 @@ const NBA_GUIDE_STEPS = [
 
 function NBAGuide({ onDone }: { onDone?: () => void } = {}) {
   return (
-    <div className="space-y-3 max-w-xl mx-auto">
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-2xl">🏀</span>
-        <h2 className="text-base font-bold font-mono uppercase tracking-wider">NBA Betting Guide</h2>
-      </div>
-      {NBA_GUIDE_STEPS.map((step, i) => {
-        const Icon = step.icon;
-        return (
-          <div key={i} className="flex gap-3 p-3 rounded-xl border border-border/40 bg-card/30">
-            <div className={`mt-0.5 shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center ${step.bg}`}>
-              <Icon className={`h-4 w-4 ${step.color}`} />
-            </div>
-            <div className="space-y-0.5">
-              <p className="text-xs font-bold font-mono uppercase tracking-wider text-foreground">{step.title}</p>
-              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">{step.body}</p>
-            </div>
-          </div>
-        );
-      })}
-      <button
-        onClick={onDone}
-        className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-orange-400/10 border border-orange-400/30 text-orange-400 font-mono font-bold text-sm uppercase tracking-wider hover:bg-orange-400/20 transition-colors"
-      >
-        <Zap className="h-4 w-4 fill-orange-400/30" />
-        Start Betting
-      </button>
-    </div>
+    <GuidePager
+      steps={NBA_GUIDE_STEPS}
+      onDone={onDone}
+      header={
+        <>
+          <span className="text-2xl leading-none">🏀</span>
+          <h2 className="text-base font-bold font-mono uppercase tracking-wider">NBA Betting Guide</h2>
+        </>
+      }
+      ctaClass="bg-orange-400/10 border-orange-400/30 text-orange-400 hover:bg-orange-400/20"
+    />
   );
 }
+
 
 // ---------------------------------------------------------------------------
 // Bet Modal

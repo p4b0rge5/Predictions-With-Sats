@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
 import { getWeatherBetHashes, removeWeatherBetHash, saveWeatherBetHash } from "@/components/my-bet-widget";
+import { GuidePager } from "@/components/guide-pager";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -99,49 +100,63 @@ const GUIDE_STEPS = [
   {
     icon: BookOpen,
     color: "text-cyan-400",
-    bg: "bg-cyan-400/10 border-cyan-400/30",
+    iconBg: "bg-cyan-400/15 border-cyan-400/40",
+    cardTint: "bg-cyan-400/5",
+    cardBorder: "border-cyan-400/30",
     title: "How Weather Predictions Work",
     body: "Each day, markets open for major cities asking a simple question: will the maximum temperature reach (or exceed) a given threshold?\n\nVote YES or NO and pay with Bitcoin via the Lightning Network.",
   },
   {
     icon: Thermometer,
     color: "text-orange-400",
-    bg: "bg-orange-400/10 border-orange-400/30",
+    iconBg: "bg-orange-400/15 border-orange-400/40",
+    cardTint: "bg-orange-400/5",
+    cardBorder: "border-orange-400/30",
     title: "What You're Predicting",
     body: "Each market shows: city, date, and threshold temperature in °C.\n\nExample: \"Will São Paulo reach 28°C on Apr 8?\"\n• YES — you think the max temp will be ≥ 28°C\n• NO — you think it will stay below 28°C",
   },
   {
     icon: Wallet,
     color: "text-blue-400",
-    bg: "bg-blue-400/10 border-blue-400/30",
+    iconBg: "bg-blue-400/15 border-blue-400/40",
+    cardTint: "bg-blue-400/5",
+    cardBorder: "border-blue-400/30",
     title: "Pay with Lightning",
     body: "Choose a side, enter your amount, and scan the invoice QR code with any Lightning wallet (Phoenix, Alby, Wallet of Satoshi…). Minimum bet is $0.50 USD. No sign-up needed.",
   },
   {
     icon: CalendarDays,
     color: "text-green-400",
-    bg: "bg-green-400/10 border-green-400/30",
+    iconBg: "bg-green-400/15 border-green-400/40",
+    cardTint: "bg-green-400/5",
+    cardBorder: "border-green-400/30",
     title: "Settlement",
     body: "Markets settle the day after the forecast date using real weather data from Open-Meteo (a public, independent weather service). The actual recorded max temperature is compared to the threshold — no manipulation possible.",
   },
   {
     icon: BarChart3,
     color: "text-purple-400",
-    bg: "bg-purple-400/10 border-purple-400/30",
+    iconBg: "bg-purple-400/15 border-purple-400/40",
+    cardTint: "bg-purple-400/5",
+    cardBorder: "border-purple-400/30",
     title: "Payout",
     body: "All bets flow into a shared pool. After settlement, winners split the total pool proportionally to their stake, minus a 2% fee. Payouts arrive via Lightning — scan the withdrawal QR to claim your sats.",
   },
   {
     icon: ShieldCheck,
     color: "text-emerald-400",
-    bg: "bg-emerald-400/10 border-emerald-400/30",
+    iconBg: "bg-emerald-400/15 border-emerald-400/40",
+    cardTint: "bg-emerald-400/5",
+    cardBorder: "border-emerald-400/30",
     title: "Fees & Rules",
     body: "2% house fee on every settlement.\n• If only one side has bets, the pool is kept by the house.\n• Markets are available for today and tomorrow.\n• Betting closes once the day ends (UTC midnight).",
   },
   {
     icon: ListChecks,
     color: "text-yellow-400",
-    bg: "bg-yellow-400/10 border-yellow-400/30",
+    iconBg: "bg-yellow-400/15 border-yellow-400/40",
+    cardTint: "bg-yellow-400/5",
+    cardBorder: "border-yellow-400/30",
     title: "Cities & Thresholds",
     body: "Thresholds are set per city based on seasonal averages — designed so that both YES and NO outcomes are plausible. Currently available:\n🇧🇷 São Paulo · 🇺🇸 New York · 🇬🇧 London · 🌴 Miami · 🇯🇵 Tokyo · 🇦🇪 Dubai",
   },
@@ -149,35 +164,19 @@ const GUIDE_STEPS = [
 
 function WeatherGuide({ onDone }: { onDone?: () => void }) {
   return (
-    <div className="space-y-3 max-w-xl mx-auto">
-      <div className="flex items-center gap-2 mb-4">
-        <div className="w-7 h-7 rounded-lg bg-cyan-500 flex items-center justify-center shrink-0">
-          <Cloud className="text-white w-4 h-4" />
-        </div>
-        <h2 className="text-base font-bold font-mono uppercase tracking-wider">Weather Betting Guide</h2>
-      </div>
-      {GUIDE_STEPS.map((step, i) => {
-        const Icon = step.icon;
-        return (
-          <div key={i} className="flex gap-3 p-3 rounded-xl border border-border/40 bg-card/30">
-            <div className={`mt-0.5 shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center ${step.bg}`}>
-              <Icon className={`h-4 w-4 ${step.color}`} />
-            </div>
-            <div className="space-y-0.5">
-              <p className="text-xs font-bold font-mono uppercase tracking-wider text-foreground">{step.title}</p>
-              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">{step.body}</p>
-            </div>
+    <GuidePager
+      steps={GUIDE_STEPS}
+      onDone={onDone}
+      header={
+        <>
+          <div className="w-7 h-7 rounded-lg bg-cyan-500 flex items-center justify-center shrink-0">
+            <Cloud className="text-white w-4 h-4" />
           </div>
-        );
-      })}
-      <button
-        onClick={onDone}
-        className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-yellow-400/10 border border-yellow-400/30 text-yellow-400 font-mono font-bold text-sm uppercase tracking-wider hover:bg-yellow-400/20 transition-colors"
-      >
-        <Zap className="h-4 w-4 fill-yellow-400/30" />
-        Start Betting
-      </button>
-    </div>
+          <h2 className="text-base font-bold font-mono uppercase tracking-wider">Weather Betting Guide</h2>
+        </>
+      }
+      ctaClass="bg-cyan-400/10 border-cyan-400/30 text-cyan-400 hover:bg-cyan-400/20"
+    />
   );
 }
 
