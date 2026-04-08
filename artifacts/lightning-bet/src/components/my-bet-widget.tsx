@@ -100,6 +100,24 @@ export function saveSportsBetHash(paymentHash: string)   { writeHash(SPORTS_STOR
 export function getSportsBetHashes(): string[]           { return readHashes(SPORTS_STORAGE_KEY); }
 export function removeSportsBetHash(paymentHash: string) { deleteHash(SPORTS_STORAGE_KEY, paymentHash); }
 
+// ── One-time migration: move old monolithic sports hashes → football bucket ──
+// Runs idempotently (migration flag stored in localStorage). Any bet saved before
+// the per-sport split is assumed to be a football bet (NBA was added later).
+
+const SPORTS_MIGRATION_FLAG = "lightning_bet_sports_migration_v1";
+
+export function migrateLegacySportsBetHashes() {
+  if (localStorage.getItem(SPORTS_MIGRATION_FLAG)) return; // already done
+  const legacy = readHashes(SPORTS_STORAGE_KEY);
+  if (legacy.length > 0) {
+    const footballKey = sportStorageKey("football");
+    const existing = readHashes(footballKey);
+    const merged = [...new Set([...legacy, ...existing])].slice(0, MAX_STORED);
+    localStorage.setItem(footballKey, JSON.stringify(merged));
+  }
+  localStorage.setItem(SPORTS_MIGRATION_FLAG, "1");
+}
+
 // ── Weather ───────────────────────────────────────────────────────────────────
 
 export function saveWeatherBetHash(paymentHash: string)   { writeHash(WEATHER_STORAGE_KEY, paymentHash); }

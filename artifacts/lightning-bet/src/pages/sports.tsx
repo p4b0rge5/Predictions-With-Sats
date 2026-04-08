@@ -17,6 +17,7 @@ import {
   getSportBetHashesForKey,
   saveSportBetHashForKey,
   removeSportBetHashForKey,
+  migrateLegacySportsBetHashes,
 } from "@/components/my-bet-widget";
 
 // ---------------------------------------------------------------------------
@@ -1211,6 +1212,9 @@ export function Sports() {
   const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
   const [betHashes, setBetHashes] = useState<string[]>([]);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // One-time migration: move bets saved under the old monolithic key → football bucket
+  useEffect(() => { migrateLegacySportsBetHashes(); }, []);
 
   // Refresh My Bets whenever the active sport changes — each sport has its own bucket
   useEffect(() => { setBetHashes(getSportBetHashesForKey(activeSport)); }, [activeSport]);
