@@ -20,21 +20,21 @@ const API_FOOTBALL_KEY  = process.env.API_FOOTBALL_KEY ?? "";
 // League IDs (API-Football format — different from TheSportsDB)
 // ---------------------------------------------------------------------------
 
+// Curated for highest global betting volume.
+// Removed: UECL (4), Championship (40), Primeira Liga (94), MLS (253), Saudi Pro League (307)
 const LEAGUE_IDS = new Set([
+  // European elite (Tier 1 — top global volume)
   2,   // UEFA Champions League
   3,   // UEFA Europa League
-  4,   // UEFA Conference League
   39,  // Premier League (England)
-  40,  // EFL Championship (England)
-  61,  // Ligue 1 (France)
-  71,  // Brasileirão Série A
-  78,  // Bundesliga (Germany)
-  94,  // Primeira Liga (Portugal)
-  135, // Serie A (Italy)
   140, // La Liga (Spain)
-  253, // MLS (USA)
+  78,  // Bundesliga (Germany)
+  135, // Serie A (Italy)
+  61,  // Ligue 1 (France)
+  // Americas (Tier 2 — large regional markets)
+  13,  // Copa Libertadores (South America)
+  71,  // Brasileirão Série A (Brazil)
   292, // Liga MX (Mexico)
-  307, // Saudi Pro League
 ]);
 
 // ---------------------------------------------------------------------------
