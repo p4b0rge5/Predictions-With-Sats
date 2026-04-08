@@ -23,7 +23,7 @@ import { bech32 } from "bech32";
 
 const router: IRouter = Router();
 
-const MIN_AMOUNT_SATS = 546;
+const MIN_AMOUNT_SATS = 250;
 const PAYOUT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------

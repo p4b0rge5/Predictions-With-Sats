@@ -15,12 +15,13 @@ import { eq, and, gte } from "drizzle-orm";
 import { addToWeatherPool, WEATHER_CITIES, fetchForecast } from "../lib/weather";
 import { createInvoice } from "../lib/alby";
 import { coinosPayInvoice } from "../lib/coinos";
+import { getCachedBtcPrice } from "../lib/price";
 import { logger } from "../lib/logger";
 import { bech32 } from "bech32";
 
 const router: IRouter = Router();
 
-const MIN_AMOUNT_SATS = 546;
+const MIN_AMOUNT_USD = 0.50;
 
 // ---------------------------------------------------------------------------
 // Temps cache (30-min TTL)
@@ -82,15 +83,10 @@ router.get("/weather/temps", async (_req, res) => {
   return res.json(results);
 });
 const PAYOUT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
-const APPROX_BTC_USD = 95_000;
 const BTC_SATS = 100_000_000;
 
-function satsToUsd(sats: number): number {
-  return (sats / BTC_SATS) * APPROX_BTC_USD;
-}
-
-function usdToSats(usd: number): number {
-  return Math.round((usd / APPROX_BTC_USD) * BTC_SATS);
+function usdToSats(usd: number, btcPriceUsd: number): number {
+  return Math.round((usd / btcPriceUsd) * BTC_SATS);
 }
 
 function encodeLnurl(url: string): string {
@@ -165,11 +161,13 @@ router.post("/weather/bets", async (req, res): Promise<void> => {
     return;
   }
 
-  const amountSats = usdToSats(amountUsd);
-  if (amountSats < MIN_AMOUNT_SATS) {
-    res.status(400).json({ error: `Minimum bet is ${MIN_AMOUNT_SATS} sats (~$0.50)` });
+  if (amountUsd < MIN_AMOUNT_USD) {
+    res.status(400).json({ error: `Minimum bet is $${MIN_AMOUNT_USD.toFixed(2)} USD` });
     return;
   }
+
+  const btcPriceUsd = await getCachedBtcPrice();
+  const amountSats = usdToSats(amountUsd, btcPriceUsd);
 
   const [market] = await db
     .select()
