@@ -226,15 +226,9 @@ function PoolBar({ homeSats, drawSats, awaySats, hasDraw = true }: { homeSats: n
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-center font-mono text-xs mb-1">
-        <div className="text-left leading-tight">
-          <div className="font-bold text-green-500">{pH.toFixed(1)}% HOME</div>
-          <div className="text-[9px] text-muted-foreground">{formatSats(homeSats)} sats</div>
-        </div>
+        <span className="font-bold text-green-500">{pH.toFixed(1)}% HOME</span>
         <span className="text-[10px] text-muted-foreground">Pool: {formatSats(total)} sats</span>
-        <div className="text-right leading-tight">
-          <div className="font-bold text-blue-500">{pA.toFixed(1)}% AWAY</div>
-          <div className="text-[9px] text-muted-foreground">{formatSats(awaySats)} sats</div>
-        </div>
+        <span className="font-bold text-blue-500">{pA.toFixed(1)}% AWAY</span>
       </div>
       <div className="flex h-2 rounded-full overflow-hidden gap-px">
         <div className="bg-green-500 transition-all" style={{ width: `${pH}%` }} />
@@ -243,7 +237,7 @@ function PoolBar({ homeSats, drawSats, awaySats, hasDraw = true }: { homeSats: n
       </div>
       {hasDraw && (
         <div className="text-center text-[10px] font-mono font-bold text-yellow-400">
-          {pD.toFixed(1)}% DRAW · {formatSats(drawSats)} sats
+          {pD.toFixed(1)}% DRAW
         </div>
       )}
     </div>
@@ -1057,12 +1051,16 @@ function UpcomingCard({ ev, onBet, sportDef }: { ev: SportEvent; onBet: (dir: Di
         </div>
       ) : (
         <div className={`grid gap-1.5 ${sportDef.hasDraw ? "grid-cols-3" : "grid-cols-2"}`}>
-          {dirs.map((dir) => (
-            <Button key={dir} size="sm" onClick={() => onBet(dir)}
-              className={`h-11 text-[11px] font-mono font-bold transition-all ${DIRECTION_COLORS[dir].btn}`}>
-              {dir === "home" ? "↑" : dir === "away" ? "↓" : "="} {DIRECTION_LABELS[dir]}
-            </Button>
-          ))}
+          {dirs.map((dir) => {
+            const dirSats = dir === "home" ? ev.totalHomeSats : dir === "away" ? ev.totalAwaySats : (ev.totalDrawSats ?? 0);
+            return (
+              <Button key={dir} size="sm" onClick={() => onBet(dir)}
+                className={`h-14 text-[11px] font-mono font-bold transition-all flex flex-col gap-0.5 ${DIRECTION_COLORS[dir].btn}`}>
+                <span>{dir === "home" ? "↑" : dir === "away" ? "↓" : "="} {DIRECTION_LABELS[dir]}</span>
+                <span className="text-[9px] font-normal opacity-70">{formatSats(dirSats)} sats in pool</span>
+              </Button>
+            );
+          })}
         </div>
       )}
       <PoolBar homeSats={ev.totalHomeSats} drawSats={ev.totalDrawSats ?? 0} awaySats={ev.totalAwaySats} hasDraw={sportDef.hasDraw} />

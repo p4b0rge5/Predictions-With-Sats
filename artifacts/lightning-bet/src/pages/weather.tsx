@@ -192,15 +192,9 @@ function PoolBar({ yesSats, noSats }: { yesSats: number; noSats: number }) {
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-center font-mono text-xs mb-1">
-        <div className="text-left leading-tight">
-          <div className="font-bold text-green-500">{pY.toFixed(1)}% YES</div>
-          <div className="text-[9px] text-muted-foreground">{formatSats(yesSats)} sats</div>
-        </div>
+        <span className="font-bold text-green-500">{pY.toFixed(1)}% YES</span>
         <span className="text-[10px] text-muted-foreground">Pool: {formatSats(total)} sats</span>
-        <div className="text-right leading-tight">
-          <div className="font-bold text-red-500">{pN.toFixed(1)}% NO</div>
-          <div className="text-[9px] text-muted-foreground">{formatSats(noSats)} sats</div>
-        </div>
+        <span className="font-bold text-red-500">{pN.toFixed(1)}% NO</span>
       </div>
       <div className="flex h-2 rounded-full overflow-hidden gap-px">
         <div className="bg-green-500 transition-all" style={{ width: `${pY}%` }} />
@@ -719,16 +713,18 @@ function MarketCard({
             <Button
               size="sm"
               onClick={() => setBetDirection("yes")}
-              className="h-11 font-mono font-bold text-[11px] bg-green-500/10 text-green-400 border border-green-500/40 hover:bg-green-500/20 hover:border-green-500 transition-all"
+              className="h-14 font-mono font-bold text-[11px] bg-green-500/10 text-green-400 border border-green-500/40 hover:bg-green-500/20 hover:border-green-500 transition-all flex flex-col gap-0.5"
             >
-              <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> BET YES
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5" /> BET YES</span>
+              <span className="text-[9px] font-normal opacity-70">{formatSats(market.totalYesSats)} sats in pool</span>
             </Button>
             <Button
               size="sm"
               onClick={() => setBetDirection("no")}
-              className="h-11 font-mono font-bold text-[11px] bg-red-500/10 text-red-400 border border-red-500/40 hover:bg-red-500/20 hover:border-red-500 transition-all"
+              className="h-14 font-mono font-bold text-[11px] bg-red-500/10 text-red-400 border border-red-500/40 hover:bg-red-500/20 hover:border-red-500 transition-all flex flex-col gap-0.5"
             >
-              <XCircle className="h-3.5 w-3.5 mr-1.5" /> BET NO
+              <span className="flex items-center gap-1.5"><XCircle className="h-3.5 w-3.5" /> BET NO</span>
+              <span className="text-[9px] font-normal opacity-70">{formatSats(market.totalNoSats)} sats in pool</span>
             </Button>
           </div>
           {/* Pool bar — below buttons, matching Bitcoin pattern */}
