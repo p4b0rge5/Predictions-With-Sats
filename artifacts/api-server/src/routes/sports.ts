@@ -19,6 +19,7 @@ import { getNbaEvents } from "../lib/nba";
 import { getNflEvents } from "../lib/nfl";
 import { getMlbEvents } from "../lib/mlb";
 import { getMmaEvents } from "../lib/mma";
+import { getRugbyEvents } from "../lib/rugby";
 import { findOrCreateMarket, addToPool } from "../lib/sports-market";
 import { createInvoice } from "../lib/alby";
 import { coinosPayInvoice } from "../lib/coinos";
@@ -53,7 +54,7 @@ function getPublicBase(req: ExpressRequest): string {
 
 router.get("/sports/events", async (req, res): Promise<void> => {
   try {
-    const [soccer, nba, nfl, mlb, mma] = await Promise.all([getSportsEvents(), getNbaEvents(), getNflEvents(), getMlbEvents(), getMmaEvents()]);
+    const [soccer, nba, nfl, mlb, mma, rugby] = await Promise.all([getSportsEvents(), getNbaEvents(), getNflEvents(), getMlbEvents(), getMmaEvents(), getRugbyEvents()]);
 
     const allMarkets = await db.select().from(sportMarketsTable);
     const marketsByEventId = new Map(
@@ -86,13 +87,14 @@ router.get("/sports/events", async (req, res): Promise<void> => {
     };
 
     const enriched = {
-      upcoming:     [...soccer.upcoming, ...nba.upcoming, ...nfl.upcoming, ...mlb.upcoming, ...mma.upcoming].map(enrich),
-      finished:     [...soccer.finished, ...nba.finished, ...nfl.finished, ...mlb.finished, ...mma.finished].map(enrich),
-      suspended:    soccer.suspended,
-      nbaSuspended: nba.suspended,
-      nflSuspended: nfl.suspended,
-      mlbSuspended: mlb.suspended,
-      mmaSuspended: mma.suspended,
+      upcoming:      [...soccer.upcoming, ...nba.upcoming, ...nfl.upcoming, ...mlb.upcoming, ...mma.upcoming, ...rugby.upcoming].map(enrich),
+      finished:      [...soccer.finished, ...nba.finished, ...nfl.finished, ...mlb.finished, ...mma.finished, ...rugby.finished].map(enrich),
+      suspended:     soccer.suspended,
+      nbaSuspended:  nba.suspended,
+      nflSuspended:  nfl.suspended,
+      mlbSuspended:  mlb.suspended,
+      mmaSuspended:  mma.suspended,
+      rugbySuspended: rugby.suspended,
     };
 
     res.json(enriched);
@@ -134,8 +136,8 @@ router.post("/sports/bets", async (req, res): Promise<void> => {
     return;
   }
 
-  const [soccer, nba, nfl, mlb, mma] = await Promise.all([getSportsEvents(), getNbaEvents(), getNflEvents(), getMlbEvents(), getMmaEvents()]);
-  const allUpcoming = [...soccer.upcoming, ...nba.upcoming, ...nfl.upcoming, ...mlb.upcoming, ...mma.upcoming];
+  const [soccer, nba, nfl, mlb, mma, rugby] = await Promise.all([getSportsEvents(), getNbaEvents(), getNflEvents(), getMlbEvents(), getMmaEvents(), getRugbyEvents()]);
+  const allUpcoming = [...soccer.upcoming, ...nba.upcoming, ...nfl.upcoming, ...mlb.upcoming, ...mma.upcoming, ...rugby.upcoming];
   const event = allUpcoming.find((e: SportEvent) => e.id === eventId);
   if (!event) {
     res.status(404).json({ error: "Event not found or not available for betting" });

@@ -26,7 +26,7 @@ import { GuidePager, type GuideStep } from "@/components/guide-pager";
 // ---------------------------------------------------------------------------
 
 type Direction = "home" | "draw" | "away";
-type SportKey = "football" | "nba" | "nfl" | "mlb" | "mma";
+type SportKey = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby";
 type ContentTab = "guide" | "my-bets" | "upcoming" | "results";
 
 interface SportDef {
@@ -90,6 +90,16 @@ const SPORTS: SportDef[] = [
     cardClass: "bg-yellow-500/15 border-yellow-500/35",
     resultCardClass: "bg-yellow-500/10 border-yellow-500/25",
     suspendedKey: "mmaSuspended",
+  },
+  {
+    key: "rugby",
+    label: "Rugby",
+    icon: "🏉",
+    sportName: "Rugby",
+    hasDraw: true,
+    cardClass: "bg-emerald-500/15 border-emerald-500/35",
+    resultCardClass: "bg-emerald-500/10 border-emerald-500/25",
+    suspendedKey: "rugbySuspended",
   },
 ];
 
@@ -579,6 +589,74 @@ function MMAGuide({ onDone }: { onDone?: () => void } = {}) {
         </>
       }
       ctaClass="bg-yellow-400/10 border-yellow-400/30 text-yellow-400 hover:bg-yellow-400/20"
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Rugby Guide
+// ---------------------------------------------------------------------------
+
+const RUGBY_GUIDE_STEPS: GuideStep[] = [
+  {
+    icon: BookOpen,
+    color: "text-emerald-400",
+    iconBg: "bg-emerald-400/15 border-emerald-400/40",
+    cardTint: "bg-emerald-400/5",
+    cardBorder: "border-emerald-400/30",
+    title: "How Rugby Predictions Work",
+    body: "Pick an upcoming rugby match across Six Nations, Rugby Championship, Premiership, Top 14, URC, Super Rugby and more. Predict HOME win, AWAY win or DRAW. In regular season, matches can end in a draw — so DRAW is a valid bet. Pay via Lightning, winners split the entire pool.",
+  },
+  {
+    icon: Wallet,
+    color: "text-blue-400",
+    iconBg: "bg-blue-400/15 border-blue-400/40",
+    cardTint: "bg-blue-400/5",
+    cardBorder: "border-blue-400/30",
+    title: "Pay with Lightning",
+    body: "Scan the QR code with any Lightning wallet (Phoenix, Wallet of Satoshi, Alby, etc.) or use WebLN if your browser supports it. Minimum bet is $0.50 USD.",
+  },
+  {
+    icon: Coins,
+    color: "text-purple-400",
+    iconBg: "bg-purple-400/15 border-purple-400/40",
+    cardTint: "bg-purple-400/5",
+    cardBorder: "border-purple-400/30",
+    title: "Pool & Payout",
+    body: "All bets on a match flow into one shared pool split across HOME, DRAW and AWAY. After the final whistle, winners split the total pool proportional to their stake (minus 2% house fee). Claim your sats via the withdrawal QR code.",
+  },
+  {
+    icon: Award,
+    color: "text-green-400",
+    iconBg: "bg-green-400/15 border-green-400/40",
+    cardTint: "bg-green-400/5",
+    cardBorder: "border-green-400/30",
+    title: "Automatic Settlement",
+    body: "Our system checks match results every hour. Once the final score is confirmed, payouts are calculated and withdrawal QR codes appear automatically. Rugby matches run ~80 minutes plus stoppage time. Knockout matches with extra time can last up to 2.5 hours.",
+  },
+  {
+    icon: ListChecks,
+    color: "text-emerald-400",
+    iconBg: "bg-emerald-400/15 border-emerald-400/40",
+    cardTint: "bg-emerald-400/5",
+    cardBorder: "border-emerald-400/30",
+    title: "Tips & Rules",
+    body: "• Betting closes 5 minutes before kick-off.\n• Both hemispheres covered — Northern (Six Nations, Premiership, Top 14) and Southern (Super Rugby, Rugby Championship).\n• DRAW is a real outcome in regular-season pool games — bet wisely!\n• If nobody bets on the winning side, the house keeps the pool.\n• Rugby runs year-round with events almost every weekend.",
+  },
+];
+
+function RugbyGuide({ onDone }: { onDone?: () => void } = {}) {
+  return (
+    <GuidePager
+      steps={RUGBY_GUIDE_STEPS}
+      onDone={onDone}
+      header={
+        <>
+          <span className="text-2xl leading-none">🏉</span>
+          <h2 className="text-base font-bold font-mono uppercase tracking-wider">Rugby Betting Guide</h2>
+        </>
+      }
+      ctaClass="bg-emerald-400/10 border-emerald-400/30 text-emerald-400 hover:bg-emerald-400/20"
     />
   );
 }
@@ -1443,7 +1521,7 @@ function SportMyBetsTab({ hashes, onDismiss }: { hashes: string[]; onDismiss: (h
 export function Sports() {
   const [activeSport, setActiveSport] = useState<SportKey>("football");
   const [activeTab, setActiveTab] = useState<ContentTab>("upcoming");
-  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean; nbaSuspended?: boolean; nflSuspended?: boolean; mlbSuspended?: boolean; mmaSuspended?: boolean } | null>(null);
+  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean; nbaSuspended?: boolean; nflSuspended?: boolean; mlbSuspended?: boolean; mmaSuspended?: boolean; rugbySuspended?: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
@@ -1521,6 +1599,7 @@ export function Sports() {
         if (activeSportDef.key === "nba")      return <NBAGuide {...props} />;
         if (activeSportDef.key === "mlb")      return <MLBGuide {...props} />;
         if (activeSportDef.key === "mma")      return <MMAGuide {...props} />;
+        if (activeSportDef.key === "rugby")    return <RugbyGuide {...props} />;
         return <NFLGuide {...props} />;
       })()}
 

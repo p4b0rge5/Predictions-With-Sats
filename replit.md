@@ -54,6 +54,7 @@ Sports category supports multiple sports via `SportDef` in `sports.tsx`:
 - **NFL** (American Football): `sport: "American Football"`, `hasDraw: false`, indigo cards, 2-column buttons (HOME/AWAY)
 - **MLB** (Baseball): `sport: "Baseball"`, `hasDraw: false`, red cards, 2-column buttons (HOME/AWAY). ⚠️ Free API plan blocked for 2026 season.
 - **MMA**: `sport: "MMA"`, `hasDraw: false`, yellow cards, 2-column buttons (HOME/AWAY). Covers UFC, Bellator, ONE Championship, PFL.
+- **Rugby**: `sport: "Rugby"`, `hasDraw: true`, emerald cards, 3-column buttons (HOME/DRAW/AWAY). Covers Six Nations, Rugby Championship, Premiership, Top 14, URC, Super Rugby. No off-season.
 
 **Backend libs:**
 - `lib/sports.ts` — Football via `v3.football.api-sports.io` (IDs without namespace)
@@ -61,7 +62,8 @@ Sports category supports multiple sports via `SportDef` in `sports.tsx`:
 - `lib/nfl.ts` — American Football via `v1.american-football.api-sports.io` (IDs prefixed `nfl_`)
 - `lib/mlb.ts` — Baseball via `v1.baseball.api-sports.io` (IDs prefixed `mlb_`); off-season guard Dec–Feb
 - `lib/mma.ts` — MMA via `v1.mma.api-sports.io` (IDs prefixed `mma_`); 30-min TTL; no off-season
-- `routes/sports.ts` — Combines all five, enriches with market pool data from DB; returns `*Suspended` flags
+- `lib/rugby.ts` — Rugby via `v1.rugby.api-sports.io` (IDs prefixed `rugby_`); 1h TTL; no off-season; hasDraw=true
+- `routes/sports.ts` — Combines all six, enriches with market pool data from DB; returns `*Suspended` flags
 - `lib/sports-pollers.ts` — Settlement uses per-sport `getExpectedDurationMs()` + force-refresh + direct API fallback
 
 **Event IDs are namespaced:** `nba_<id>` for basketball, `nfl_<id>` for NFL, no prefix for soccer.
@@ -132,6 +134,14 @@ Each sport/category data lib MUST expose a `fetchEventById(id)` function for thi
 2. ☑ Settlement poller (`lib/sports-pollers.ts` or new file): compute `hasPastDue`, pass `forceRefresh`, call `fetchEventById` as fallback
 3. ☑ Log verbose settlement steps (checking, skipping, settling) so issues are diagnosable in logs
 4. ☑ API budget: force-refresh cooldown ≥ 10 min + individual lookup only when overdue (never spam)
+
+### New Sport Implementation — full touch list (ALWAYS follow in order)
+Every new sport touches exactly these 4 files. Do them all in one session without prompting:
+1. **`lib/<sport>.ts`** — create from scratch: API URL, key, types, status/outcome helpers, mapGame/mapFight, HTTP helper, hasErrors, off-season guard (if applicable), cache struct (TTL + error TTL + force-refresh cooldown + max-age), `get<Sport>Events(forceRefresh)`, `fetch<Sport>GameById(id)`
+2. **`lib/sports-pollers.ts`** — import `{get<Sport>Events, fetch<Sport>GameById}`, add to `getExpectedDurationMs()` prefix chain, add to `Promise.all` in `pollSportSettlement`, add `is<Sport>` flag + fallback branch in direct-lookup chain, add to `allFinished` spread
+3. **`routes/sports.ts`** — import `get<Sport>Events`, add to both `Promise.all` calls (GET /events + POST /bets), spread into `upcoming/finished`, add `<sport>Suspended` field in response
+4. **`sports.tsx`** — add `"<sport>"` to `SportKey` union, add `SportDef` entry (key/label/icon/sportName/hasDraw/cardClass/resultCardClass/suspendedKey), create `<SPORT>_GUIDE_STEPS` + `<Sport>Guide` component, add to `data` state type, add branch in guide renderer IIFE
+Also update `replit.md` Sport list and backend libs table.
 
 ## My Bets — per-subcategory isolation (standard pattern)
 

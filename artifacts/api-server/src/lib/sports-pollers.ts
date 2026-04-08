@@ -19,6 +19,7 @@ import { getNbaEvents, fetchNbaGameById } from "./nba";
 import { getNflEvents, fetchNflGameById } from "./nfl";
 import { getMlbEvents, fetchMlbGameById } from "./mlb";
 import { getMmaEvents, fetchMmaFightById } from "./mma";
+import { getRugbyEvents, fetchRugbyGameById } from "./rugby";
 
 const PAYMENT_POLL_INTERVAL_MS = 5_000;
 // 15-min settlement interval conserves the 100 req/day API-Football free plan budget
@@ -102,8 +103,9 @@ function getExpectedDurationMs(eventId: string): number {
   if (eventId.startsWith("nfl_")) return 240 * 60 * 1000; // NFL: up to 4h with OT
   if (eventId.startsWith("nba_")) return 150 * 60 * 1000; // NBA: ~2.5h with OT
   if (eventId.startsWith("mlb_")) return 270 * 60 * 1000; // MLB: up to 4.5h with extra innings
-  if (eventId.startsWith("mma_")) return 360 * 60 * 1000; // MMA: up to 6h with prelims + main card
-  return 110 * 60 * 1000;                                  // Soccer: ~110 min
+  if (eventId.startsWith("mma_"))   return 360 * 60 * 1000; // MMA: up to 6h with prelims + main card
+  if (eventId.startsWith("rugby_")) return 150 * 60 * 1000; // Rugby: 80 min + stoppages + potential extra time
+  return 110 * 60 * 1000;                                    // Soccer: ~110 min
 }
 
 async function pollSportSettlement(): Promise<void> {
@@ -126,14 +128,15 @@ async function pollSportSettlement(): Promise<void> {
     (m) => nowMs - new Date(m.startsAt).getTime() > getExpectedDurationMs(m.eventId),
   );
 
-  const [soccer, nba, nfl, mlb, mma] = await Promise.all([
+  const [soccer, nba, nfl, mlb, mma, rugby] = await Promise.all([
     getSportsEvents(hasPastDue),
     getNbaEvents(hasPastDue),
     getNflEvents(hasPastDue),
     getMlbEvents(hasPastDue),
     getMmaEvents(hasPastDue),
+    getRugbyEvents(hasPastDue),
   ]);
-  const allFinished = [...soccer.finished, ...nba.finished, ...nfl.finished, ...mlb.finished, ...mma.finished];
+  const allFinished = [...soccer.finished, ...nba.finished, ...nfl.finished, ...mlb.finished, ...mma.finished, ...rugby.finished];
   const finishedById = new Map(allFinished.map((e) => [e.id, e]));
 
   for (const market of openMarkets) {
@@ -152,16 +155,19 @@ async function pollSportSettlement(): Promise<void> {
           const isNba = market.eventId.startsWith("nba_");
           const isNfl = market.eventId.startsWith("nfl_");
           const isMlb = market.eventId.startsWith("mlb_");
-          const isMma = market.eventId.startsWith("mma_");
+          const isMma   = market.eventId.startsWith("mma_");
+          const isRugby = market.eventId.startsWith("rugby_");
           const fetched = isNfl
             ? await fetchNflGameById(market.eventId)
             : isMlb
               ? await fetchMlbGameById(market.eventId)
               : isMma
                 ? await fetchMmaFightById(market.eventId)
-                : isNba
-                  ? await fetchNbaGameById(market.eventId)
-                  : await fetchFixtureById(market.eventId);
+                : isRugby
+                  ? await fetchRugbyGameById(market.eventId)
+                  : isNba
+                    ? await fetchNbaGameById(market.eventId)
+                    : await fetchFixtureById(market.eventId);
           if (fetched) event = fetched;
         }
       }
