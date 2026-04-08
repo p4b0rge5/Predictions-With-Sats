@@ -56,11 +56,70 @@ Sports category supports multiple sports via `SportDef` in `sports.tsx`:
 - `lib/sports.ts` — Football via `v3.football.api-sports.io` (IDs prefixed without namespace)
 - `lib/nba.ts` — Basketball via `v1.basketball.api-sports.io` (IDs prefixed with `nba_`)
 - `routes/sports.ts` — Combines both, enriches with market pool data from DB
-- `lib/sports-pollers.ts` — Settlement uses combined cache (0 extra API requests when warm)
+- `lib/sports-pollers.ts` — Settlement uses force-refresh + direct API fallback (see Settlement Standard below)
 
 **Event IDs are namespaced:** `nba_<id>` for basketball to avoid collisions with football IDs.
 
 **NBA league IDs:** 12 = Regular Season, 13 = Playoffs
+
+## Settlement Standard — ALL categories and subcategories
+
+**MANDATORY for every new betting category (Sports, Crypto, Weather, etc.).**
+
+### The Problem
+API caches have a 1-hour TTL. A match/event can finish AFTER the last cache refresh, so the settlement poller finds the event still "live" in the stale cache and never settles it.
+
+### Required Pattern — three layers of defence
+
+**Layer 1 — Force-refresh cache when markets are overdue**
+Every data source (`getSportsEvents`, `getNbaEvents`, etc.) MUST accept a `forceRefresh: boolean` parameter.
+When `forceRefresh=true` AND the cache is older than a minimum cooldown (10 min), bypass the TTL and re-fetch from the API.
+```typescript
+export async function getMyEvents(forceRefresh = false) {
+  const cacheAge = Date.now() - cache.fetchedAt;
+  const canForce = forceRefresh && cacheAge >= FORCE_REFRESH_COOLDOWN_MS; // 10 min
+  if (!canForce && cacheAge < CACHE_TTL_MS) return cachedData;
+  // ... fresh API fetch
+}
+```
+
+**Layer 2 — Settlement poller detects overdue markets and triggers force-refresh**
+In `pollSportSettlement()` (or equivalent poller for the new category):
+```typescript
+const MATCH_EXPECTED_DURATION_MS = 110 * 60 * 1000; // 110 min for soccer; adjust per sport
+
+const hasPastDue = openMarkets.some(
+  (m) => Date.now() - new Date(m.startsAt).getTime() > MATCH_EXPECTED_DURATION_MS
+);
+const events = await getMyEvents(hasPastDue); // passes forceRefresh=true when needed
+```
+
+**Layer 3 — Direct API lookup fallback per event**
+If an event is STILL not in the finished list after the force-refresh, and the market is overdue, do a **direct single-event API call** (cheaper, more targeted):
+```typescript
+if (!event || event.status !== "finished") {
+  const isOverdue = Date.now() - kickoffMs > MATCH_EXPECTED_DURATION_MS;
+  if (isOverdue) {
+    const fetched = await fetchEventById(market.eventId); // direct API call by ID
+    if (fetched) event = fetched;
+  }
+}
+```
+Each sport/category data lib MUST expose a `fetchEventById(id)` function for this fallback.
+
+### Expected duration constants by category
+| Category | Constant | Reason |
+|----------|----------|--------|
+| Soccer   | 110 min  | 90 min play + ~20 min stoppage/extra time |
+| NBA      | 150 min  | ~2.5h incl. OT and breaks |
+| Weather  | use exact window close time | settled at midnight |
+| Crypto   | 5 min    | always the exact window size |
+
+### Adding a new sport/category — checklist
+1. ☑ Data lib (`lib/my-sport.ts`): add `forceRefresh` param to main fetch function + export `fetchEventById`
+2. ☑ Settlement poller (`lib/sports-pollers.ts` or new file): compute `hasPastDue`, pass `forceRefresh`, call `fetchEventById` as fallback
+3. ☑ Log verbose settlement steps (checking, skipping, settling) so issues are diagnosable in logs
+4. ☑ API budget: force-refresh cooldown ≥ 10 min + individual lookup only when overdue (never spam)
 
 ## My Bets — per-subcategory isolation (standard pattern)
 
