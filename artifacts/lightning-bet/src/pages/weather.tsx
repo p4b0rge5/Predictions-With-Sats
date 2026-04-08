@@ -5,6 +5,7 @@ import {
   Cloud, CloudRain, Sun, Thermometer, Zap, ChevronDown, ChevronUp,
   CheckCircle2, XCircle, Clock, AlertCircle, Copy,
   BookOpen, Wallet, CalendarDays, BarChart3, ShieldCheck, ListChecks,
+  X, Share2, Gift, Loader2, Trophy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -691,67 +692,309 @@ interface WeatherBetRecord {
   amountSats: number;
   status: string;
   payoutSats: number | null;
+  withdrawToken: string | null;
   withdrawLnurl: string | null;
   withdrawStatus: string | null;
-  market: { city: string; date: string; threshold: number; status: string; outcome: string | null; actualTemp: number | null } | null;
+  createdAt: string;
+  paidAt: string | null;
+  market: {
+    city: string;
+    date: string;
+    threshold: number;
+    status: string;
+    outcome: string | null;
+    actualTemp: number | null;
+  } | null;
 }
 
-function WeatherBetStatusBadge({ status }: { status: string }) {
-  if (status === "pending")  return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[9px]">PENDING</Badge>;
-  if (status === "paid")     return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[9px]">PLACED</Badge>;
-  if (status === "won")      return <Badge className="bg-yellow-400/20 text-yellow-300 border-yellow-400/30 text-[9px]">WON 🏆</Badge>;
-  if (status === "lost")     return <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-[9px]">LOST</Badge>;
-  if (status === "expired")  return <Badge className="bg-muted text-muted-foreground text-[9px]">EXPIRED</Badge>;
-  return <Badge className="text-[9px]">{status.toUpperCase()}</Badge>;
-}
+const WEATHER_DIR_STYLES = {
+  yes: { text: "text-green-400", bg: "bg-green-500/10 border-green-500/30", icon: "↑", label: "YES" },
+  no:  { text: "text-red-400",   bg: "bg-red-500/10 border-red-500/30",    icon: "↓", label: "NO"  },
+};
 
 function WeatherBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () => void }) {
+  const { toast } = useToast();
   const [bet, setBet] = useState<WeatherBetRecord | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [showLnInput, setShowLnInput] = useState(false);
+  const [lnAddress, setLnAddress] = useState("");
+  const [lnPaying, setLnPaying] = useState(false);
+  const [lnError, setLnError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const reload = async () => {
+    const r = await fetch(`${API_BASE}/api/weather/bets/${hash}`);
+    if (r.ok) setBet(await r.json() as WeatherBetRecord);
+  };
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/weather/bets/${hash}`)
-      .then((r) => { if (!r.ok) { setNotFound(true); return null; } return r.json(); })
-      .then((d) => { if (d) setBet(d as WeatherBetRecord); })
-      .catch(() => setNotFound(true));
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/weather/bets/${hash}`);
+        if (!res.ok) { setNotFound(true); return; }
+        const data = await res.json() as WeatherBetRecord;
+        setBet(data);
+        if (data.status === "pending" || data.status === "paid") {
+          const interval = data.status === "pending" ? 3000 : 60000;
+          pollRef.current = setInterval(async () => {
+            const r = await fetch(`${API_BASE}/api/weather/bets/${hash}`);
+            if (!r.ok) return;
+            const d = await r.json() as WeatherBetRecord;
+            setBet(d);
+            if (d.status !== "pending" && d.status !== "paid") clearInterval(pollRef.current!);
+          }, interval);
+        }
+      } catch { setNotFound(true); }
+    };
+    load();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [hash]);
 
   if (notFound) return null;
-  if (!bet) return <div className="h-16 rounded-xl border border-border/40 bg-card/30 animate-pulse" />;
+  if (!bet) return <div className="h-20 rounded-xl border border-border/40 bg-card/30 animate-pulse" />;
 
-  const dirColor  = bet.direction === "yes" ? "text-green-400" : "text-red-400";
-  const dirLabel  = bet.direction === "yes" ? "YES" : "NO";
+  const dir = bet.direction === "yes" ? "yes" : "no";
+  const dirStyle = WEATHER_DIR_STYLES[dir];
+
+  // Market date — deadline = end of day UTC
+  const marketDate = bet.market ? new Date(bet.market.date + "T23:59:59Z") : null;
+  const marketDateStr = bet.market ? format(new Date(bet.market.date + "T12:00:00Z"), "MMM d") : null;
+
+  // Time until settlement
+  const timeLeftLabel = (() => {
+    if (!marketDate || bet.market?.status !== "open") return null;
+    const diff = marketDate.getTime() - Date.now();
+    if (diff <= 0) return "Settling today...";
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    return h > 0 ? `Settles in ${h}h ${m}m` : `Settles in ${m}m`;
+  })();
+
+  const statusInfo = (() => {
+    if (bet.status === "pending")
+      return { label: "Waiting for payment...", color: "text-yellow-500", pulse: true, icon: Clock };
+    if (bet.status === "paid" && timeLeftLabel)
+      return { label: `Bet confirmed — ${timeLeftLabel.toLowerCase()}`, color: "text-blue-400", pulse: false, icon: CheckCircle2 };
+    if (bet.status === "paid")
+      return { label: "Bet confirmed — waiting for result...", color: "text-blue-400", pulse: false, icon: CheckCircle2 };
+    if (bet.status === "lost")
+      return { label: "Better luck next time!", color: "text-red-500", pulse: false, icon: XCircle };
+    if (bet.status === "expired")
+      return { label: "Bet expired", color: "text-muted-foreground", pulse: false, icon: XCircle };
+    if (bet.status === "won" && bet.withdrawStatus === "claimed")
+      return { label: "Prize claimed! 🎉", color: "text-green-500", pulse: false, icon: CheckCircle2 };
+    return null;
+  })();
+
+  const handleCopyLnurl = (lnurl: string) => {
+    navigator.clipboard.writeText(lnurl);
+    toast({ title: "LNURL copied!", description: "Paste it in your Lightning wallet.", duration: 3000 });
+  };
+
+  const handleClaimSuccess = async () => {
+    await reload();
+    toast({ title: "Withdrawal sent!", description: "Your winnings are on their way.", duration: 4000 });
+  };
+
+  const handlePayToAddress = async () => {
+    if (!bet?.withdrawToken || !lnAddress.trim()) return;
+    setLnPaying(true); setLnError(null);
+    try {
+      const res = await fetch(
+        `${window.location.origin}/api/weather/withdraw/${bet.withdrawToken}/pay-to-address`,
+        { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: lnAddress.trim().toLowerCase() }) },
+      );
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        setLnError(data.error ?? "Payment failed. Try again.");
+      } else {
+        await reload();
+        toast({ title: "Sats sent!", description: `${new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0)} sats sent to ${lnAddress.trim()}.`, duration: 5000 });
+      }
+    } catch { setLnError("Network error. Please try again."); }
+    finally { setLnPaying(false); }
+  };
+
+  const handleShareX = () => {
+    if (!bet || !bet.market) return;
+    const sats = new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0);
+    const pick = dir === "yes" ? "YES" : "NO";
+    const text = `⚡ Just won ${sats} sats on Prediction With Sats! Predicted ${pick} on "${bet.market.city} will reach ${bet.market.threshold}°C" correctly. Try it at pwsats.com — no accounts, instant Lightning payouts.`;
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank");
+  };
+
+  const handleShareNostr = () => {
+    if (!bet || !bet.market) return;
+    const sats = new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0);
+    const pick = dir === "yes" ? "YES" : "NO";
+    const text = `⚡ Just won ${sats} sats on Prediction With Sats! Predicted ${pick} on "${bet.market.city} will reach ${bet.market.threshold}°C" correctly. No accounts — bet and claim entirely via Lightning Network. pwsats.com #Bitcoin #Lightning #Weather`;
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copied for Nostr!", description: "Paste it in your Nostr client.", duration: 3000 });
+  };
 
   return (
-    <div className="rounded-xl border border-border/40 bg-card/30 p-4 space-y-2 font-mono">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className={`text-xs font-bold ${dirColor}`}>{dirLabel}</span>
-          <WeatherBetStatusBadge status={bet.status} />
-        </div>
-        <button onClick={onDismiss} className="text-muted-foreground hover:text-foreground transition-colors">
-          <XCircle className="h-3.5 w-3.5" />
-        </button>
+    <div className={`rounded-xl border ${dirStyle.bg} bg-card/40 backdrop-blur p-4 font-mono relative`}>
+      {/* Dismiss */}
+      <button
+        onClick={onDismiss}
+        className="absolute top-3 right-3 text-muted-foreground hover:text-foreground transition-colors"
+        aria-label="Dismiss"
+      >
+        <X className="h-4 w-4" />
+      </button>
+
+      {/* Header row */}
+      <div className="flex items-center gap-2 mb-3 pr-6">
+        <span className={`flex items-center gap-1 font-bold text-sm px-2 py-0.5 rounded border ${dirStyle.bg} ${dirStyle.text}`}>
+          {dirStyle.icon} {dirStyle.label}
+        </span>
+        <span className="text-muted-foreground text-xs">
+          {new Intl.NumberFormat("en-US").format(bet.amountSats)} sats
+        </span>
+        {marketDateStr && (
+          <span className="text-[10px] text-muted-foreground ml-auto">
+            {marketDateStr}
+          </span>
+        )}
       </div>
+
+      {/* Market info */}
       {bet.market && (
-        <>
-          <p className="text-xs text-foreground">{bet.market.city} · {format(new Date(bet.market.date + "T12:00:00"), "MMM d")}</p>
-          <p className="text-[10px] text-muted-foreground">Will max temp reach {bet.market.threshold}°C?</p>
-        </>
+        <div className="mb-3 space-y-1">
+          <p className="text-xs text-foreground font-semibold">
+            {bet.market.city}
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            Will max temp reach {bet.market.threshold}°C?
+          </p>
+          {bet.market.actualTemp !== null && (
+            <p className="text-[10px] text-muted-foreground">
+              Actual max temp:{" "}
+              <span className={`font-semibold ${
+                (dir === "yes" && bet.market.actualTemp >= bet.market.threshold) ||
+                (dir === "no"  && bet.market.actualTemp < bet.market.threshold)
+                  ? "text-green-400" : "text-red-400"
+              }`}>
+                {bet.market.actualTemp}°C
+              </span>
+              {bet.market.outcome && (
+                <span className="ml-1 opacity-60 capitalize">· {bet.market.outcome}</span>
+              )}
+            </p>
+          )}
+        </div>
       )}
-      <p className="text-[10px] text-muted-foreground">{bet.amountSats.toLocaleString("en-US")} sats wagered</p>
+
+      {/* Payout line */}
       {bet.status === "won" && bet.payoutSats && (
-        <div className="border-t border-border/30 pt-3 space-y-2 flex flex-col items-center">
-          <p className="text-xs text-yellow-400 font-bold">PAYOUT: {bet.payoutSats.toLocaleString("en-US")} sats</p>
-          {bet.withdrawLnurl && (
-            <>
-              <div className="bg-white p-2 rounded-lg"><QRCodeSVG value={bet.withdrawLnurl} size={120} /></div>
-              <p className="text-[10px] text-muted-foreground text-center">Scan to withdraw via Lightning</p>
-            </>
-          )}
-          {!bet.withdrawLnurl && bet.withdrawStatus === "claimed" && (
-            <p className="text-[10px] text-green-400">Winnings claimed ✓</p>
-          )}
+        <div className="text-green-400 text-sm font-bold mb-3">
+          +{new Intl.NumberFormat("en-US").format(Number(bet.payoutSats))} sats won
+        </div>
+      )}
+
+      {/* Status */}
+      {statusInfo && (
+        <div className={`flex items-center gap-2 text-xs ${statusInfo.color} ${statusInfo.pulse ? "animate-pulse" : ""} mb-1`}>
+          <statusInfo.icon className="h-3.5 w-3.5 shrink-0" />
+          {statusInfo.label}
+        </div>
+      )}
+
+      {/* Share buttons — shown after claimed */}
+      {bet.status === "won" && bet.withdrawStatus === "claimed" && (
+        <div className="mt-3 pt-3 border-t border-border/30 space-y-2">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+            <Share2 className="h-3 w-3" /> Share your win
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm"
+              className="flex-1 text-xs font-bold gap-1.5 border-sky-500/30 text-sky-400 hover:bg-sky-500/10"
+              onClick={handleShareX}>
+              𝕏 Post on X
+            </Button>
+            <Button variant="outline" size="sm"
+              className="flex-1 text-xs font-bold gap-1.5 border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+              onClick={handleShareNostr}>
+              <Zap className="h-3 w-3" /> Copy for Nostr
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* CLAIM WINNINGS — QR + LNURL flow */}
+      {bet.status === "won" && bet.withdrawStatus === "unclaimed" && bet.withdrawLnurl && (
+        <div className="mt-3 space-y-3">
+          <div className="flex items-center gap-2 text-yellow-400 text-xs font-bold uppercase tracking-wider animate-pulse">
+            <Trophy className="h-3.5 w-3.5" />
+            You won! Scan to claim
+          </div>
+          <div className="flex flex-col items-center gap-3 pt-1">
+            <div
+              className="bg-white p-3 rounded-lg cursor-pointer relative group"
+              onClick={() => handleCopyLnurl(bet.withdrawLnurl!)}
+              title="Click to copy LNURL"
+            >
+              <QRCodeSVG value={bet.withdrawLnurl} size={160} level="M" includeMargin={false} />
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
+                <Copy className="h-6 w-6 text-white" />
+              </div>
+            </div>
+            <div className="flex gap-2 w-full">
+              <Button variant="outline" size="sm"
+                className="flex-1 font-bold uppercase tracking-wider text-xs"
+                onClick={() => handleCopyLnurl(bet.withdrawLnurl!)}>
+                <Copy className="h-3.5 w-3.5 mr-1.5" />Copy LNURL
+              </Button>
+              <Button variant="default" size="sm"
+                className="flex-1 font-bold uppercase tracking-wider text-xs bg-yellow-500 hover:bg-yellow-400 text-black"
+                onClick={handleClaimSuccess}>
+                <Gift className="h-3.5 w-3.5 mr-1.5" />I claimed it!
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground text-center leading-relaxed">
+              Open your Lightning wallet → Scan QR or paste LNURL → Receive {new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0)} sats
+            </p>
+          </div>
+
+          {/* Lightning address alternative */}
+          <div className="border-t border-border/30 pt-3">
+            <button
+              className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors w-full"
+              onClick={() => { setShowLnInput((v) => !v); setLnError(null); }}>
+              <Zap className="h-3 w-3 text-yellow-400" />
+              <span>Send to my Lightning address instead</span>
+              {showLnInput ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}
+            </button>
+            {showLnInput && (
+              <div className="mt-2 space-y-2">
+                <Input className="h-8 text-xs font-mono" placeholder="yourname@wallet.com"
+                  value={lnAddress} onChange={(e) => { setLnAddress(e.target.value); setLnError(null); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !lnPaying) handlePayToAddress(); }}
+                  disabled={lnPaying} autoCapitalize="none" autoCorrect="off" />
+                {lnError && <p className="text-[10px] text-red-400 leading-relaxed">{lnError}</p>}
+                <Button size="sm"
+                  className="w-full text-xs font-bold gap-1.5 bg-yellow-500 hover:bg-yellow-400 text-black"
+                  disabled={lnPaying || !lnAddress.includes("@")}
+                  onClick={handlePayToAddress}>
+                  {lnPaying
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Sending...</>
+                    : <><Zap className="h-3.5 w-3.5" /> Send {new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0)} sats</>}
+                </Button>
+                <p className="text-[10px] text-muted-foreground text-center">
+                  We resolve your address and pay instantly. No scanning needed.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Won + generating link */}
+      {bet.status === "won" && bet.withdrawStatus === "unclaimed" && !bet.withdrawLnurl && (
+        <div className="flex items-center gap-2 text-yellow-400 text-xs animate-pulse mt-2">
+          <Trophy className="h-3.5 w-3.5" />
+          You won {new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0)} sats — generating withdrawal link...
         </div>
       )}
     </div>
@@ -770,6 +1013,10 @@ function WeatherMyBetsTab({ hashes, onDismiss }: { hashes: string[]; onDismiss: 
   }
   return (
     <div className="space-y-3">
+      <p className="font-mono text-xs text-muted-foreground flex items-center gap-2">
+        <Clock className="h-3.5 w-3.5" />
+        MY BETS ({hashes.length})
+      </p>
       {hashes.map((h) => (
         <WeatherBetStatusCard key={h} hash={h} onDismiss={() => onDismiss(h)} />
       ))}

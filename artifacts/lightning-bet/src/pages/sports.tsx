@@ -757,7 +757,7 @@ interface SportBetRecord {
 const SPORT_DIR_STYLES: Record<string, { text: string; bg: string; icon: string; label: string }> = {
   home: { text: "text-green-400", bg: "bg-green-500/10 border-green-500/30", icon: "↑", label: "HOME" },
   draw: { text: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/30", icon: "=", label: "DRAW" },
-  away: { text: "text-blue-400",  bg: "bg-blue-500/10 border-blue-500/30",  icon: "↓", label: "AWAY" },
+  away: { text: "text-red-400",   bg: "bg-red-500/10 border-red-500/30",    icon: "↓", label: "AWAY" },
 };
 
 function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () => void }) {
