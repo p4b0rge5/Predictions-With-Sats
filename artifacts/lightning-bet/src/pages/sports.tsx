@@ -1104,7 +1104,7 @@ function SportMyBetsTab({ hashes, onDismiss }: { hashes: string[]; onDismiss: (h
 export function Sports() {
   const [activeSport, setActiveSport] = useState<SportKey>("football");
   const [activeTab, setActiveTab] = useState<ContentTab>("upcoming");
-  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[] } | null>(null);
+  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
@@ -1220,6 +1220,14 @@ export function Sports() {
                 ev.status === "upcoming" &&
                 new Date(ev.startsAt).getTime() > now - 3 * 60 * 60 * 1000
             );
+            if (data.suspended)
+              return (
+                <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
+                  <AlertCircle className="h-7 w-7 text-amber-400" />
+                  <p className="font-mono text-sm text-amber-400">Sports data temporarily unavailable</p>
+                  <p className="font-mono text-xs opacity-60 text-center">The football data provider is currently unreachable.<br/>Retrying automatically every 15 minutes.</p>
+                </div>
+              );
             return visible.length === 0
               ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No upcoming matches.</p>
               : visible.map((ev) => (
@@ -1260,9 +1268,17 @@ export function Sports() {
             </div>
           )}
           {!error && data && (
-            data.finished.length === 0
-              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No recent results.</p>
-              : data.finished.map((ev) => <FinishedCard key={ev.id} ev={ev} />)
+            data.suspended
+              ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
+                  <AlertCircle className="h-7 w-7 text-amber-400" />
+                  <p className="font-mono text-sm text-amber-400">Sports data temporarily unavailable</p>
+                  <p className="font-mono text-xs opacity-60 text-center">The football data provider is currently unreachable.<br/>Retrying automatically every 15 minutes.</p>
+                </div>
+              )
+              : data.finished.length === 0
+                ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No recent results.</p>
+                : data.finished.map((ev) => <FinishedCard key={ev.id} ev={ev} />)
           )}
         </div>
       )}

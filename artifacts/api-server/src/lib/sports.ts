@@ -142,33 +142,41 @@ async function apiFetch(path: string): Promise<ApiResponse> {
 }
 
 // ---------------------------------------------------------------------------
-// Cache (1-hour TTL to stay within 100 req/day free limit)
+// Cache (1-hour TTL on success; 15-min retry on API errors)
 // ---------------------------------------------------------------------------
 
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const CACHE_TTL_MS       = 60 * 60 * 1000;      // 1 hour — normal
+const CACHE_ERROR_TTL_MS = 15 * 60 * 1000;       // 15 min — retry on error
 const MAX_MATCH_DURATION_MS = 3 * 60 * 60 * 1000;
 
 const cache: {
-  upcoming: SportEvent[];
-  finished: SportEvent[];
+  upcoming:  SportEvent[];
+  finished:  SportEvent[];
   fetchedAt: number;
-} = { upcoming: [], finished: [], fetchedAt: 0 };
+  suspended: boolean;
+} = { upcoming: [], finished: [], fetchedAt: 0, suspended: false };
+
+function hasApiErrors(errors: ApiResponse["errors"]): boolean {
+  if (Array.isArray(errors)) return errors.length > 0;
+  return Object.keys(errors ?? {}).length > 0;
+}
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 export async function getSportsEvents(): Promise<{
-  upcoming: SportEvent[];
-  finished: SportEvent[];
+  upcoming:  SportEvent[];
+  finished:  SportEvent[];
+  suspended: boolean;
 }> {
   if (Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
-    return { upcoming: cache.upcoming, finished: cache.finished };
+    return { upcoming: cache.upcoming, finished: cache.finished, suspended: cache.suspended };
   }
 
   const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
-  const today    = toDateStr(new Date());
-  const tomorrow = toDateStr(new Date(Date.now() + 86_400_000));
+  const today     = toDateStr(new Date());
+  const tomorrow  = toDateStr(new Date(Date.now() + 86_400_000));
   const yesterday = toDateStr(new Date(Date.now() - 86_400_000));
 
   const [todayData, tomorrowData, yesterdayData] = await Promise.allSettled([
@@ -178,18 +186,29 @@ export async function getSportsEvents(): Promise<{
   ]);
 
   const allFixtures: ApiFixture[] = [];
+  let apiErrored = false;
 
   for (const result of [todayData, tomorrowData, yesterdayData]) {
     if (result.status === "fulfilled") {
       const data = result.value;
-      // Log API errors
-      if (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors ?? {}).length > 0) {
+      if (hasApiErrors(data.errors)) {
         logger.warn({ errors: data.errors }, "API-Football returned errors");
+        apiErrored = true;
       }
       allFixtures.push(...(data.response ?? []));
     } else {
       logger.warn({ err: result.reason }, "API-Football date fetch failed");
+      apiErrored = true;
     }
+  }
+
+  // If API errored and we have no fixtures at all, preserve stale cache data.
+  // Only schedule a short retry (15 min) instead of the normal 1-hour TTL.
+  if (apiErrored && allFixtures.length === 0) {
+    cache.fetchedAt  = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
+    cache.suspended  = true;
+    logger.warn("API-Football error — serving stale cache, retrying in 15 min");
+    return { upcoming: cache.upcoming, finished: cache.finished, suspended: true };
   }
 
   // Filter to our leagues only
@@ -215,13 +234,14 @@ export async function getSportsEvents(): Promise<{
   cache.upcoming  = upcoming;
   cache.finished  = finished;
   cache.fetchedAt = Date.now();
+  cache.suspended = false;
 
   logger.info(
     { upcoming: upcoming.length, finished: finished.length, total: filtered.length },
     "API-Football fixtures refreshed",
   );
 
-  return { upcoming: cache.upcoming, finished: cache.finished };
+  return { upcoming: cache.upcoming, finished: cache.finished, suspended: false };
 }
 
 // ---------------------------------------------------------------------------

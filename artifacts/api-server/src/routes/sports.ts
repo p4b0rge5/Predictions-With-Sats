@@ -67,33 +67,24 @@ router.get("/sports/events", async (req, res): Promise<void> => {
       ]),
     );
 
+    const enrich = (ev: SportEvent) => {
+      const market = marketsByEventId.get(ev.id);
+      return {
+        ...ev,
+        marketId: market?.marketId ?? null,
+        totalHomeSats: market?.totalHomeSats ?? 0,
+        totalDrawSats: market?.totalDrawSats ?? 0,
+        totalAwaySats: market?.totalAwaySats ?? 0,
+        marketStatus: market?.status ?? null,
+        marketOutcome: market?.outcome ?? null,
+        marketSettledAt: market?.settledAt ?? null,
+      };
+    };
+
     const enriched = {
-      upcoming: data.upcoming.map((ev: SportEvent) => {
-        const market = marketsByEventId.get(ev.id);
-        return {
-          ...ev,
-          marketId: market?.marketId ?? null,
-          totalHomeSats: market?.totalHomeSats ?? 0,
-          totalDrawSats: market?.totalDrawSats ?? 0,
-          totalAwaySats: market?.totalAwaySats ?? 0,
-          marketStatus: market?.status ?? null,
-          marketOutcome: market?.outcome ?? null,
-          marketSettledAt: market?.settledAt ?? null,
-        };
-      }),
-      finished: data.finished.map((ev: SportEvent) => {
-        const market = marketsByEventId.get(ev.id);
-        return {
-          ...ev,
-          marketId: market?.marketId ?? null,
-          totalHomeSats: market?.totalHomeSats ?? 0,
-          totalDrawSats: market?.totalDrawSats ?? 0,
-          totalAwaySats: market?.totalAwaySats ?? 0,
-          marketStatus: market?.status ?? null,
-          marketOutcome: market?.outcome ?? null,
-          marketSettledAt: market?.settledAt ?? null,
-        };
-      }),
+      upcoming:  data.upcoming.map(enrich),
+      finished:  data.finished.map(enrich),
+      suspended: data.suspended,
     };
 
     res.json(enriched);
