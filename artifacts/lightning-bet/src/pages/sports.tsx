@@ -26,7 +26,7 @@ import { GuidePager, type GuideStep } from "@/components/guide-pager";
 // ---------------------------------------------------------------------------
 
 type Direction = "home" | "draw" | "away";
-type SportKey = "football" | "nba" | "nfl" | "mlb";
+type SportKey = "football" | "nba" | "nfl" | "mlb" | "mma";
 type ContentTab = "guide" | "my-bets" | "upcoming" | "results";
 
 interface SportDef {
@@ -80,6 +80,16 @@ const SPORTS: SportDef[] = [
     cardClass: "bg-red-500/15 border-red-500/35",
     resultCardClass: "bg-red-500/10 border-red-500/25",
     suspendedKey: "mlbSuspended",
+  },
+  {
+    key: "mma",
+    label: "MMA",
+    icon: "🥊",
+    sportName: "MMA",
+    hasDraw: false,
+    cardClass: "bg-yellow-500/15 border-yellow-500/35",
+    resultCardClass: "bg-yellow-500/10 border-yellow-500/25",
+    suspendedKey: "mmaSuspended",
   },
 ];
 
@@ -505,6 +515,73 @@ function MLBGuide({ onDone }: { onDone?: () => void } = {}) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// MMA Guide
+// ---------------------------------------------------------------------------
+
+const MMA_GUIDE_STEPS: GuideStep[] = [
+  {
+    icon: BookOpen,
+    color: "text-yellow-400",
+    iconBg: "bg-yellow-400/15 border-yellow-400/40",
+    cardTint: "bg-yellow-400/5",
+    cardBorder: "border-yellow-400/30",
+    title: "How MMA Predictions Work",
+    body: "Pick an upcoming UFC, Bellator, ONE Championship or PFL fight and predict the winner: Fighter 1 (HOME) or Fighter 2 (AWAY). MMA has no draws in our system — every fight has a winner. Pay via Lightning, winners split the entire pool.",
+  },
+  {
+    icon: Wallet,
+    color: "text-blue-400",
+    iconBg: "bg-blue-400/15 border-blue-400/40",
+    cardTint: "bg-blue-400/5",
+    cardBorder: "border-blue-400/30",
+    title: "Pay with Lightning",
+    body: "Scan the QR code with any Lightning wallet (Phoenix, Wallet of Satoshi, Alby, etc.) or use WebLN if your browser supports it. Minimum bet is $0.50 USD.",
+  },
+  {
+    icon: Coins,
+    color: "text-purple-400",
+    iconBg: "bg-purple-400/15 border-purple-400/40",
+    cardTint: "bg-purple-400/5",
+    cardBorder: "border-purple-400/30",
+    title: "Pool & Payout",
+    body: "All bets on a fight flow into one shared pool. After the final bell, winners split the total pool proportional to their stake (minus 2% house fee). Claim your sats via the withdrawal QR code — no account needed.",
+  },
+  {
+    icon: Award,
+    color: "text-green-400",
+    iconBg: "bg-green-400/15 border-green-400/40",
+    cardTint: "bg-green-400/5",
+    cardBorder: "border-green-400/30",
+    title: "Automatic Settlement",
+    body: "Our system checks fight results every 30 minutes. Once the official decision is confirmed — KO, TKO, submission or judges' decision — payouts are calculated automatically. Full UFC events including prelims can run up to 6 hours.",
+  },
+  {
+    icon: ListChecks,
+    color: "text-yellow-400",
+    iconBg: "bg-yellow-400/15 border-yellow-400/40",
+    cardTint: "bg-yellow-400/5",
+    cardBorder: "border-yellow-400/30",
+    title: "Tips & Rules",
+    body: "• Betting closes 5 minutes before the fight starts.\n• Individual fights are listed — you can bet on any fight on the card, not just the main event.\n• If nobody bets on the winning fighter, the house keeps the pool.\n• MMA events happen year-round every weekend.\n• Bet early for better value when the pool is thin.",
+  },
+];
+
+function MMAGuide({ onDone }: { onDone?: () => void } = {}) {
+  return (
+    <GuidePager
+      steps={MMA_GUIDE_STEPS}
+      onDone={onDone}
+      header={
+        <>
+          <span className="text-2xl leading-none">🥊</span>
+          <h2 className="text-base font-bold font-mono uppercase tracking-wider">MMA Betting Guide</h2>
+        </>
+      }
+      ctaClass="bg-yellow-400/10 border-yellow-400/30 text-yellow-400 hover:bg-yellow-400/20"
+    />
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Bet Modal
@@ -1366,7 +1443,7 @@ function SportMyBetsTab({ hashes, onDismiss }: { hashes: string[]; onDismiss: (h
 export function Sports() {
   const [activeSport, setActiveSport] = useState<SportKey>("football");
   const [activeTab, setActiveTab] = useState<ContentTab>("upcoming");
-  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean; nbaSuspended?: boolean; nflSuspended?: boolean; mlbSuspended?: boolean } | null>(null);
+  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean; nbaSuspended?: boolean; nflSuspended?: boolean; mlbSuspended?: boolean; mmaSuspended?: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
@@ -1443,6 +1520,7 @@ export function Sports() {
         if (activeSportDef.key === "football") return <FootballGuide {...props} />;
         if (activeSportDef.key === "nba")      return <NBAGuide {...props} />;
         if (activeSportDef.key === "mlb")      return <MLBGuide {...props} />;
+        if (activeSportDef.key === "mma")      return <MMAGuide {...props} />;
         return <NFLGuide {...props} />;
       })()}
 

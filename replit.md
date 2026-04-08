@@ -52,12 +52,16 @@ Sports category supports multiple sports via `SportDef` in `sports.tsx`:
 - **Football** (Soccer): `sport: "Soccer"`, `hasDraw: true`, green cards, 3-column buttons (HOME/DRAW/AWAY)
 - **NBA** (Basketball): `sport: "Basketball"`, `hasDraw: false`, orange cards, 2-column buttons (HOME/AWAY)
 - **NFL** (American Football): `sport: "American Football"`, `hasDraw: false`, indigo cards, 2-column buttons (HOME/AWAY)
+- **MLB** (Baseball): `sport: "Baseball"`, `hasDraw: false`, red cards, 2-column buttons (HOME/AWAY). ⚠️ Free API plan blocked for 2026 season.
+- **MMA**: `sport: "MMA"`, `hasDraw: false`, yellow cards, 2-column buttons (HOME/AWAY). Covers UFC, Bellator, ONE Championship, PFL.
 
 **Backend libs:**
 - `lib/sports.ts` — Football via `v3.football.api-sports.io` (IDs without namespace)
 - `lib/nba.ts` — Basketball via `v1.basketball.api-sports.io` (IDs prefixed `nba_`)
 - `lib/nfl.ts` — American Football via `v1.american-football.api-sports.io` (IDs prefixed `nfl_`)
-- `routes/sports.ts` — Combines all three, enriches with market pool data from DB; returns `nflSuspended` field
+- `lib/mlb.ts` — Baseball via `v1.baseball.api-sports.io` (IDs prefixed `mlb_`); off-season guard Dec–Feb
+- `lib/mma.ts` — MMA via `v1.mma.api-sports.io` (IDs prefixed `mma_`); 30-min TTL; no off-season
+- `routes/sports.ts` — Combines all five, enriches with market pool data from DB; returns `*Suspended` flags
 - `lib/sports-pollers.ts` — Settlement uses per-sport `getExpectedDurationMs()` + force-refresh + direct API fallback
 
 **Event IDs are namespaced:** `nba_<id>` for basketball, `nfl_<id>` for NFL, no prefix for soccer.
