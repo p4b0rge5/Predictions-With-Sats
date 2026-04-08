@@ -14,11 +14,12 @@ import { db, sportBetsTable, sportMarketsTable } from "@workspace/db";
 import { eq, and, lt } from "drizzle-orm";
 import { logger } from "./logger";
 import { settleMarket } from "./sports-market";
+import { fetchFixtureById } from "./sports";
 
 const PAYMENT_POLL_INTERVAL_MS = 5_000;
-const SETTLEMENT_POLL_INTERVAL_MS = 5 * 60 * 1000;
+// 15-min settlement interval conserves the 100 req/day API-Football free plan budget
+const SETTLEMENT_POLL_INTERVAL_MS = 15 * 60 * 1000;
 const MAX_POLL_AGE_MS = 60 * 60 * 1000;
-const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/3";
 
 // ---------------------------------------------------------------------------
 // LUD-21 verify URL helper (same logic as payment-poller.ts)
@@ -88,40 +89,13 @@ async function pollSportPayments(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Settlement poller — fetch event results and settle open markets
+// Settlement poller — fetch event results via API-Football and settle open markets
 // ---------------------------------------------------------------------------
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchEventById(eventId: string): Promise<any | null> {
-  try {
-    const url = `${SPORTSDB_BASE}/lookupevent.php?id=${eventId}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = (await res.json()) as { events?: any[] };
-    return data.events?.[0] ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function parseStatus(strStatus: string): "upcoming" | "live" | "finished" {
-  const s = (strStatus ?? "").toLowerCase();
-  if (s === "match finished" || s === "ft" || s === "aet" || s === "pen") return "finished";
-  if (s === "in progress" || s === "1h" || s === "2h" || s === "ht") return "live";
-  return "upcoming";
-}
-
-function parseOutcome(home: number | null, away: number | null): "home" | "away" | "draw" | null {
-  if (home === null || away === null) return null;
-  if (home > away) return "home";
-  if (away > home) return "away";
-  return "draw";
-}
 
 async function pollSportSettlement(): Promise<void> {
   const now = new Date();
 
+  // Only check markets where kickoff has already passed (match may be finished)
   const openMarkets = await db
     .select()
     .from(sportMarketsTable)
@@ -131,27 +105,27 @@ async function pollSportSettlement(): Promise<void> {
 
   for (const market of openMarkets) {
     try {
-      const event = await fetchEventById(market.eventId);
+      // Uses API-Football /fixtures?id= endpoint (1 request per market)
+      const event = await fetchFixtureById(market.eventId);
       if (!event) continue;
 
-      const homeScore =
-        event.intHomeScore !== null && event.intHomeScore !== "" ? Number(event.intHomeScore) : null;
-      const awayScore =
-        event.intAwayScore !== null && event.intAwayScore !== "" ? Number(event.intAwayScore) : null;
+      if (event.status !== "finished") continue;
 
-      const status = parseStatus(event.strStatus ?? "");
-
-      if (status !== "finished") continue;
-
-      const outcome = parseOutcome(homeScore, awayScore);
+      const outcome = event.outcome;
       if (!outcome) continue;
 
       logger.info(
-        { marketId: market.id, eventId: market.eventId, outcome, homeScore, awayScore },
+        {
+          marketId: market.id,
+          eventId:  market.eventId,
+          outcome,
+          homeScore: event.homeScore,
+          awayScore: event.awayScore,
+        },
         "Settling sport market",
       );
 
-      await settleMarket(market.id, outcome, homeScore, awayScore);
+      await settleMarket(market.id, outcome, event.homeScore, event.awayScore);
     } catch (err) {
       logger.warn({ err, marketId: market.id }, "Sport settlement poller error for market");
     }

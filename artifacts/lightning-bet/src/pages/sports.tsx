@@ -40,6 +40,7 @@ interface SportEvent {
   awayTeam: string;
   homeBadge: string | null;
   awayBadge: string | null;
+  leagueLogo: string | null;
   league: string;
   sport: string;
   startsAt: string;
@@ -609,7 +610,10 @@ function UpcomingCard({ ev, onBet }: { ev: SportEvent; onBet: (dir: Direction) =
   return (
     <div className="rounded-xl border border-border/40 bg-card/30 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">{ev.league}</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {ev.leagueLogo && <img src={ev.leagueLogo} alt={ev.league} className="h-4 w-4 object-contain shrink-0" />}
+          <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">{ev.league}</span>
+        </div>
         <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono shrink-0">
           <Clock className="h-3 w-3" />{formatKickoff(ev.startsAt)}
         </div>
@@ -669,7 +673,10 @@ function FinishedCard({ ev }: { ev: SportEvent }) {
     <div className="rounded-xl border border-border/40 bg-card/20 p-3 space-y-2.5">
       {/* League + badges */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">{ev.league}</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {ev.leagueLogo && <img src={ev.leagueLogo} alt={ev.league} className="h-4 w-4 object-contain shrink-0" />}
+          <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">{ev.league}</span>
+        </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <OutcomeBadge outcome={ev.outcome} />
           {settled && <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px]">SETTLED</Badge>}
