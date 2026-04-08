@@ -183,10 +183,10 @@ router.post("/weather/bets", async (req, res): Promise<void> => {
   }
 
   try {
-    const invoice = await createInvoice({
+    const invoice = await createInvoice(
       amountSats,
-      memo: `Weather: Will ${market.city} reach ${market.threshold}°C on ${market.date}? (${direction.toUpperCase()})`,
-    });
+      `Weather: Will ${market.city} reach ${market.threshold}°C on ${market.date}? (${direction.toUpperCase()})`,
+    );
 
     const [bet] = await db
       .insert(weatherBetsTable)

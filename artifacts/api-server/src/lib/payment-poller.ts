@@ -46,7 +46,9 @@ async function checkLud21VerifyUrl(verifyUrl: string): Promise<boolean> {
     });
     if (!res.ok) return false;
     const body = await res.json() as Lud21VerifyResponse;
-    return body.settled === true;
+    // Require both settled=true AND a non-null preimage to prevent false positives
+    // (e.g. Coinos returns settled=true with preimage=null for 0-sat/invalid invoices)
+    return body.settled === true && typeof body.preimage === "string" && body.preimage.length > 0;
   } catch {
     return false;
   }
