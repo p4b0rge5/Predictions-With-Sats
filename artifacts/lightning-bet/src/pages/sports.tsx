@@ -881,7 +881,7 @@ function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () =
     const sats = new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0);
     const match = `${bet.market.homeTeam} vs ${bet.market.awayTeam}`;
     const pick = dir === "home" ? bet.market.homeTeam : dir === "away" ? bet.market.awayTeam : "Draw";
-    const text = `⚡ Just won ${sats} sats on Prediction With Sats! Called ${pick} correctly in ${match}. Try it at pwsats.com — no accounts, instant Lightning payouts.`;
+    const text = `⚡ Just won ${sats} sats on Predictions With Sats! Called ${pick} correctly in ${match}. Try it at pwsats.com — no accounts, instant Lightning payouts.`;
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -890,7 +890,7 @@ function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () =
     const sats = new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0);
     const match = `${bet.market.homeTeam} vs ${bet.market.awayTeam}`;
     const pick = dir === "home" ? bet.market.homeTeam : dir === "away" ? bet.market.awayTeam : "Draw";
-    const text = `⚡ Just won ${sats} sats on Prediction With Sats! Called ${pick} correctly in ${match}. No accounts — bet and claim entirely via Lightning Network. pwsats.com #Bitcoin #Lightning #Football`;
+    const text = `⚡ Just won ${sats} sats on Predictions With Sats! Called ${pick} correctly in ${match}. No accounts — bet and claim entirely via Lightning Network. pwsats.com #Bitcoin #Lightning #Football`;
     navigator.clipboard.writeText(text);
     toast({ title: "Copied for Nostr!", description: "Paste it in your Nostr client.", duration: 3000 });
   };

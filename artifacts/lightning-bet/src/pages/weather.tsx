@@ -820,7 +820,7 @@ function WeatherBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: ()
     if (!bet || !bet.market) return;
     const sats = new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0);
     const pick = dir === "yes" ? "YES" : "NO";
-    const text = `⚡ Just won ${sats} sats on Prediction With Sats! Predicted ${pick} on "${bet.market.city} will reach ${bet.market.threshold}°C" correctly. Try it at pwsats.com — no accounts, instant Lightning payouts.`;
+    const text = `⚡ Just won ${sats} sats on Predictions With Sats! Predicted ${pick} on "${bet.market.city} will reach ${bet.market.threshold}°C" correctly. Try it at pwsats.com — no accounts, instant Lightning payouts.`;
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -828,7 +828,7 @@ function WeatherBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: ()
     if (!bet || !bet.market) return;
     const sats = new Intl.NumberFormat("en-US").format(bet.payoutSats ?? 0);
     const pick = dir === "yes" ? "YES" : "NO";
-    const text = `⚡ Just won ${sats} sats on Prediction With Sats! Predicted ${pick} on "${bet.market.city} will reach ${bet.market.threshold}°C" correctly. No accounts — bet and claim entirely via Lightning Network. pwsats.com #Bitcoin #Lightning #Weather`;
+    const text = `⚡ Just won ${sats} sats on Predictions With Sats! Predicted ${pick} on "${bet.market.city} will reach ${bet.market.threshold}°C" correctly. No accounts — bet and claim entirely via Lightning Network. pwsats.com #Bitcoin #Lightning #Weather`;
     navigator.clipboard.writeText(text);
     toast({ title: "Copied for Nostr!", description: "Paste it in your Nostr client.", duration: 3000 });
   };
