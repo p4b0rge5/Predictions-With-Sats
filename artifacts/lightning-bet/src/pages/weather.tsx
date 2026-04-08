@@ -192,9 +192,15 @@ function PoolBar({ yesSats, noSats }: { yesSats: number; noSats: number }) {
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-center font-mono text-xs mb-1">
-        <span className="font-bold text-green-500">{pY.toFixed(1)}% YES</span>
+        <div className="text-left leading-tight">
+          <div className="font-bold text-green-500">{pY.toFixed(1)}% YES</div>
+          <div className="text-[9px] text-muted-foreground">{formatSats(yesSats)} sats</div>
+        </div>
         <span className="text-[10px] text-muted-foreground">Pool: {formatSats(total)} sats</span>
-        <span className="font-bold text-red-500">{pN.toFixed(1)}% NO</span>
+        <div className="text-right leading-tight">
+          <div className="font-bold text-red-500">{pN.toFixed(1)}% NO</div>
+          <div className="text-[9px] text-muted-foreground">{formatSats(noSats)} sats</div>
+        </div>
       </div>
       <div className="flex h-2 rounded-full overflow-hidden gap-px">
         <div className="bg-green-500 transition-all" style={{ width: `${pY}%` }} />

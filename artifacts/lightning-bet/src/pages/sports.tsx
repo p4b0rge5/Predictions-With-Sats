@@ -226,9 +226,15 @@ function PoolBar({ homeSats, drawSats, awaySats, hasDraw = true }: { homeSats: n
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-center font-mono text-xs mb-1">
-        <span className="font-bold text-green-500">{pH.toFixed(1)}% HOME</span>
+        <div className="text-left leading-tight">
+          <div className="font-bold text-green-500">{pH.toFixed(1)}% HOME</div>
+          <div className="text-[9px] text-muted-foreground">{formatSats(homeSats)} sats</div>
+        </div>
         <span className="text-[10px] text-muted-foreground">Pool: {formatSats(total)} sats</span>
-        <span className="font-bold text-blue-500">{pA.toFixed(1)}% AWAY</span>
+        <div className="text-right leading-tight">
+          <div className="font-bold text-blue-500">{pA.toFixed(1)}% AWAY</div>
+          <div className="text-[9px] text-muted-foreground">{formatSats(awaySats)} sats</div>
+        </div>
       </div>
       <div className="flex h-2 rounded-full overflow-hidden gap-px">
         <div className="bg-green-500 transition-all" style={{ width: `${pH}%` }} />
@@ -237,7 +243,7 @@ function PoolBar({ homeSats, drawSats, awaySats, hasDraw = true }: { homeSats: n
       </div>
       {hasDraw && (
         <div className="text-center text-[10px] font-mono font-bold text-yellow-400">
-          {pD.toFixed(1)}% DRAW
+          {pD.toFixed(1)}% DRAW · {formatSats(drawSats)} sats
         </div>
       )}
     </div>

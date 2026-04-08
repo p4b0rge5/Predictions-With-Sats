@@ -36,12 +36,15 @@ All prediction cards (Crypto, Sports, Weather) follow the same vertical order:
 4. **Pool bar** — `"X% SIDE_A | Pool: N sats | Y% SIDE_B"` row + colored bar below (shown only on open markets, never on settled/results cards)
 5. **Fee footnote** — e.g. "2% house fee · settled automatically at full time"
 
-**Pool bar layout (standard)**
+**Pool bar layout (standard) — per-outcome sats mandatory**
 ```
-{X}% HOME/UP/YES    Pool: N sats    {Y}% AWAY/DOWN/NO
-[========= colored bar =========]
-         {Z}% DRAW  ← Football only (hasDraw=true), centered below bar
+{X}% HOME/UP/YES       Pool: N sats       {Y}% AWAY/DOWN/NO
+  {homeSats} sats                            {awaySats} sats
+[============= colored bar =============]
+     {Z}% DRAW · {drawSats} sats  ← Football/Rugby only (hasDraw=true), centered below bar
 ```
+- **Always show sats per outcome** — each side of the pool bar label must display the sats for that outcome (e.g. `0 sats` / `978 sats`) below the percentage. This applies to ALL categories: Sports (HOME/DRAW/AWAY), Weather (YES/NO), Crypto (UP/DOWN on buttons).
+- Crypto shows per-outcome sats on the bet buttons themselves (`{n} sats in pool`) — do not duplicate in the bar.
 - Empty pool defaults to equal split (50/50 for NBA, 33.3% for Football) — always at FULL color, never dimmed
 - Pool bar is NEVER shown on finished/settled/results cards
 - Do NOT add "2% house fee" or similar footnotes to prediction cards
