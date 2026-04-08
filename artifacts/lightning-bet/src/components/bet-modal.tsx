@@ -125,7 +125,11 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId, as
     createBet.mutate(
       { data: { amountUsd: usdAmount, direction, asset } },
       {
-        onSuccess: (data) => { setPaymentHash(data.paymentHash); setPaymentRequest(data.paymentRequest); },
+        onSuccess: (data) => {
+          setPaymentHash(data.paymentHash);
+          setPaymentRequest(data.paymentRequest);
+          saveBetHashForAsset(asset, data.paymentHash);
+        },
         onError: (err) => { toast({ title: "Error creating bet", description: err.message || "Unknown error", variant: "destructive" }); },
       }
     );

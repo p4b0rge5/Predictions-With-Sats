@@ -782,6 +782,7 @@ function SportBetModal({ event, direction, sportKey, onClose }: SportBetModalPro
       }
       setPaymentHash(data.paymentHash);
       setPaymentRequest(data.paymentRequest!);
+      saveSportBetHashForKey(sportKey, data.paymentHash);
     } catch {
       toast({ title: "Error", description: "Network error. Please try again.", variant: "destructive" });
     } finally {
@@ -1533,6 +1534,8 @@ export function Sports() {
 
   // Refresh My Bets whenever the active sport changes — each sport has its own bucket
   useEffect(() => { setBetHashes(getSportBetHashesForKey(activeSport)); }, [activeSport]);
+  // Belt-and-suspenders: also refresh when the user navigates to the My Bets tab
+  useEffect(() => { if (activeTab === "my-bets") setBetHashes(getSportBetHashesForKey(activeSport)); }, [activeTab, activeSport]);
 
   const fetchData = useCallback((quiet = false) => {
     if (!quiet) { setLoading(true); setError(false); }
