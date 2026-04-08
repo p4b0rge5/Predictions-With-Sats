@@ -13,7 +13,11 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
-import { getSportsBetHashes, removeSportsBetHash, saveSportsBetHash } from "@/components/my-bet-widget";
+import {
+  getSportBetHashesForKey,
+  saveSportBetHashForKey,
+  removeSportBetHashForKey,
+} from "@/components/my-bet-widget";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -363,6 +367,7 @@ function directionLabel(dir: Direction, ev: SportEvent | null): string {
 interface SportBetModalProps {
   event: SportEvent | null;
   direction: Direction | null;
+  sportKey: string;
   onClose: () => void;
 }
 
@@ -385,7 +390,7 @@ function AmountToggle({ mode, onChange }: { mode: InputMode; onChange: (m: Input
   );
 }
 
-function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
+function SportBetModal({ event, direction, sportKey, onClose }: SportBetModalProps) {
   const { toast } = useToast();
   const [inputMode, setInputMode] = useState<InputMode>("usd");
   const [rawAmount, setRawAmount] = useState("0.5");
@@ -421,7 +426,7 @@ function SportBetModal({ event, direction, onClose }: SportBetModalProps) {
         setBetStatus(data);
         if (data.status !== "pending") {
           clearInterval(pollRef.current!);
-          if (data.status === "paid" || data.status === "won") saveSportsBetHash(paymentHash);
+          if (data.status === "paid" || data.status === "won") saveSportBetHashForKey(sportKey, paymentHash);
         }
       } catch { /* ignore */ }
     }, 3000);
@@ -1207,7 +1212,8 @@ export function Sports() {
   const [betHashes, setBetHashes] = useState<string[]>([]);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => { setBetHashes(getSportsBetHashes()); }, []);
+  // Refresh My Bets whenever the active sport changes — each sport has its own bucket
+  useEffect(() => { setBetHashes(getSportBetHashesForKey(activeSport)); }, [activeSport]);
 
   const fetchData = useCallback((quiet = false) => {
     if (!quiet) { setLoading(true); setError(false); }
@@ -1276,7 +1282,7 @@ export function Sports() {
 
       {/* ── My Bets ── */}
       {activeTab === "my-bets" && (
-        <SportMyBetsTab hashes={betHashes} onDismiss={(h) => { removeSportsBetHash(h); setBetHashes(getSportsBetHashes()); }} />
+        <SportMyBetsTab hashes={betHashes} onDismiss={(h) => { removeSportBetHashForKey(activeSport, h); setBetHashes(getSportBetHashesForKey(activeSport)); }} />
       )}
 
       {/* ── Upcoming Matches ── */}
@@ -1390,7 +1396,8 @@ export function Sports() {
       <SportBetModal
         event={betModal?.event ?? null}
         direction={betModal?.direction ?? null}
-        onClose={() => { setBetModal(null); setBetHashes(getSportsBetHashes()); }}
+        sportKey={activeSport}
+        onClose={() => { setBetModal(null); setBetHashes(getSportBetHashesForKey(activeSport)); }}
       />
     </div>
   );

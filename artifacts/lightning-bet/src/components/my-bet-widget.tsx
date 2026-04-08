@@ -71,8 +71,31 @@ export function removeBetHashForAsset(asset: CryptoAsset, paymentHash: string) {
   deleteHash(ASSET_STORAGE_KEYS[asset], paymentHash);
 }
 
-// ── Sports ────────────────────────────────────────────────────────────────────
+// ── Sports — per-subcategory storage ─────────────────────────────────────────
+//
+// Each sport subcategory (football, nba, etc.) gets its own isolated storage key
+// so "My Bets" only shows bets for the currently active sport.
+// Pattern: `lightning_bet_sport_<sportKey>_hashes_v1`
+//
+// Adding a new sport requires zero changes here — just pass the new sportKey.
 
+function sportStorageKey(sportKey: string): string {
+  return `lightning_bet_sport_${sportKey}_hashes_v1`;
+}
+
+export function saveSportBetHashForKey(sportKey: string, paymentHash: string) {
+  writeHash(sportStorageKey(sportKey), paymentHash);
+}
+
+export function getSportBetHashesForKey(sportKey: string): string[] {
+  return readHashes(sportStorageKey(sportKey));
+}
+
+export function removeSportBetHashForKey(sportKey: string, paymentHash: string) {
+  deleteHash(sportStorageKey(sportKey), paymentHash);
+}
+
+// Legacy monolithic key — kept for backward compatibility; no longer written to.
 export function saveSportsBetHash(paymentHash: string)   { writeHash(SPORTS_STORAGE_KEY, paymentHash); }
 export function getSportsBetHashes(): string[]           { return readHashes(SPORTS_STORAGE_KEY); }
 export function removeSportsBetHash(paymentHash: string) { deleteHash(SPORTS_STORAGE_KEY, paymentHash); }
