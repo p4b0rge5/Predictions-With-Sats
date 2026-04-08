@@ -708,8 +708,8 @@ interface WeatherBetRecord {
 }
 
 const WEATHER_DIR_STYLES = {
-  yes: { text: "text-green-400", bg: "bg-green-500/10 border-green-500/30", icon: "↑", label: "YES" },
-  no:  { text: "text-red-400",   bg: "bg-red-500/10 border-red-500/30",    icon: "↓", label: "NO"  },
+  yes: { text: "text-green-400", bg: "bg-green-500/20 border-green-500/50", icon: "↑", label: "YES" },
+  no:  { text: "text-red-400",   bg: "bg-red-500/20 border-red-500/50",    icon: "↓", label: "NO"  },
 };
 
 function WeatherBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () => void }) {

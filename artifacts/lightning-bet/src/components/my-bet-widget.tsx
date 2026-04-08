@@ -220,7 +220,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
 
   const isUp = bet.direction === "up";
   const dirColor = isUp ? "text-green-500" : "text-red-500";
-  const dirBg = isUp ? "bg-green-500/10 border-green-500/30" : "bg-red-500/10 border-red-500/30";
+  const dirBg = isUp ? "bg-green-500/20 border-green-500/50" : "bg-red-500/20 border-red-500/50";
   const isRefund = bet.windowOutcome === "no_liquidity";
 
   const statusInfo = (() => {
