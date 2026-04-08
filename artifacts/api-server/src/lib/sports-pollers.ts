@@ -14,8 +14,8 @@ import { db, sportBetsTable, sportMarketsTable } from "@workspace/db";
 import { eq, and, lt } from "drizzle-orm";
 import { logger } from "./logger";
 import { settleMarket } from "./sports-market";
-import { getSportsEvents } from "./sports";
-import { getNbaEvents } from "./nba";
+import { getSportsEvents, fetchFixtureById } from "./sports";
+import { getNbaEvents, fetchNbaGameById } from "./nba";
 
 const PAYMENT_POLL_INTERVAL_MS = 5_000;
 // 15-min settlement interval conserves the 100 req/day API-Football free plan budget
@@ -93,6 +93,10 @@ async function pollSportPayments(): Promise<void> {
 // Settlement poller — fetch event results via API-Football and settle open markets
 // ---------------------------------------------------------------------------
 
+// How long after kickoff before we consider a match "should be finished"
+// Football: ~105 min (90min play + 15 min stoppage/extra). NBA: ~150 min.
+const MATCH_EXPECTED_DURATION_MS = 110 * 60 * 1000;
+
 async function pollSportSettlement(): Promise<void> {
   const now = new Date();
 
@@ -104,25 +108,65 @@ async function pollSportSettlement(): Promise<void> {
 
   if (openMarkets.length === 0) return;
 
-  // Use shared caches — 0 extra API requests when caches are warm (≤1h old).
-  const [soccer, nba] = await Promise.all([getSportsEvents(), getNbaEvents()]);
+  logger.info({ count: openMarkets.length }, "Settlement poller: checking open sport markets");
+
+  // Determine if any market is past the expected match duration (game should be done by now).
+  // In that case, force-refresh the API caches so we see the latest scores.
+  const nowMs = Date.now();
+  const hasPastDue = openMarkets.some(
+    (m) => nowMs - new Date(m.startsAt).getTime() > MATCH_EXPECTED_DURATION_MS,
+  );
+
+  const [soccer, nba] = await Promise.all([
+    getSportsEvents(hasPastDue),
+    getNbaEvents(hasPastDue),
+  ]);
   const allFinished = [...soccer.finished, ...nba.finished];
   const finishedById = new Map(allFinished.map((e) => [e.id, e]));
 
   for (const market of openMarkets) {
     try {
-      const event = finishedById.get(market.eventId);
+      let event = finishedById.get(market.eventId);
 
-      // Not in the finished list yet — match still in progress or cache stale
-      if (!event || event.status !== "finished") continue;
+      // If not in the cache finished list but match should be done, do a direct API lookup
+      if (!event || event.status !== "finished") {
+        const kickoffMs = new Date(market.startsAt).getTime();
+        const isOverdue = nowMs - kickoffMs > MATCH_EXPECTED_DURATION_MS;
+        if (isOverdue) {
+          logger.info(
+            { marketId: market.id, eventId: market.eventId },
+            "Market past expected duration — doing direct API lookup",
+          );
+          const isNba = market.eventId.startsWith("nba_");
+          const fetched = isNba
+            ? await fetchNbaGameById(market.eventId)
+            : await fetchFixtureById(market.eventId);
+          if (fetched) event = fetched;
+        }
+      }
+
+      // Still not finished — match in progress or not yet available
+      if (!event || event.status !== "finished") {
+        logger.info(
+          { marketId: market.id, eventId: market.eventId, status: event?.status ?? "not_found" },
+          "Market event not yet finished — skipping settlement",
+        );
+        continue;
+      }
 
       const outcome = event.outcome;
-      if (!outcome) continue;
+      if (!outcome) {
+        logger.warn(
+          { marketId: market.id, eventId: market.eventId, homeScore: event.homeScore, awayScore: event.awayScore },
+          "Event finished but outcome is null — skipping",
+        );
+        continue;
+      }
 
       logger.info(
         {
-          marketId: market.id,
-          eventId:  market.eventId,
+          marketId:  market.id,
+          eventId:   market.eventId,
           outcome,
           homeScore: event.homeScore,
           awayScore: event.awayScore,

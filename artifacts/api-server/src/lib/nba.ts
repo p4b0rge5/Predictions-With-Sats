@@ -129,9 +129,10 @@ function hasErrors(errors: BasketballApiResponse["errors"]): boolean {
 // Cache (1h TTL on success, 15-min retry on error)
 // ---------------------------------------------------------------------------
 
-const CACHE_TTL_MS       = 60 * 60 * 1000;
-const CACHE_ERROR_TTL_MS = 15 * 60 * 1000;
-const MAX_GAME_AGE_MS    = 4 * 60 * 60 * 1000; // games ~3-3.5h with OT
+const CACHE_TTL_MS             = 60 * 60 * 1000;
+const CACHE_ERROR_TTL_MS       = 15 * 60 * 1000;
+const MAX_GAME_AGE_MS          = 4 * 60 * 60 * 1000; // games ~3-3.5h with OT
+const FORCE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000;    // 10 minutes between force-refreshes
 
 const nbaCache: {
   upcoming:  SportEvent[];
@@ -144,17 +145,22 @@ const nbaCache: {
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function getNbaEvents(): Promise<{
+export async function getNbaEvents(forceRefresh = false): Promise<{
   upcoming:  SportEvent[];
   finished:  SportEvent[];
   suspended: boolean;
 }> {
-  if (Date.now() - nbaCache.fetchedAt < CACHE_TTL_MS) {
+  const cacheAge = Date.now() - nbaCache.fetchedAt;
+  const canForce = forceRefresh && cacheAge >= FORCE_REFRESH_COOLDOWN_MS;
+  if (!canForce && cacheAge < CACHE_TTL_MS) {
     return {
       upcoming:  nbaCache.upcoming,
       finished:  nbaCache.finished,
       suspended: nbaCache.suspended,
     };
+  }
+  if (canForce) {
+    logger.info({ cacheAgeMin: Math.round(cacheAge / 60_000) }, "NBA cache force-refreshed for settlement");
   }
 
   const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
@@ -226,4 +232,22 @@ export async function getNbaEvents(): Promise<{
   );
 
   return { upcoming: nbaCache.upcoming, finished: nbaCache.finished, suspended: false };
+}
+
+// ---------------------------------------------------------------------------
+// Single game lookup (used by settlement poller when cache is stale)
+// ---------------------------------------------------------------------------
+
+export async function fetchNbaGameById(nbaEventId: string): Promise<SportEvent | null> {
+  // eventId is prefixed with "nba_", strip it to get the numeric game ID
+  const gameId = nbaEventId.replace(/^nba_/, "");
+  try {
+    const data = await nbsFetch(`/games?id=${gameId}`);
+    const g = data.response?.[0];
+    if (!g) return null;
+    return mapGame(g);
+  } catch (err) {
+    logger.warn({ err, nbaEventId }, "Basketball API game lookup failed");
+    return null;
+  }
 }

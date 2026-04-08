@@ -165,13 +165,21 @@ function hasApiErrors(errors: ApiResponse["errors"]): boolean {
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function getSportsEvents(): Promise<{
+// Minimum gap between force-refreshes to protect the daily API budget
+const FORCE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+
+export async function getSportsEvents(forceRefresh = false): Promise<{
   upcoming:  SportEvent[];
   finished:  SportEvent[];
   suspended: boolean;
 }> {
-  if (Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
+  const cacheAge = Date.now() - cache.fetchedAt;
+  const canForce = forceRefresh && cacheAge >= FORCE_REFRESH_COOLDOWN_MS;
+  if (!canForce && cacheAge < CACHE_TTL_MS) {
     return { upcoming: cache.upcoming, finished: cache.finished, suspended: cache.suspended };
+  }
+  if (canForce) {
+    logger.info({ cacheAgeMin: Math.round(cacheAge / 60_000) }, "Sports cache force-refreshed for settlement");
   }
 
   const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
