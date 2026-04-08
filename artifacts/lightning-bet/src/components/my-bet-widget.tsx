@@ -243,7 +243,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
   })();
 
   return (
-    <div className={`rounded-xl border ${dirBg} bg-card/40 backdrop-blur p-4 font-mono relative`}>
+    <div className={`rounded-xl border ${dirBg} p-4 font-mono relative`}>
       {/* Dismiss */}
       <button
         onClick={onDismiss}

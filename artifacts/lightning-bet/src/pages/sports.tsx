@@ -896,7 +896,7 @@ function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () =
   };
 
   return (
-    <div className={`rounded-xl border ${dirStyle.bg} bg-card/40 backdrop-blur p-4 font-mono relative`}>
+    <div className={`rounded-xl border ${dirStyle.bg} p-4 font-mono relative`}>
       {/* Dismiss */}
       <button
         onClick={onDismiss}
