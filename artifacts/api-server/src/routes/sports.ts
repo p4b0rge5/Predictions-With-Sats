@@ -363,16 +363,27 @@ router.get("/sports/withdraw/:token", async (req, res): Promise<void> => {
   const payoutSats = Number(bet.payoutSats ?? 0);
   const base = getPublicBase(req);
   const callbackUrl = `${base}/api/sports/withdraw/${token}/callback`;
-  const teamLabel =
+
+  const directionLabel =
+    bet.direction === "home"  ? `${market?.homeTeam ?? "Home"} (HOME)`
+    : bet.direction === "away" ? `${market?.awayTeam ?? "Away"} (AWAY)`
+    : "DRAW";
+
+  const scoreLabel =
+    market?.homeScore != null && market?.awayScore != null
+      ? ` · ${market.homeScore}–${market.awayScore}`
+      : "";
+
+  const defaultDescription =
     bet.status === "refunded"
-      ? "DRAW refund"
-      : `${bet.direction === "home" ? market?.homeTeam : market?.awayTeam} WIN`;
+      ? `PWSats Refund — ${market?.eventName ?? "Sports Bet"}${scoreLabel}`
+      : `PWSats Win — ${directionLabel} — ${market?.eventName ?? "Sports Bet"}${scoreLabel} (${market?.league ?? ""})`;
 
   res.json({
     tag: "withdrawRequest",
     callback: callbackUrl,
     k1: token,
-    defaultDescription: `PWSats — ${teamLabel} — ${market?.eventName ?? "Sports Bet"}`,
+    defaultDescription,
     minWithdrawable: payoutSats * 1000,
     maxWithdrawable: payoutSats * 1000,
   });

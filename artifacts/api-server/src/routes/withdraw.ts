@@ -74,17 +74,19 @@ router.get("/withdraw/:token", async (req, res): Promise<void> => {
     return;
   }
 
-  // Look up the window to check if this is a no-liquidity refund
+  // Look up the window for refund detection and asset/outcome context
   const [win] = await db
-    .select({ outcome: marketWindowsTable.outcome })
+    .select({ outcome: marketWindowsTable.outcome, asset: marketWindowsTable.asset })
     .from(marketWindowsTable)
     .where(eq(marketWindowsTable.id, bet.windowId))
     .limit(1);
 
   const isRefund = win?.outcome === "no_liquidity";
+  const asset = (win?.asset ?? "btc").toUpperCase();
+  const dirLabel = bet.direction === "up" ? "UP ↑" : "DOWN ↓";
   const description = isRefund
-    ? `Lightning Bet refund — no opposing bets in window #${bet.windowId} — ${bet.payoutSats} sats (2% fee applied)`
-    : `Lightning Bet payout — ${bet.payoutSats} sats (window #${bet.windowId})`;
+    ? `PWSats Refund — ${asset} · no opposing bets in window #${bet.windowId} (2% fee applied)`
+    : `PWSats Win — ${asset} ${dirLabel} — 5-min price prediction`;
 
   const base = getPublicBase(req);
   const callbackUrl = `${base}/api/withdraw/${token}/callback`;

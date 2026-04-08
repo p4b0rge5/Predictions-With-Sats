@@ -869,6 +869,16 @@ function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () =
     if (r.ok) setBet(await r.json() as SportBetRecord);
   };
 
+  const shouldPoll = (d: SportBetRecord) =>
+    d.status === "pending" ||
+    d.status === "paid" ||
+    (d.status === "won" && d.withdrawStatus === "unclaimed");
+
+  const pollInterval = (d: SportBetRecord) =>
+    d.status === "pending" ? 3000
+    : (d.status === "won" && d.withdrawStatus === "unclaimed") ? 10000
+    : 30000;
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -876,15 +886,14 @@ function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () =
         if (!res.ok) { setNotFound(true); return; }
         const data = await res.json() as SportBetRecord;
         setBet(data);
-        if (data.status === "pending" || data.status === "paid") {
-          const interval = data.status === "pending" ? 3000 : 30000;
+        if (shouldPoll(data)) {
           pollRef.current = setInterval(async () => {
             const r = await fetch(apiUrl(`/api/sports/bets/${hash}`));
             if (!r.ok) return;
             const d = await r.json() as SportBetRecord;
             setBet(d);
-            if (d.status !== "pending" && d.status !== "paid") clearInterval(pollRef.current!);
-          }, interval);
+            if (!shouldPoll(d)) clearInterval(pollRef.current!);
+          }, pollInterval(data));
         }
       } catch { setNotFound(true); }
     };

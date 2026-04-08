@@ -300,11 +300,24 @@ router.get("/weather/withdraw/:token", async (req, res): Promise<void> => {
   const k1 = createHash("sha256").update(token).digest("hex");
   const callbackUrl = `${publicBase}/api/weather/withdraw/${token}/callback`;
 
+  // Join market for city/date/threshold context
+  const [market] = await db
+    .select()
+    .from(weatherMarketsTable)
+    .where(eq(weatherMarketsTable.id, bet.marketId))
+    .limit(1);
+
+  const dirLabel  = bet.direction === "yes" ? "YES" : "NO";
+  const threshold = market?.threshold ?? "?";
+  const city      = market?.city ?? "Unknown";
+  const date      = market?.date ? ` · ${market.date}` : "";
+  const defaultDescription = `PWSats Win — ${dirLabel} (≥${threshold}°C) — ${city}${date} (Weather)`;
+
   res.json({
     tag: "withdrawRequest",
     callback: callbackUrl,
     k1,
-    defaultDescription: `Weather payout: ${bet.payoutSats} sats`,
+    defaultDescription,
     minWithdrawable: bet.payoutSats * 1000,
     maxWithdrawable: bet.payoutSats * 1000,
   });
