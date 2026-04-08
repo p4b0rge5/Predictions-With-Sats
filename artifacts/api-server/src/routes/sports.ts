@@ -258,9 +258,15 @@ router.get("/sports/bets/:hash", async (req, res): Promise<void> => {
           eventName: market.eventName,
           homeTeam: market.homeTeam,
           awayTeam: market.awayTeam,
+          homeBadge: market.homeBadge ?? null,
+          awayBadge: market.awayBadge ?? null,
           league: market.league,
           status: market.status,
           outcome: market.outcome,
+          startsAt: market.startsAt.toISOString(),
+          homeScore: market.homeScore ?? null,
+          awayScore: market.awayScore ?? null,
+          settledAt: market.settledAt?.toISOString() ?? null,
         }
       : null,
   });
@@ -431,6 +437,80 @@ router.get("/sports/withdraw/:token/callback", async (req, res): Promise<void> =
       .where(eq(sportBetsTable.id, bet.id));
     logger.error({ err, sportBetId: bet.id }, "Failed to pay sport payout via Coinos");
     res.json({ status: "ERROR", reason: "Payment failed. Please try again." });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/sports/withdraw/:token/pay-to-address
+// Alternative claim: user provides Lightning address; we pay them directly.
+// ---------------------------------------------------------------------------
+
+router.post("/sports/withdraw/:token/pay-to-address", async (req, res): Promise<void> => {
+  const { token } = req.params;
+  const { address } = req.body as { address?: string };
+
+  if (!address || !address.includes("@") || address.split("@").length !== 2) {
+    res.status(400).json({ error: "Invalid Lightning address format." });
+    return;
+  }
+
+  const [bet] = await db
+    .select()
+    .from(sportBetsTable)
+    .where(and(eq(sportBetsTable.withdrawToken, token), eq(sportBetsTable.withdrawStatus, "unclaimed")))
+    .limit(1);
+
+  if (!bet) { res.status(404).json({ error: "Withdraw token not found or already claimed." }); return; }
+  if (bet.status !== "won" || !bet.payoutSats) { res.status(409).json({ error: "Bet is not eligible for withdrawal." }); return; }
+  if (Date.now() - bet.createdAt.getTime() > PAYOUT_EXPIRY_MS) { res.status(410).json({ error: "Payout expired after 30 days." }); return; }
+
+  const [user, domain] = address.split("@");
+  let callbackUrl: string, minSendable: number, maxSendable: number;
+  try {
+    const metaRes = await fetch(`https://${domain}/.well-known/lnurlp/${user}`, { signal: AbortSignal.timeout(10_000) });
+    if (!metaRes.ok) throw new Error(`HTTP ${metaRes.status}`);
+    const meta = await metaRes.json() as { callback: string; minSendable: number; maxSendable: number; tag: string };
+    if (meta.tag !== "payRequest") throw new Error("Not a LNURL-Pay endpoint");
+    callbackUrl = meta.callback; minSendable = meta.minSendable; maxSendable = meta.maxSendable;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: `Could not reach wallet at ${domain}: ${msg}` }); return;
+  }
+
+  const amountMsats = bet.payoutSats * 1000;
+  if (amountMsats < minSendable || amountMsats > maxSendable) {
+    res.status(400).json({ error: `Payout of ${bet.payoutSats} sats is outside the wallet's accepted range.` }); return;
+  }
+
+  let bolt11: string;
+  try {
+    const invRes = await fetch(`${callbackUrl}?amount=${amountMsats}`, { signal: AbortSignal.timeout(10_000) });
+    if (!invRes.ok) throw new Error(`HTTP ${invRes.status}`);
+    const inv = await invRes.json() as { pr?: string; reason?: string };
+    if (!inv.pr) throw new Error(inv.reason ?? "No invoice in response");
+    bolt11 = inv.pr;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(502).json({ error: `Could not get invoice from wallet: ${msg}` }); return;
+  }
+
+  const [updated] = await db
+    .update(sportBetsTable)
+    .set({ withdrawStatus: "claimed", claimedAt: new Date() })
+    .where(and(eq(sportBetsTable.withdrawToken, token), eq(sportBetsTable.withdrawStatus, "unclaimed")))
+    .returning();
+
+  if (!updated) { res.status(409).json({ error: "Payout already claimed." }); return; }
+
+  try {
+    await coinosPayInvoice(bolt11, bet.payoutSats);
+    logger.info({ sportBetId: bet.id, payoutSats: bet.payoutSats, address }, "Sport payout sent to Lightning address");
+    res.json({ ok: true });
+  } catch (err) {
+    await db.update(sportBetsTable).set({ withdrawStatus: "unclaimed", claimedAt: null }).where(eq(sportBetsTable.id, bet.id));
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error({ err, sportBetId: bet.id }, "Pay-to-address Coinos payment failed");
+    res.status(502).json({ error: `Payment failed: ${msg}` });
   }
 });
 
