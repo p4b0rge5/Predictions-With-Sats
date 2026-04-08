@@ -598,7 +598,15 @@ function useCountdown(deadlineIso: string): { label: string; urgent: boolean; cr
   };
 }
 
-function MarketCard({ market, cityTemp }: { market: WeatherMarket; cityTemp?: CityTemp }) {
+function MarketCard({
+  market,
+  cityTemp,
+  onBetCreated,
+}: {
+  market: WeatherMarket;
+  cityTemp?: CityTemp;
+  onBetCreated?: () => void;
+}) {
   const [betDirection, setBetDirection] = useState<Direction | null>(null);
   const today = new Date().toISOString().slice(0, 10);
   const isToday = market.date === today;
@@ -723,7 +731,7 @@ function MarketCard({ market, cityTemp }: { market: WeatherMarket; cityTemp?: Ci
       )}
 
       {betDirection && (
-        <WeatherBetModal market={market} direction={betDirection} onClose={() => setBetDirection(null)} />
+        <WeatherBetModal market={market} direction={betDirection} onClose={() => { setBetDirection(null); onBetCreated?.(); }} />
       )}
     </div>
   );
@@ -1098,6 +1106,9 @@ export function Weather() {
   const [betHashes, setBetHashes] = useState<string[]>([]);
 
   useEffect(() => { setBetHashes(getWeatherBetHashes()); }, []);
+  useEffect(() => { if (activeTab === "my-bets") setBetHashes(getWeatherBetHashes()); }, [activeTab]);
+
+  const refreshBetHashes = () => setBetHashes(getWeatherBetHashes());
 
   const { data: markets, isLoading } = useQuery<WeatherMarket[]>({
     queryKey: ["/api/weather/markets"],
@@ -1208,7 +1219,7 @@ export function Weather() {
                     <div className="flex-1 h-px bg-border/40" />
                   </div>
                   {filterByCity(todayOpen).map((m) => (
-                    <MarketCard key={m.id} market={m} cityTemp={tempByCity[m.city]} />
+                    <MarketCard key={m.id} market={m} cityTemp={tempByCity[m.city]} onBetCreated={refreshBetHashes} />
                   ))}
                 </>
               )}
@@ -1220,7 +1231,7 @@ export function Weather() {
                     <div className="flex-1 h-px bg-border/40" />
                   </div>
                   {filterByCity(tomorrowOpen).map((m) => (
-                    <MarketCard key={m.id} market={m} />
+                    <MarketCard key={m.id} market={m} onBetCreated={refreshBetHashes} />
                   ))}
                 </>
               )}
