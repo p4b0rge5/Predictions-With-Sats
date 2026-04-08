@@ -26,7 +26,7 @@ import { GuidePager, type GuideStep } from "@/components/guide-pager";
 // ---------------------------------------------------------------------------
 
 type Direction = "home" | "draw" | "away";
-type SportKey = "football" | "nba" | "nfl";
+type SportKey = "football" | "nba" | "nfl" | "mlb";
 type ContentTab = "guide" | "my-bets" | "upcoming" | "results";
 
 interface SportDef {
@@ -70,6 +70,16 @@ const SPORTS: SportDef[] = [
     cardClass: "bg-indigo-500/15 border-indigo-500/35",
     resultCardClass: "bg-indigo-500/10 border-indigo-500/25",
     suspendedKey: "nflSuspended",
+  },
+  {
+    key: "mlb",
+    label: "MLB",
+    icon: "⚾",
+    sportName: "Baseball",
+    hasDraw: false,
+    cardClass: "bg-red-500/15 border-red-500/35",
+    resultCardClass: "bg-red-500/10 border-red-500/25",
+    suspendedKey: "mlbSuspended",
   },
 ];
 
@@ -423,6 +433,74 @@ function NFLGuide({ onDone }: { onDone?: () => void } = {}) {
         </>
       }
       ctaClass="bg-indigo-400/10 border-indigo-400/30 text-indigo-400 hover:bg-indigo-400/20"
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MLB Guide
+// ---------------------------------------------------------------------------
+
+const MLB_GUIDE_STEPS: GuideStep[] = [
+  {
+    icon: BookOpen,
+    color: "text-red-400",
+    iconBg: "bg-red-400/15 border-red-400/40",
+    cardTint: "bg-red-400/5",
+    cardBorder: "border-red-400/30",
+    title: "How MLB Predictions Work",
+    body: "Pick an upcoming MLB game and predict the winner: HOME team or AWAY team. Baseball has no draws — extra innings are played until a winner is decided. Pay via Lightning, winners split the entire pool.",
+  },
+  {
+    icon: Wallet,
+    color: "text-blue-400",
+    iconBg: "bg-blue-400/15 border-blue-400/40",
+    cardTint: "bg-blue-400/5",
+    cardBorder: "border-blue-400/30",
+    title: "Pay with Lightning",
+    body: "Scan the QR code with any Lightning wallet (Phoenix, Wallet of Satoshi, Alby, etc.) or use WebLN if your browser supports it. Minimum bet is $0.50 USD.",
+  },
+  {
+    icon: Coins,
+    color: "text-purple-400",
+    iconBg: "bg-purple-400/15 border-purple-400/40",
+    cardTint: "bg-purple-400/5",
+    cardBorder: "border-purple-400/30",
+    title: "Pool & Payout",
+    body: "All bets on a game flow into one shared pool. After the final out, winners split the total pool proportional to their stake (minus 2% house fee). Claim your sats via the withdrawal QR code.",
+  },
+  {
+    icon: Award,
+    color: "text-green-400",
+    iconBg: "bg-green-400/15 border-green-400/40",
+    cardTint: "bg-green-400/5",
+    cardBorder: "border-green-400/30",
+    title: "Automatic Settlement",
+    body: "Our system checks game results every hour. Once the final score is confirmed, payouts are calculated and withdrawal QR codes are generated automatically. Games with extra innings can run up to 5 hours.",
+  },
+  {
+    icon: ListChecks,
+    color: "text-red-400",
+    iconBg: "bg-red-400/15 border-red-400/40",
+    cardTint: "bg-red-400/5",
+    cardBorder: "border-red-400/30",
+    title: "Tips & Rules",
+    body: "• Betting closes 5 minutes before first pitch.\n• If nobody bets on the winning team, the house keeps the pool.\n• Keep your payment proof — you can verify your bet manually.\n• MLB season runs April through November. Daily games available!\n• Bet early for better value when the pool is thin.",
+  },
+];
+
+function MLBGuide({ onDone }: { onDone?: () => void } = {}) {
+  return (
+    <GuidePager
+      steps={MLB_GUIDE_STEPS}
+      onDone={onDone}
+      header={
+        <>
+          <span className="text-2xl leading-none">⚾</span>
+          <h2 className="text-base font-bold font-mono uppercase tracking-wider">MLB Betting Guide</h2>
+        </>
+      }
+      ctaClass="bg-red-400/10 border-red-400/30 text-red-400 hover:bg-red-400/20"
     />
   );
 }
@@ -1288,7 +1366,7 @@ function SportMyBetsTab({ hashes, onDismiss }: { hashes: string[]; onDismiss: (h
 export function Sports() {
   const [activeSport, setActiveSport] = useState<SportKey>("football");
   const [activeTab, setActiveTab] = useState<ContentTab>("upcoming");
-  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean; nbaSuspended?: boolean; nflSuspended?: boolean } | null>(null);
+  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean; nbaSuspended?: boolean; nflSuspended?: boolean; mlbSuspended?: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
@@ -1364,6 +1442,7 @@ export function Sports() {
         const props = { onDone: () => { setActiveTab("upcoming"); window.scrollTo({ top: 0, behavior: "smooth" }); } };
         if (activeSportDef.key === "football") return <FootballGuide {...props} />;
         if (activeSportDef.key === "nba")      return <NBAGuide {...props} />;
+        if (activeSportDef.key === "mlb")      return <MLBGuide {...props} />;
         return <NFLGuide {...props} />;
       })()}
 
