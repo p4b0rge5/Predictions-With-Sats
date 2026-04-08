@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Copy, XCircle, Clock, Zap, ChevronDown, ChevronUp, ShieldCheck } from "lucide-react";
 import { saveBetHash } from "@/components/my-bet-widget";
 
@@ -51,6 +51,8 @@ function AmountToggle({ mode, onChange }: { mode: InputMode; onChange: (m: Input
   );
 }
 
+const API_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+
 export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: BetModalProps) {
   const [inputMode, setInputMode]   = useState<InputMode>("usd");
   const [rawAmount, setRawAmount]   = useState<string>("0.5");
@@ -66,12 +68,24 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId }: 
   const [preimageInput, setPreimageInput] = useState("");
   const [verifyingPreimage, setVerifyingPreimage] = useState(false);
 
+  // Always fetch the real BTC/USD rate for sats conversion — the invoice is always in
+  // satoshis regardless of which prediction market (BTC / ETH / SOL) the user is betting on.
+  const { data: btcMarket } = useQuery<{ btcPriceUsd: number }>({
+    queryKey: ["/api/market/current", "btc"],
+    queryFn: () => fetch(`${API_BASE}/api/market/current?asset=btc`).then((r) => r.json() as Promise<{ btcPriceUsd: number }>),
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+    enabled: isOpen,
+  });
+  // Use the freshly fetched BTC rate; fall back to the prop while it loads.
+  const btcRate = btcMarket?.btcPriceUsd && btcMarket.btcPriceUsd > 0 ? btcMarket.btcPriceUsd : btcPriceUsd;
+
   const satsAmount = inputMode === "sats"
     ? (parseInt(rawAmount, 10) || 0)
-    : (btcPriceUsd > 0 ? Math.floor((parseFloat(rawAmount) || 0) / btcPriceUsd * 100_000_000) : 0);
+    : (btcRate > 0 ? Math.floor((parseFloat(rawAmount) || 0) / btcRate * 100_000_000) : 0);
   const usdAmount = inputMode === "usd"
     ? (parseFloat(rawAmount) || 0)
-    : (satsAmount / 100_000_000 * btcPriceUsd);
+    : (satsAmount / 100_000_000 * btcRate);
 
   useEffect(() => { setWeblnAvailable(typeof window.webln !== "undefined"); }, []);
 
