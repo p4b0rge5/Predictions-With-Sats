@@ -8,7 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Copy, XCircle, Clock, Zap, ChevronDown, ChevronUp, ShieldCheck } from "lucide-react";
-import { saveBetHash } from "@/components/my-bet-widget";
+import { saveBetHashForAsset } from "@/components/my-bet-widget";
 
 interface BetModalProps {
   isOpen: boolean;
@@ -104,10 +104,10 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId, as
 
   useEffect(() => {
     if (betStatus?.status === "paid" && paymentHash) {
-      saveBetHash(paymentHash);
+      saveBetHashForAsset(asset, paymentHash);
       toast({ title: "Payment confirmed!", description: "Your bet is confirmed. Check the result on the home page.", duration: 4000 });
     }
-  }, [betStatus?.status, paymentHash]);
+  }, [betStatus?.status, paymentHash, asset]);
 
   const isUp = direction === "up";
 

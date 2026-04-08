@@ -8,7 +8,7 @@ import {
   Zap, Clock, QrCode, Trophy, ShieldCheck, Wallet,
 } from "lucide-react";
 import { BetModal } from "@/components/bet-modal";
-import { MyBetsList, getBetHashes, removeBetHash } from "@/components/my-bet-widget";
+import { MyBetsList, getBetHashesForAsset, removeBetHashForAsset } from "@/components/my-bet-widget";
 import { SiBitcoin, SiEthereum, SiSolana } from "react-icons/si";
 import {
   ResponsiveContainer, AreaChart, Area,
@@ -274,7 +274,7 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
     prevSecsLeftRef.current = secsLeft;
   }, [secsLeft]);
 
-  useEffect(() => { setBetHashes(getBetHashes()); }, []);
+  useEffect(() => { setBetHashes(getBetHashesForAsset(def.asset)); }, [def.asset]);
 
   useEffect(() => {
     if (!market || !market.btcPriceUsd || market.status === "none") return;
@@ -509,7 +509,7 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
       {lookedUpHash && <MyBetsList hashes={[lookedUpHash]} onDismiss={() => setLookedUpHash(null)} />}
 
       {betDirection && market.windowId && (
-        <BetModal isOpen={true} onClose={() => { setBetDirection(null); setBetHashes(getBetHashes()); }}
+        <BetModal isOpen={true} onClose={() => { setBetDirection(null); setBetHashes(getBetHashesForAsset(def.asset)); }}
           direction={betDirection} btcPriceUsd={assetPrice} windowId={market.windowId} asset={def.asset} />
       )}
 
@@ -586,15 +586,15 @@ export function Home() {
         />
       )}
       {activeTab === "my-bets" && (() => {
-        const hashes = getBetHashes();
+        const hashes = getBetHashesForAsset(def.asset);
         if (hashes.length === 0) return (
           <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
             <Zap className="h-10 w-10" />
-            <p className="font-mono text-sm">No crypto bets yet</p>
-            <p className="font-mono text-xs text-center opacity-60">Bets you place on Bitcoin, ETH or SOL will appear here.</p>
+            <p className="font-mono text-sm">No {def.label} bets yet</p>
+            <p className="font-mono text-xs text-center opacity-60">Bets you place on {def.label} will appear here.</p>
           </div>
         );
-        return <MyBetsList hashes={hashes} onDismiss={(hash) => { removeBetHash(hash); setActiveTab("my-bets"); }} />;
+        return <MyBetsList hashes={hashes} onDismiss={(hash) => { removeBetHashForAsset(def.asset, hash); setActiveTab("my-bets"); }} />;
       })()}
       {activeTab === "live" && (
         <CryptoPrediction key={def.asset} def={def} onShowGuide={() => setActiveTab("guide")} />

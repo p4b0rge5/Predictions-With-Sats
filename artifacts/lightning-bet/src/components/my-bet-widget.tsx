@@ -15,6 +15,13 @@ const SPORTS_STORAGE_KEY   = "lightning_bet_sports_hashes_v1";
 const WEATHER_STORAGE_KEY  = "lightning_bet_weather_hashes_v1";
 const MAX_STORED = 30;
 
+// Per-asset storage keys — ensure BTC, ETH and SOL bets are stored separately
+const ASSET_STORAGE_KEYS = {
+  btc: "lightning_bet_btc_hashes_v1",
+  eth: "lightning_bet_eth_hashes_v1",
+  sol: "lightning_bet_sol_hashes_v1",
+} as const;
+
 // ── Generic storage helper ──────────────────────────────────────────────────
 
 function readHashes(key: string): string[] {
@@ -38,7 +45,7 @@ function deleteHash(key: string, paymentHash: string) {
   localStorage.setItem(key, JSON.stringify(readHashes(key).filter((h) => h !== paymentHash)));
 }
 
-// ── Crypto (Bitcoin/ETH/SOL) ─────────────────────────────────────────────────
+// ── Crypto (Bitcoin/ETH/SOL) — legacy combined key ───────────────────────────
 
 export function saveBetHash(paymentHash: string)    { writeHash(STORAGE_KEY, paymentHash); }
 export function getBetHashes(): string[]            { return readHashes(STORAGE_KEY); }
@@ -47,6 +54,22 @@ export function removeBetHash(paymentHash: string)  { deleteHash(STORAGE_KEY, pa
 /** @deprecated */ export function saveLastBetHash(paymentHash: string) { saveBetHash(paymentHash); }
 /** @deprecated */ export function getLastBetHash(): string | null { return getBetHashes()[0] ?? null; }
 export function clearLastBetHash() { localStorage.removeItem(STORAGE_KEY); }
+
+// ── Per-asset storage (BTC / ETH / SOL isolated) ─────────────────────────────
+
+export type CryptoAsset = keyof typeof ASSET_STORAGE_KEYS;
+
+export function saveBetHashForAsset(asset: CryptoAsset, paymentHash: string) {
+  writeHash(ASSET_STORAGE_KEYS[asset], paymentHash);
+}
+
+export function getBetHashesForAsset(asset: CryptoAsset): string[] {
+  return readHashes(ASSET_STORAGE_KEYS[asset]);
+}
+
+export function removeBetHashForAsset(asset: CryptoAsset, paymentHash: string) {
+  deleteHash(ASSET_STORAGE_KEYS[asset], paymentHash);
+}
 
 // ── Sports ────────────────────────────────────────────────────────────────────
 
