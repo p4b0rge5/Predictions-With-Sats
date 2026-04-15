@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { format } from "date-fns";
 import {
-  Trophy, Clock, CheckCircle2, AlertCircle, RefreshCw,
+  Trophy, Clock, CheckCircle2, AlertCircle,
   Copy, Zap, ShieldCheck, ChevronDown, ChevronUp, XCircle,
   BookOpen, Wallet, Handshake, Coins, Award, ListChecks,
   X, Share2, Gift, Loader2,
@@ -14,12 +14,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { QRCodeSVG } from "qrcode.react";
 import { useToast } from "@/hooks/use-toast";
 import {
-  getSportBetHashesForKey,
   saveSportBetHashForKey,
-  removeSportBetHashForKey,
+  getSportBetHashesForKey,
   migrateLegacySportsBetHashes,
+  removeSportBetHashForKey,
 } from "@/components/my-bet-widget";
 import { GuidePager, type GuideStep } from "@/components/guide-pager";
+import { ErrorState, LoadingState } from "@/components/query-state";
+import { getCurrentStakePayout, getPoolMultiple, getProjectedPayout } from "@/lib/payout-preview";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,7 +29,12 @@ import { GuidePager, type GuideStep } from "@/components/guide-pager";
 
 type Direction = "home" | "draw" | "away";
 type SportKey = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby";
-type ContentTab = "guide" | "my-bets" | "upcoming" | "results";
+type ContentTab = "guide" | "upcoming" | "results" | "myBets";
+type MarketDateOption = {
+  value: string;
+  label: string;
+  sortKey: number;
+};
 
 interface SportDef {
   key: SportKey;
@@ -37,7 +44,6 @@ interface SportDef {
   hasDraw: boolean;        // basketball/nfl have no draws
   cardClass: string;       // upcoming card bg + border
   resultCardClass: string; // finished card bg + border
-  suspendedKey: string;    // key in API response for suspended flag
 }
 
 const SPORTS: SportDef[] = [
@@ -47,9 +53,8 @@ const SPORTS: SportDef[] = [
     icon: "⚽",
     sportName: "Soccer",
     hasDraw: true,
-    cardClass: "bg-green-500/15 border-green-500/35",
-    resultCardClass: "bg-green-500/10 border-green-500/25",
-    suspendedKey: "suspended",
+    cardClass: "surface-tint-green",
+    resultCardClass: "surface-tint-green-soft",
   },
   {
     key: "nba",
@@ -57,9 +62,8 @@ const SPORTS: SportDef[] = [
     icon: "🏀",
     sportName: "Basketball",
     hasDraw: false,
-    cardClass: "bg-orange-500/15 border-orange-500/35",
-    resultCardClass: "bg-orange-500/10 border-orange-500/25",
-    suspendedKey: "nbaSuspended",
+    cardClass: "surface-tint-orange",
+    resultCardClass: "surface-tint-orange-soft",
   },
   {
     key: "nfl",
@@ -67,9 +71,8 @@ const SPORTS: SportDef[] = [
     icon: "🏈",
     sportName: "American Football",
     hasDraw: false,
-    cardClass: "bg-indigo-500/15 border-indigo-500/35",
-    resultCardClass: "bg-indigo-500/10 border-indigo-500/25",
-    suspendedKey: "nflSuspended",
+    cardClass: "surface-tint-indigo",
+    resultCardClass: "surface-tint-indigo-soft",
   },
   {
     key: "mlb",
@@ -77,9 +80,8 @@ const SPORTS: SportDef[] = [
     icon: "⚾",
     sportName: "Baseball",
     hasDraw: false,
-    cardClass: "bg-red-500/15 border-red-500/35",
-    resultCardClass: "bg-red-500/10 border-red-500/25",
-    suspendedKey: "mlbSuspended",
+    cardClass: "surface-tint-red",
+    resultCardClass: "surface-tint-red-soft",
   },
   {
     key: "mma",
@@ -87,9 +89,8 @@ const SPORTS: SportDef[] = [
     icon: "🥊",
     sportName: "MMA",
     hasDraw: false,
-    cardClass: "bg-yellow-500/15 border-yellow-500/35",
-    resultCardClass: "bg-yellow-500/10 border-yellow-500/25",
-    suspendedKey: "mmaSuspended",
+    cardClass: "surface-tint-yellow",
+    resultCardClass: "surface-tint-yellow-soft",
   },
   {
     key: "rugby",
@@ -97,9 +98,8 @@ const SPORTS: SportDef[] = [
     icon: "🏉",
     sportName: "Rugby",
     hasDraw: true,
-    cardClass: "bg-emerald-500/15 border-emerald-500/35",
-    resultCardClass: "bg-emerald-500/10 border-emerald-500/25",
-    suspendedKey: "rugbySuspended",
+    cardClass: "surface-tint-emerald",
+    resultCardClass: "surface-tint-emerald-soft",
   },
 ];
 
@@ -111,10 +111,12 @@ interface SportEvent {
   homeBadge: string | null;
   awayBadge: string | null;
   leagueLogo: string | null;
+  leagueId?: number | null;
   league: string;
   sport: string;
   startsAt: string;
   status: "upcoming" | "finished" | "live";
+  elapsed?: number | null;
   homeScore: number | null;
   awayScore: number | null;
   outcome: "home" | "draw" | "away" | null;
@@ -124,6 +126,7 @@ interface SportEvent {
   totalAwaySats: number;
   marketStatus: string | null;
   marketOutcome: string | null;
+  marketFinishedAt: string | null;
   marketSettledAt: string | null;
 }
 
@@ -134,6 +137,7 @@ interface SportBetStatus {
   amountSats: number;
   status: string;
   payoutSats: number | null;
+  marketId: number | null;
   withdrawLnurl: string | null;
   withdrawStatus: string | null;
   market: {
@@ -143,6 +147,7 @@ interface SportBetStatus {
     league: string;
     status: string;
     outcome: string | null;
+    finishedAt: string | null;
   } | null;
 }
 
@@ -164,6 +169,8 @@ const MIN_SATS = 546;
 const BTC_SATS = 100_000_000;
 const APPROX_BTC_USD = 95000;
 const REFRESH_INTERVAL_MS = 30_000;
+const EVENT_IMMINENT_MS = 5 * 60 * 1000;
+const EVENT_IMMINENT_BRIDGE_MS = 4 * 60 * 60 * 1000;
 
 function apiUrl(path: string) {
   return `${API_BASE}${path}`;
@@ -171,6 +178,17 @@ function apiUrl(path: string) {
 
 function formatSats(n: number) {
   return new Intl.NumberFormat("en-US").format(n);
+}
+
+function formatReturnPercent(roiPercent: number | null) {
+  if (roiPercent === null) return "New side";
+  return `${roiPercent >= 0 ? "+" : ""}${roiPercent.toFixed(0)}% if win`;
+}
+
+const SHOW_PROJECTED_PAYOUT_UI = false;
+
+function isDirection(value: string): value is Direction {
+  return value === "home" || value === "draw" || value === "away";
 }
 
 function formatKickoff(isoStr: string) {
@@ -181,6 +199,43 @@ function formatKickoff(isoStr: string) {
 
 function msTillKickoff(isoStr: string) {
   return new Date(isoStr).getTime() - Date.now();
+}
+
+function isEventImminent(isoStr: string, now = Date.now()) {
+  const diff = new Date(isoStr).getTime() - now;
+  return diff > 0 && diff < EVENT_IMMINENT_MS;
+}
+
+function getLocalDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getEventDateOption(isoStr: string): MarketDateOption {
+  const date = new Date(isoStr);
+  const value = getLocalDateKey(date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const optionDate = new Date(date);
+  optionDate.setHours(0, 0, 0, 0);
+
+  let label: string;
+  if (optionDate.getTime() === today.getTime()) {
+    label = "Today";
+  } else if (optionDate.getTime() === tomorrow.getTime()) {
+    label = "Tomorrow";
+  } else {
+    label = date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  return { value, label, sortKey: optionDate.getTime() };
 }
 
 const DIRECTION_LABELS: Record<Direction, string> = {
@@ -194,6 +249,82 @@ const DIRECTION_COLORS: Record<Direction, { btn: string; text: string; cta: stri
   draw: { btn: "bg-yellow-500/10 text-yellow-400 border border-yellow-500/40 hover:bg-yellow-500/20 hover:border-yellow-500", text: "text-yellow-400", cta: "bg-yellow-500 hover:bg-yellow-600 text-black" },
   away: { btn: "bg-blue-500/10 text-blue-400 border border-blue-500/40 hover:bg-blue-500/20 hover:border-blue-500", text: "text-blue-400", cta: "bg-blue-600 hover:bg-blue-700 text-white" },
 };
+
+const LEAGUE_PRIORITY: Partial<Record<SportKey, readonly string[]>> = {
+  football: [
+    "2",   // UEFA Champions League
+    "3",   // UEFA Europa League
+    "848", // UEFA Europa Conference League
+    "39",  // Premier League
+    "40",  // Championship
+    "140", // La Liga
+    "78",  // Bundesliga
+    "135", // Serie A (Italy)
+    "61",  // Ligue 1
+    "94",  // Primeira Liga
+    "13",  // CONMEBOL Libertadores
+    "71",  // Brasileirao Serie A
+    "262", // Liga MX
+    "253", // MLS
+    "128", // Argentina LPF
+    "88",  // Eredivisie
+    "203", // Super Lig
+    "144", // Jupiler Pro League
+    "307", // Saudi Pro League
+    "292", // K League 1
+  ],
+  nba: ["NBA Playoffs", "NBA"],
+  nfl: ["NFL Playoffs", "NFL"],
+  mlb: ["MLB Playoffs", "MLB"],
+  mma: ["UFC", "PFL", "Bellator", "ONE Championship", "MMA"],
+  rugby: ["Six Nations", "Rugby Championship", "Premiership", "Top 14", "United Rugby Championship", "Super Rugby", "Rugby"],
+};
+
+const FOOTBALL_LEAGUE_LABELS: Record<string, string> = {
+  "2": "UEFA Champions League",
+  "3": "UEFA Europa League",
+  "848": "UEFA Europa Conference League",
+  "39": "Premier League",
+  "40": "Championship",
+  "140": "La Liga",
+  "78": "Bundesliga",
+  "135": "Serie A",
+  "61": "Ligue 1",
+  "94": "Primeira Liga",
+  "13": "CONMEBOL Libertadores",
+  "71": "Brasileirao Serie A",
+  "262": "Liga MX",
+  "253": "Major League Soccer",
+  "128": "Liga Profesional Argentina",
+  "88": "Eredivisie",
+  "203": "Super Lig",
+  "144": "Jupiler Pro League",
+  "307": "Saudi Pro League",
+  "292": "K League 1",
+};
+
+type LeagueOption = {
+  value: string;
+  label: string;
+  sortKey: string;
+};
+
+function getLeagueOption(ev: SportEvent, sport: SportKey): LeagueOption {
+  const leagueId = ev.leagueId != null ? String(ev.leagueId) : null;
+  if (sport === "football" && leagueId) {
+    return {
+      value: leagueId,
+      label: FOOTBALL_LEAGUE_LABELS[leagueId] ?? ev.league,
+      sortKey: leagueId,
+    };
+  }
+
+  return {
+    value: ev.league,
+    label: ev.league,
+    sortKey: ev.league,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Team badge
@@ -301,7 +432,7 @@ const FOOTBALL_GUIDE_STEPS: GuideStep[] = [
     cardTint: "bg-red-400/5",
     cardBorder: "border-red-400/30",
     title: "Tips & Rules",
-    body: "• Betting closes 5 minutes before kick-off.\n• If nobody bets on the winning side, the house keeps the pool.\n• Keep your preimage (payment proof) — you can verify your bet manually if needed.\n• Odds are implied by the pool: bet early for better value.",
+    body: "• Betting closes 5 minutes before kick-off.\n• If no opposing bets are placed, your stake returns as REFUND minus a 0.5% refund fee.\n• Keep your preimage (payment proof) — you can verify your bet manually if needed.\n• Odds are implied by the pool: bet early for better value.",
   },
 ];
 
@@ -369,7 +500,7 @@ const NBA_GUIDE_STEPS: GuideStep[] = [
     cardTint: "bg-red-400/5",
     cardBorder: "border-red-400/30",
     title: "Tips & Rules",
-    body: "• Betting closes 5 minutes before tip-off.\n• If nobody bets on the winning team, the house keeps the pool.\n• Keep your payment proof — you can verify your bet manually.\n• Bet early for better value when the pool is thin.",
+    body: "• Betting closes 5 minutes before tip-off.\n• If no opposing bets are placed, your stake returns as REFUND minus a 0.5% refund fee.\n• Keep your payment proof — you can verify your bet manually.\n• Bet early for better value when the pool is thin.",
   },
 ];
 
@@ -437,7 +568,7 @@ const NFL_GUIDE_STEPS: GuideStep[] = [
     cardTint: "bg-red-400/5",
     cardBorder: "border-red-400/30",
     title: "Tips & Rules",
-    body: "• Betting closes 5 minutes before kickoff.\n• If nobody bets on the winning team, the house keeps the pool.\n• Keep your payment proof — you can verify your bet manually.\n• NFL season runs September to February. Off-season: no games available.\n• Bet early for better value when the pool is thin.",
+    body: "• Betting closes 5 minutes before kickoff.\n• If no opposing bets are placed, your stake returns as REFUND minus a 0.5% refund fee.\n• Keep your payment proof — you can verify your bet manually.\n• NFL season runs September to February. Off-season: no games available.\n• Bet early for better value when the pool is thin.",
   },
 ];
 
@@ -505,7 +636,7 @@ const MLB_GUIDE_STEPS: GuideStep[] = [
     cardTint: "bg-red-400/5",
     cardBorder: "border-red-400/30",
     title: "Tips & Rules",
-    body: "• Betting closes 5 minutes before first pitch.\n• If nobody bets on the winning team, the house keeps the pool.\n• Keep your payment proof — you can verify your bet manually.\n• MLB season runs April through November. Daily games available!\n• Bet early for better value when the pool is thin.",
+    body: "• Betting closes 5 minutes before first pitch.\n• If no opposing bets are placed, your stake returns as REFUND minus a 0.5% refund fee.\n• Keep your payment proof — you can verify your bet manually.\n• MLB season runs April through November. Daily games available!\n• Bet early for better value when the pool is thin.",
   },
 ];
 
@@ -573,7 +704,7 @@ const MMA_GUIDE_STEPS: GuideStep[] = [
     cardTint: "bg-yellow-400/5",
     cardBorder: "border-yellow-400/30",
     title: "Tips & Rules",
-    body: "• Betting closes 5 minutes before the fight starts.\n• Individual fights are listed — you can bet on any fight on the card, not just the main event.\n• If nobody bets on the winning fighter, the house keeps the pool.\n• MMA events happen year-round every weekend.\n• Bet early for better value when the pool is thin.",
+    body: "• Betting closes 5 minutes before the fight starts.\n• Individual fights are listed — you can bet on any fight on the card, not just the main event.\n• If no opposing bets are placed, your stake returns as REFUND minus a 0.5% refund fee.\n• MMA events happen year-round every weekend.\n• Bet early for better value when the pool is thin.",
   },
 ];
 
@@ -641,7 +772,7 @@ const RUGBY_GUIDE_STEPS: GuideStep[] = [
     cardTint: "bg-emerald-400/5",
     cardBorder: "border-emerald-400/30",
     title: "Tips & Rules",
-    body: "• Betting closes 5 minutes before kick-off.\n• Both hemispheres covered — Northern (Six Nations, Premiership, Top 14) and Southern (Super Rugby, Rugby Championship).\n• DRAW is a real outcome in regular-season pool games — bet wisely!\n• If nobody bets on the winning side, the house keeps the pool.\n• Rugby runs year-round with events almost every weekend.",
+    body: "• Betting closes 5 minutes before kick-off.\n• Both hemispheres covered — Northern (Six Nations, Premiership, Top 14) and Southern (Super Rugby, Rugby Championship).\n• DRAW is a real outcome in regular-season pool games — bet wisely!\n• If no opposing bets are placed, your stake returns as REFUND minus a 0.5% refund fee.\n• Rugby runs year-round with events almost every weekend.",
   },
 ];
 
@@ -746,6 +877,21 @@ function SportBetModal({ event, direction, sportKey, onClose }: SportBetModalPro
   const usdNum = inputMode === "usd"
     ? (parseFloat(rawAmount) || 0)
     : (satsNum / BTC_SATS * btcPrice);
+  const selectedPoolSats = event && direction
+    ? direction === "home"
+      ? event.totalHomeSats
+      : direction === "away"
+      ? event.totalAwaySats
+      : (event.totalDrawSats ?? 0)
+    : 0;
+  const totalPoolSats = event
+    ? event.totalHomeSats + event.totalAwaySats + (event.totalDrawSats ?? 0)
+    : 0;
+  const projectedPayout = getProjectedPayout({
+    stakeSats: satsNum,
+    selectedPoolSats,
+    totalPoolSats,
+  });
 
   const handleModeChange = (m: InputMode) => {
     setInputMode(m);
@@ -906,9 +1052,38 @@ function SportBetModal({ event, direction, sportKey, onClose }: SportBetModalPro
                   ))
               }
             </div>
+
+            {SHOW_PROJECTED_PAYOUT_UI && projectedPayout && (
+              <div className="rounded-lg border border-border/50 bg-card/40 px-3 py-2.5 text-[11px] font-mono">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-bold text-foreground">{formatSats(satsNum)} sats</span>
+                  <span className={projectedPayout.profitSats >= 0 ? "text-green-400" : "text-yellow-400"}>
+                    {projectedPayout.roiPct >= 0 ? "+" : ""}{projectedPayout.roiPct.toFixed(1)}% if win
+                  </span>
+                </div>
+                <div className="mt-1 flex items-end justify-between gap-3">
+                  <span className="text-muted-foreground uppercase tracking-wider">Projected payout</span>
+                  <span className="text-muted-foreground">
+                    {formatSats(projectedPayout.payoutSats)} sats total
+                  </span>
+                </div>
+                <div className="mt-1 flex items-end justify-between gap-3">
+                  <span className="text-muted-foreground uppercase tracking-wider">Net</span>
+                  <span className="text-muted-foreground">
+                    {projectedPayout.profitSats >= 0 ? "+" : ""}{formatSats(projectedPayout.profitSats)} sats
+                  </span>
+                </div>
+              </div>
+            )}
+
             <Button type="submit" disabled={creating || !validSats}
-              className={`w-full h-12 text-base font-bold uppercase tracking-wider ${colors.cta}`}>
-              {creating ? "Generating invoice…" : "Generate Invoice"}
+              className={`w-full h-auto min-h-12 py-3 text-base font-bold uppercase tracking-wider flex flex-col items-center justify-center gap-1 ${colors.cta}`}>
+              <span>{creating ? "Generating invoice…" : "Generate Invoice"}</span>
+              {SHOW_PROJECTED_PAYOUT_UI && projectedPayout && !creating && (
+                <span className="text-[10px] font-normal opacity-90">
+                  {formatSats(satsNum)} sats · {projectedPayout.roiPct >= 0 ? "+" : ""}{projectedPayout.roiPct.toFixed(1)}% if win
+                </span>
+              )}
             </Button>
           </form>
         )}
@@ -1015,14 +1190,26 @@ function SportBetModal({ event, direction, sportKey, onClose }: SportBetModalPro
 // Upcoming match card
 // ---------------------------------------------------------------------------
 
-function UpcomingCard({ ev, onBet, sportDef }: { ev: SportEvent; onBet: (dir: Direction) => void; sportDef: SportDef }) {
-  const bettingClosed = msTillKickoff(ev.startsAt) < 5 * 60 * 1000;
+function UpcomingCard({
+  ev,
+  onBet,
+  sportDef,
+  userStakeByDirection,
+}: {
+  ev: SportEvent;
+  onBet: (dir: Direction) => void;
+  sportDef: SportDef;
+  userStakeByDirection?: Partial<Record<Direction, number>>;
+}) {
+  const msToKickoff = msTillKickoff(ev.startsAt);
+  const bettingClosed = msToKickoff > 0 && msToKickoff < EVENT_IMMINENT_MS;
   const settled = ev.marketStatus === "settled";
   const dirs: Direction[] = sportDef.hasDraw ? ["home", "draw", "away"] : ["home", "away"];
+  const totalPoolSats = ev.totalHomeSats + ev.totalAwaySats + (ev.totalDrawSats ?? 0);
   return (
-    <div className={`rounded-xl border ${sportDef.cardClass} p-4 space-y-3`}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
+    <div className={`rounded-xl border ${sportDef.cardClass} card-safe p-4 space-y-3`}>
+      <div className="flex items-center justify-between gap-2 min-w-0 flex-nowrap">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
           {ev.leagueLogo && <img src={ev.leagueLogo} alt={ev.league} className="h-4 w-4 object-contain shrink-0" />}
           <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">{ev.league}</span>
         </div>
@@ -1030,16 +1217,16 @@ function UpcomingCard({ ev, onBet, sportDef }: { ev: SportEvent; onBet: (dir: Di
           <Clock className="h-3 w-3" />{formatKickoff(ev.startsAt)}
         </div>
       </div>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex-1 flex flex-col items-center gap-1.5">
+      <div className="card-row-between-wrap">
+        <div className="flex-1 min-w-0 flex flex-col items-center gap-1.5">
           <TeamBadge src={ev.homeBadge} name={ev.homeTeam} />
-          <span className="text-xs font-semibold text-center leading-tight">{ev.homeTeam}</span>
+          <span className="max-w-full truncate text-xs font-semibold text-center leading-tight">{ev.homeTeam}</span>
           <span className="text-[9px] text-muted-foreground font-mono">HOME</span>
         </div>
         <span className="text-base font-bold font-mono text-muted-foreground">VS</span>
-        <div className="flex-1 flex flex-col items-center gap-1.5">
+        <div className="flex-1 min-w-0 flex flex-col items-center gap-1.5">
           <TeamBadge src={ev.awayBadge} name={ev.awayTeam} />
-          <span className="text-xs font-semibold text-center leading-tight">{ev.awayTeam}</span>
+          <span className="max-w-full truncate text-xs font-semibold text-center leading-tight">{ev.awayTeam}</span>
           <span className="text-[9px] text-muted-foreground font-mono">AWAY</span>
         </div>
       </div>
@@ -1047,17 +1234,43 @@ function UpcomingCard({ ev, onBet, sportDef }: { ev: SportEvent; onBet: (dir: Di
         <div className="text-center text-[11px] text-muted-foreground font-mono py-1">Market settled</div>
       ) : bettingClosed ? (
         <div className="text-center text-[11px] text-yellow-500/80 font-mono py-1 animate-pulse">
-          ⏳ Betting closed — {sportDef.hasDraw ? "match" : "game"} imminent
+          ⏳ Betting closed — event imminent
         </div>
       ) : (
         <div className={`grid gap-1.5 ${sportDef.hasDraw ? "grid-cols-3" : "grid-cols-2"}`}>
           {dirs.map((dir) => {
             const dirSats = dir === "home" ? ev.totalHomeSats : dir === "away" ? ev.totalAwaySats : (ev.totalDrawSats ?? 0);
+            const poolMultiple = getPoolMultiple({ selectedPoolSats: dirSats, totalPoolSats });
+            const genericRoiPct = poolMultiple ? (poolMultiple - 1) * 100 : null;
+            const userStakeSats = userStakeByDirection?.[dir] ?? 0;
+            const opposingPoolSats = Math.max(0, totalPoolSats - dirSats);
+            const userStakeProjection = getCurrentStakePayout({
+              stakeSats: userStakeSats,
+              selectedPoolSats: dirSats,
+              totalPoolSats,
+            });
+            const returnLabel = opposingPoolSats > 0
+              ? formatReturnPercent(userStakeProjection?.roiPct ?? genericRoiPct)
+              : null;
             return (
               <Button key={dir} size="sm" onClick={() => onBet(dir)}
-                className={`h-14 text-[11px] font-mono font-bold transition-all flex flex-col gap-0.5 ${DIRECTION_COLORS[dir].btn}`}>
+                className={`text-[11px] font-mono font-bold transition-all flex flex-col justify-center ${sportDef.hasDraw ? "min-h-[4.75rem] px-2 py-2 gap-1" : "min-h-[4.75rem] px-2 py-2 gap-1"} ${DIRECTION_COLORS[dir].btn}`}>
                 <span>{dir === "home" ? "↑" : dir === "away" ? "↓" : "="} {DIRECTION_LABELS[dir]}</span>
-                <span className="text-[9px] font-normal opacity-70">{formatSats(dirSats)} sats in pool</span>
+                <>
+                  <span className={`${sportDef.hasDraw ? "text-[8px]" : "text-[9px]"} font-normal leading-none opacity-70`}>
+                    {formatSats(dirSats)} sats in pool
+                  </span>
+                  {userStakeSats > 0 && (
+                    <span className={`${sportDef.hasDraw ? "text-[8px]" : "text-[9px]"} font-normal leading-none opacity-80`}>
+                      You: {formatSats(userStakeSats)} sats
+                    </span>
+                  )}
+                  {returnLabel ? (
+                    <span className={`${sportDef.hasDraw ? "text-[9px]" : "text-[10px]"} leading-none opacity-90`}>
+                      {returnLabel}
+                    </span>
+                  ) : null}
+                </>
               </Button>
             );
           })}
@@ -1079,20 +1292,40 @@ function OutcomeBadge({ outcome }: { outcome: SportEvent["outcome"] }) {
   return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[10px]">DRAW</Badge>;
 }
 
-function FinishedCard({ ev, sportDef }: { ev: SportEvent; sportDef: SportDef }) {
+function getResolvedOutcomeLabel(ev: SportEvent) {
+  if (ev.marketOutcome === "home") return ev.homeTeam;
+  if (ev.marketOutcome === "away") return ev.awayTeam;
+  if (ev.marketOutcome === "draw") return "Draw";
+  return null;
+}
+
+function ResultCard({ ev, sportDef }: { ev: SportEvent; sportDef: SportDef }) {
+  const hasStarted = new Date(ev.startsAt).getTime() <= Date.now();
+  const isImminent = ev.status === "upcoming" && hasStarted;
+  const isLive = ev.status === "live";
   const settled = ev.marketStatus === "settled";
+  const finishedAt = ev.marketFinishedAt;
   const settledAt = ev.marketSettledAt;
+  const liveLabel = ev.elapsed ? `LIVE · ${ev.elapsed}'` : "LIVE NOW";
 
   return (
-    <div className={`rounded-xl border ${sportDef.resultCardClass} p-3 space-y-2.5`}>
+    <div className={`rounded-xl border ${sportDef.resultCardClass} card-safe p-3 space-y-2.5`}>
       {/* League + badges */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
+      <div className="flex items-center justify-between gap-2 min-w-0 flex-nowrap">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
           {ev.leagueLogo && <img src={ev.leagueLogo} alt={ev.league} className="h-4 w-4 object-contain shrink-0" />}
-          <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider truncate">{ev.league}</span>
+          <span className="min-w-0 flex-1 truncate text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+            {ev.league}
+          </span>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <OutcomeBadge outcome={ev.outcome} />
+        <div className="flex items-center gap-1 shrink-0 whitespace-nowrap">
+          {isLive ? (
+            <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-[10px]">{liveLabel}</Badge>
+          ) : isImminent ? (
+            <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-[10px]">EVENT IMMINENT</Badge>
+          ) : (
+            <OutcomeBadge outcome={ev.outcome} />
+          )}
           {settled && <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px]">SETTLED</Badge>}
         </div>
       </div>
@@ -1115,22 +1348,35 @@ function FinishedCard({ ev, sportDef }: { ev: SportEvent; sportDef: SportDef }) 
       </div>
 
       {/* Outcome description */}
-      {ev.outcome && (
+      {(isLive || isImminent || ev.outcome) && (
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
-          <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
-          {ev.outcome === "draw"
-            ? `DRAW — Draw bettors collect the pool${settled ? "" : " (settlement pending)"}`
-            : `${ev.outcome === "home" ? ev.homeTeam : ev.awayTeam} wins — ${settled ? "payouts distributed" : "settlement pending"}`}
+          <CheckCircle2 className={`h-3 w-3 shrink-0 ${isLive || isImminent ? "text-amber-400" : "text-green-500"}`} />
+          {isLive
+            ? "Match in progress — final result pending"
+            : isImminent
+            ? "Betting closed — kickoff approaching"
+            : ev.outcome === "draw"
+            ? "DRAW — Match finished level"
+            : `${ev.outcome === "home" ? ev.homeTeam : ev.awayTeam} wins`}
         </div>
       )}
 
-      {/* Settlement timestamp */}
-      {settledAt && (
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono border-t border-border/30 pt-2">
-          <Clock className="h-3 w-3 shrink-0" />
-          Resolved {format(new Date(settledAt), "MMM d, yyyy · HH:mm")} UTC
+      {/* Settlement / resolution footer */}
+      {settledAt ? (
+        <div className="card-row-between-wrap border-t border-border/30 pt-2 text-[10px] text-muted-foreground font-mono">
+          <span className="flex items-center gap-1.5 min-w-0">
+            <Clock className="h-3 w-3 shrink-0" />
+            <span className="truncate">Resolved {format(new Date(settledAt), "MMM d, yyyy · HH:mm")} UTC</span>
+          </span>
         </div>
-      )}
+      ) : finishedAt ? (
+        <div className="card-row-between-wrap border-t border-border/30 pt-2 text-[10px] text-muted-foreground font-mono">
+          <span className="flex items-center gap-1.5 min-w-0">
+            <Clock className="h-3 w-3 shrink-0" />
+            <span className="truncate">Finished {format(new Date(finishedAt), "MMM d, yyyy · HH:mm")} UTC</span>
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1167,13 +1413,13 @@ interface SportBetRecord {
   } | null;
 }
 
-const SPORT_DIR_STYLES: Record<string, { text: string; bg: string; icon: string; label: string }> = {
-  home: { text: "text-green-400", bg: "bg-green-500/20 border-green-500/50", icon: "↑", label: "HOME" },
-  draw: { text: "text-amber-400", bg: "bg-amber-500/20 border-amber-500/50", icon: "=", label: "DRAW" },
-  away: { text: "text-blue-400",  bg: "bg-blue-500/20 border-blue-500/50",   icon: "↓", label: "AWAY" },
+const SPORT_DIR_STYLES: Record<string, { text: string; cardBg: string; pillBg: string; icon: string; label: string }> = {
+  home: { text: "text-green-400", cardBg: "surface-tint-green", pillBg: "bg-green-500/20 border-green-500/50", icon: "↑", label: "HOME" },
+  draw: { text: "text-amber-400", cardBg: "surface-tint-amber", pillBg: "bg-amber-500/20 border-amber-500/50", icon: "=", label: "DRAW" },
+  away: { text: "text-blue-400",  cardBg: "surface-tint-blue", pillBg: "bg-blue-500/20 border-blue-500/50",   icon: "↓", label: "AWAY" },
 };
 
-function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () => void }) {
+export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () => void }) {
   const { toast } = useToast();
   const [bet, setBet] = useState<SportBetRecord | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -1318,7 +1564,7 @@ function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () =
   };
 
   return (
-    <div className={`rounded-xl border ${dirStyle.bg} p-4 font-mono relative`}>
+    <div className={`rounded-xl border ${dirStyle.cardBg} card-safe p-4 font-mono relative`}>
       {/* Dismiss */}
       <button
         onClick={onDismiss}
@@ -1329,15 +1575,15 @@ function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () =
       </button>
 
       {/* Header row */}
-      <div className="flex items-center gap-2 mb-3 pr-6">
-        <span className={`flex items-center gap-1 font-bold text-sm px-2 py-0.5 rounded border ${dirStyle.bg} ${dirStyle.text}`}>
+      <div className="card-row-wrap mb-3 pr-6">
+        <span className={`flex items-center gap-1 font-bold text-sm px-2 py-0.5 rounded border ${dirStyle.pillBg} ${dirStyle.text}`}>
           {dirStyle.icon} {dirStyle.label}
         </span>
-        <span className="text-muted-foreground text-xs">
+        <span className="text-muted-foreground text-xs card-text-safe">
           {new Intl.NumberFormat("en-US").format(bet.amountSats)} sats
         </span>
         {kickoffFormatted && (
-          <span className="text-[10px] text-muted-foreground ml-auto">
+          <span className="text-[10px] text-muted-foreground ml-auto card-text-safe">
             {kickoffFormatted}
           </span>
         )}
@@ -1346,7 +1592,7 @@ function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () =
       {/* Match info */}
       {bet.market && (
         <div className="mb-3 space-y-1">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="card-row-wrap">
             {bet.market.homeBadge && (
               <img
                 src={bet.market.homeBadge} alt=""
@@ -1354,7 +1600,7 @@ function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () =
                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
               />
             )}
-            <span className="text-xs text-foreground font-semibold">
+            <span className="text-xs text-foreground font-semibold card-text-safe">
               {scoreStr
                 ? `${bet.market.homeTeam}  ${scoreStr}  ${bet.market.awayTeam}`
                 : `${bet.market.homeTeam} vs ${bet.market.awayTeam}`}
@@ -1390,7 +1636,7 @@ function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () =
 
       {/* Status */}
       {statusInfo && (
-        <div className={`flex items-center gap-2 text-xs ${statusInfo.color} ${statusInfo.pulse ? "animate-pulse" : ""} mb-1`}>
+        <div className={`card-row-wrap text-xs ${statusInfo.color} ${statusInfo.pulse ? "animate-pulse" : ""} mb-1`}>
           <statusInfo.icon className="h-3.5 w-3.5 shrink-0" />
           {statusInfo.label}
         </div>
@@ -1496,59 +1742,98 @@ function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismiss: () =
   );
 }
 
-function SportMyBetsTab({ hashes, onDismiss }: { hashes: string[]; onDismiss: (h: string) => void }) {
-  if (hashes.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
-        <Trophy className="h-10 w-10" />
-        <p className="font-mono text-sm">No sports bets yet</p>
-        <p className="font-mono text-xs text-center opacity-60">Bets you place on upcoming matches will appear here.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-3">
-      <p className="font-mono text-xs text-muted-foreground flex items-center gap-2">
-        <Clock className="h-3.5 w-3.5" />
-        MY BETS ({hashes.length})
-      </p>
-      {hashes.map((h) => (
-        <SportBetStatusCard key={h} hash={h} onDismiss={() => onDismiss(h)} />
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
-
 export function Sports() {
   const [activeSport, setActiveSport] = useState<SportKey>("football");
+  const [activeLeague, setActiveLeague] = useState<string>("all");
+  const [activeMarketDate, setActiveMarketDate] = useState<string>("");
+  const [availableSportKeys, setAvailableSportKeys] = useState<SportKey[]>(SPORTS.map((sport) => sport.key));
   const [activeTab, setActiveTab] = useState<ContentTab>("upcoming");
-  const [data, setData] = useState<{ upcoming: SportEvent[]; finished: SportEvent[]; suspended: boolean; nbaSuspended?: boolean; nflSuspended?: boolean; mlbSuspended?: boolean; mmaSuspended?: boolean; rugbySuspended?: boolean } | null>(null);
+  const [data, setData] = useState<{ upcoming: SportEvent[]; live: SportEvent[]; finished: SportEvent[]; suspended: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string>("Network error. Please try again.");
   const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
-  const [betHashes, setBetHashes] = useState<string[]>([]);
+  const [betListVersion, setBetListVersion] = useState(0);
+  const [userStakeByMarket, setUserStakeByMarket] = useState<Record<number, Partial<Record<Direction, number>>>>({});
+  const [bridgedImminentEvents, setBridgedImminentEvents] = useState<Record<string, SportEvent>>({});
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // One-time migration: move bets saved under the old monolithic key → football bucket
   useEffect(() => { migrateLegacySportsBetHashes(); }, []);
 
-  // Refresh My Bets whenever the active sport changes — each sport has its own bucket
-  useEffect(() => { setBetHashes(getSportBetHashesForKey(activeSport)); }, [activeSport]);
-  // Belt-and-suspenders: also refresh when the user navigates to the My Bets tab
-  useEffect(() => { if (activeTab === "my-bets") setBetHashes(getSportBetHashesForKey(activeSport)); }, [activeTab, activeSport]);
-
   const fetchData = useCallback((quiet = false) => {
-    if (!quiet) { setLoading(true); setError(false); }
-    fetch(apiUrl("/api/sports/events"))
-      .then((r) => r.json())
-      .then((d) => { setData(d); setError(false); })
-      .catch(() => setError(true))
+    if (!quiet) { setLoading(true); setError(false); setErrorMessage("Network error. Please try again."); }
+    fetch(apiUrl(`/api/sports/events?sport=${activeSport}`))
+      .then(async (r) => {
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}`);
+        }
+        return r.json();
+      })
+      .then((d: Partial<{ upcoming: SportEvent[]; live: SportEvent[]; finished: SportEvent[]; suspended: boolean }> | null) => {
+        const nextData = {
+          upcoming: Array.isArray(d?.upcoming) ? d.upcoming : [],
+          live: Array.isArray(d?.live) ? d.live : [],
+          finished: Array.isArray(d?.finished) ? d.finished : [],
+          suspended: d?.suspended === true,
+        };
+
+        setData(nextData);
+        setBridgedImminentEvents((current) => {
+          const next = { ...current };
+          const fetchedAt = Date.now();
+
+          for (const event of nextData.upcoming) {
+            const kickoff = new Date(event.startsAt).getTime();
+            if (kickoff <= fetchedAt + EVENT_IMMINENT_MS) {
+              next[event.id] = event;
+            }
+          }
+
+          for (const event of [...nextData.live, ...nextData.finished]) {
+            delete next[event.id];
+          }
+
+          for (const [eventId, event] of Object.entries(next)) {
+            const kickoff = new Date(event.startsAt).getTime();
+            if (kickoff < fetchedAt - EVENT_IMMINENT_BRIDGE_MS) {
+              delete next[eventId];
+            }
+          }
+
+          return next;
+        });
+        setError(false);
+      })
+      .catch((err: unknown) => {
+        setError(true);
+        setErrorMessage(err instanceof Error ? err.message : "Network error. Please try again.");
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeSport]);
+
+  const refreshAvailableSports = useCallback(() => {
+    Promise.allSettled(
+      SPORTS.map(async (sport) => {
+        const response = await fetch(apiUrl(`/api/sports/events?sport=${sport.key}`));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json() as Partial<{ upcoming: SportEvent[] }>;
+        return {
+          key: sport.key,
+          hasMarkets: Array.isArray(payload.upcoming) && payload.upcoming.length > 0,
+        };
+      }),
+    )
+      .then((results) => {
+        const visible = results.flatMap((result) =>
+          result.status === "fulfilled" && result.value.hasMarkets ? [result.value.key] : [],
+        );
+        setAvailableSportKeys(visible.length > 0 ? visible : [activeSport]);
+      })
+      .catch(() => {
+        setAvailableSportKeys([activeSport]);
+      });
+  }, [activeSport]);
 
   useEffect(() => {
     fetchData();
@@ -1556,14 +1841,135 @@ export function Sports() {
     return () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current); };
   }, [fetchData]);
 
+  useEffect(() => {
+    refreshAvailableSports();
+    const timer = setInterval(() => refreshAvailableSports(), 120_000);
+    return () => clearInterval(timer);
+  }, [refreshAvailableSports]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUserStakes = async () => {
+      const hashes = getSportBetHashesForKey(activeSport);
+      if (hashes.length === 0) {
+        if (!cancelled) setUserStakeByMarket({});
+        return;
+      }
+
+      try {
+        const responses = await Promise.all(
+          hashes.map(async (hash) => {
+            const res = await fetch(apiUrl(`/api/sports/bets/${hash}`));
+            if (!res.ok) return null;
+            return res.json() as Promise<SportBetStatus>;
+          }),
+        );
+
+        if (cancelled) return;
+
+        const next: Record<number, Partial<Record<Direction, number>>> = {};
+        for (const bet of responses) {
+          if (!bet || bet.marketId === null || !isDirection(bet.direction)) continue;
+          if (bet.status === "pending" || bet.status === "expired") continue;
+          const current = next[bet.marketId] ?? {};
+          current[bet.direction] = (current[bet.direction] ?? 0) + bet.amountSats;
+          next[bet.marketId] = current;
+        }
+        setUserStakeByMarket(next);
+      } catch {
+        if (!cancelled) setUserStakeByMarket({});
+      }
+    };
+
+    loadUserStakes();
+    const timer = setInterval(loadUserStakes, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeSport, betListVersion]);
+
+  const visibleSports = SPORTS.filter((sport) => availableSportKeys.includes(sport.key));
+
+  useEffect(() => {
+    if (!visibleSports.some((sport) => sport.key === activeSport) && visibleSports.length > 0) {
+      setActiveSport(visibleSports[0]!.key);
+    }
+  }, [activeSport, visibleSports]);
+
   const activeSportDef = SPORTS.find((s) => s.key === activeSport)!;
+  const sportBetHashes = getSportBetHashesForKey(activeSport);
+  const now = Date.now();
+  const visibleMarketEvents = data
+    ? data.upcoming.filter(
+        (ev) =>
+          ev.sport === activeSportDef.sportName &&
+          ev.status === "upcoming" &&
+          new Date(ev.startsAt).getTime() > now,
+      )
+    : [];
+  const leagueOptionsMap = new Map<string, LeagueOption>();
+  for (const event of visibleMarketEvents) {
+    const option = getLeagueOption(event, activeSport);
+    if (!leagueOptionsMap.has(option.value) && option.label.trim().length > 0) {
+      leagueOptionsMap.set(option.value, option);
+    }
+  }
+  const leaguePriority = LEAGUE_PRIORITY[activeSport] ?? [];
+  const availableLeagues = [...leagueOptionsMap.values()].sort((a, b) => {
+    const aRank = leaguePriority.indexOf(a.sortKey);
+    const bRank = leaguePriority.indexOf(b.sortKey);
+    if (aRank !== -1 || bRank !== -1) {
+      if (aRank === -1) return 1;
+      if (bRank === -1) return -1;
+      return aRank - bRank;
+    }
+    return a.label.localeCompare(b.label);
+  });
+  const showLeagueFilter = availableLeagues.length > 0;
+  const leagueScopedMarketEvents = visibleMarketEvents.filter((ev) => activeLeague === "all" || getLeagueOption(ev, activeSport).value === activeLeague);
+  const marketDateOptionsMap = new Map<string, MarketDateOption>();
+  for (const event of leagueScopedMarketEvents) {
+    const option = getEventDateOption(event.startsAt);
+    if (!marketDateOptionsMap.has(option.value)) {
+      marketDateOptionsMap.set(option.value, option);
+    }
+  }
+  const availableMarketDates = [...marketDateOptionsMap.values()].sort((a, b) => a.sortKey - b.sortKey);
+  const showDateFilter = availableMarketDates.length > 0;
+
+  useEffect(() => {
+    setActiveLeague("all");
+  }, [activeSport]);
+
+  useEffect(() => {
+    setActiveMarketDate("");
+  }, [activeSport, activeLeague]);
+
+  useEffect(() => {
+    if (activeLeague !== "all" && !availableLeagues.some((league) => league.value === activeLeague)) {
+      setActiveLeague("all");
+    }
+  }, [activeLeague, availableLeagues]);
+
+  useEffect(() => {
+    if (!availableMarketDates.some((option) => option.value === activeMarketDate)) {
+      setActiveMarketDate(availableMarketDates[0]?.value ?? "");
+    }
+  }, [activeMarketDate, availableMarketDates]);
+
+  const matchesActiveLeague = (ev: SportEvent) =>
+    activeLeague === "all" || getLeagueOption(ev, activeSport).value === activeLeague;
+  const matchesActiveMarketDate = (ev: SportEvent) =>
+    !activeMarketDate || getLocalDateKey(new Date(ev.startsAt)) === activeMarketDate;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-0">
+    <div className="max-w-4xl mx-auto space-y-0">
 
       {/* ── Sport selector chips ── */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
-        {SPORTS.map((sp) => (
+        {visibleSports.map((sp) => (
           <button
             key={sp.key}
             onClick={() => setActiveSport(sp.key)}
@@ -1579,12 +1985,64 @@ export function Sports() {
         ))}
       </div>
 
+      {showLeagueFilter && (
+        <div className="mb-4">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+            {availableLeagues.length > 1 && (
+              <button
+                onClick={() => setActiveLeague("all")}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                  activeLeague === "all"
+                    ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                    : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+                }`}
+              >
+                All Leagues
+              </button>
+            )}
+            {availableLeagues.map((league) => (
+              <button
+                key={league.value}
+                onClick={() => setActiveLeague(league.value)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                  activeLeague === league.value || (availableLeagues.length === 1 && activeLeague === "all")
+                    ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                    : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+                }`}
+              >
+                {league.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showDateFilter && (
+        <div className="mb-4">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+            {availableMarketDates.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setActiveMarketDate(option.value)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                  activeMarketDate === option.value
+                    ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                    : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Content tabs: Guide | Upcoming | Results ── */}
       <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40 mb-4">
         {([
           { key: "upcoming", label: "Markets" },
           { key: "guide",    label: "Guide" },
-          { key: "my-bets",  label: "My Bets" },
+          { key: "myBets",   label: "My Bets" },
           { key: "results",  label: "Results" },
         ] as { key: ContentTab; label: string }[]).map((t) => (
           <button
@@ -1611,49 +2069,74 @@ export function Sports() {
       })()}
 
       {/* ── My Bets ── */}
-      {activeTab === "my-bets" && (
-        <SportMyBetsTab hashes={betHashes} onDismiss={(h) => { removeSportBetHashForKey(activeSport, h); setBetHashes(getSportBetHashesForKey(activeSport)); }} />
+      {activeTab === "myBets" && (
+        <div className="card-stack">
+          <div className="flex items-center justify-between gap-2 pb-1">
+            <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
+              {activeSportDef.icon} {activeSportDef.label} — My Bets
+            </p>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-background/70 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+              <Wallet className="h-3.5 w-3.5 text-emerald-400" />
+              {sportBetHashes.length} saved
+            </span>
+          </div>
+
+          {sportBetHashes.length === 0 ? (
+            <div className="rounded-xl border border-border/50 bg-background/60 p-6 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-border/50 bg-muted/40 text-muted-foreground">
+                <Wallet className="h-5 w-5 text-emerald-400" />
+              </div>
+              <p className="font-mono text-sm text-foreground">No saved {activeSportDef.label} bets yet.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Bets placed in this browser for {activeSportDef.label.toLowerCase()} will appear here automatically.
+              </p>
+            </div>
+          ) : (
+            <div className="card-stack">
+              {sportBetHashes.map((hash) => (
+                <SportBetStatusCard
+                  key={hash}
+                  hash={hash}
+                  onDismiss={() => {
+                    removeSportBetHashForKey(activeSport, hash);
+                    setBetListVersion((current) => current + 1);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Upcoming Matches ── */}
       {activeTab === "upcoming" && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2 pb-1">
-            <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
-              {activeSportDef.icon} {activeSportDef.label} — Upcoming
-            </p>
-            <button
-              onClick={() => fetchData()}
-              disabled={loading}
-              className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
-
+        <div className="card-stack">
           {loading && !data && (
-            <div className="flex items-center justify-center h-40 gap-3 text-muted-foreground">
-              <RefreshCw className="h-5 w-5 animate-spin" />
-              <span className="font-mono text-sm">Fetching {activeSportDef.hasDraw ? "matches" : "games"}…</span>
-            </div>
+            <LoadingState
+              label={`FETCHING ${activeSportDef.hasDraw ? "MATCHES" : "GAMES"}...`}
+              className="h-40"
+              spinnerClassName="h-5 w-5"
+              labelClassName="text-sm"
+            />
           )}
           {error && !loading && (
-            <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
-              <AlertCircle className="h-8 w-8" />
-              <p className="font-mono text-sm">Failed to load {activeSportDef.hasDraw ? "matches" : "games"}.</p>
-              <Button variant="outline" size="sm" onClick={() => fetchData()}>Retry</Button>
-            </div>
+            <ErrorState
+              title={`FAILED TO LOAD ${activeSportDef.hasDraw ? "MATCHES" : "GAMES"}`}
+              description={errorMessage}
+              onRetry={() => fetchData()}
+              compact
+              cardClassName="border-red-400/20 bg-background/60"
+            />
           )}
           {!error && data && (() => {
-            const now = Date.now();
-            const rawData = data as Record<string, unknown>;
-            const isSuspended = (rawData[activeSportDef.suspendedKey] as boolean | undefined) ?? false;
+            const isSuspended = data.suspended;
             const visible = data.upcoming.filter(
               (ev) =>
                 ev.sport === activeSportDef.sportName &&
                 ev.status === "upcoming" &&
-                new Date(ev.startsAt).getTime() > now - 3 * 60 * 60 * 1000
+                matchesActiveLeague(ev) &&
+                matchesActiveMarketDate(ev) &&
+                new Date(ev.startsAt).getTime() > now
             );
             if (isSuspended)
               return (
@@ -1679,7 +2162,13 @@ export function Sports() {
             return visible.length === 0
               ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No upcoming {activeSportDef.hasDraw ? "matches" : "games"}.</p>
               : visible.map((ev) => (
-                  <UpcomingCard key={ev.id} ev={ev} sportDef={activeSportDef} onBet={(dir) => setBetModal({ event: ev, direction: dir })} />
+                  <UpcomingCard
+                    key={ev.id}
+                    ev={ev}
+                    sportDef={activeSportDef}
+                    userStakeByDirection={ev.marketId !== null ? userStakeByMarket[ev.marketId] : undefined}
+                    onBet={(dir) => setBetModal({ event: ev, direction: dir })}
+                  />
                 ));
           })()}
         </div>
@@ -1687,38 +2176,40 @@ export function Sports() {
 
       {/* ── Recent Results ── */}
       {activeTab === "results" && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2 pb-1">
-            <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
-              {activeSportDef.icon} {activeSportDef.label} — Recent Results
-            </p>
-            <button
-              onClick={() => fetchData()}
-              disabled={loading}
-              className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
-
+        <div className="card-stack">
           {loading && !data && (
-            <div className="flex items-center justify-center h-40 gap-3 text-muted-foreground">
-              <RefreshCw className="h-5 w-5 animate-spin" />
-              <span className="font-mono text-sm">Fetching results…</span>
-            </div>
+            <LoadingState
+              label="FETCHING RESULTS..."
+              className="h-40"
+              spinnerClassName="h-5 w-5"
+              labelClassName="text-sm"
+            />
           )}
           {error && !loading && (
-            <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
-              <AlertCircle className="h-8 w-8" />
-              <p className="font-mono text-sm">Failed to load results.</p>
-              <Button variant="outline" size="sm" onClick={() => fetchData()}>Retry</Button>
-            </div>
+            <ErrorState
+              title="FAILED TO LOAD RESULTS"
+              description={errorMessage}
+              onRetry={() => fetchData()}
+              compact
+              cardClassName="border-red-400/20 bg-background/60"
+            />
           )}
           {!error && data && (() => {
-            const rawData = data as Record<string, unknown>;
-            const isSuspended = (rawData[activeSportDef.suspendedKey] as boolean | undefined) ?? false;
-            const visible = data.finished.filter((ev) => ev.sport === activeSportDef.sportName);
+            const isSuspended = data.suspended;
+            const resultCandidates = [
+              ...data.live,
+              ...data.finished,
+              ...data.upcoming.filter((ev) => new Date(ev.startsAt).getTime() <= now),
+              ...Object.values(bridgedImminentEvents).filter((ev) => new Date(ev.startsAt).getTime() <= now),
+            ];
+            const seen = new Set<string>();
+            const visible = resultCandidates
+              .filter((ev) => {
+                if (seen.has(ev.id)) return false;
+                seen.add(ev.id);
+                return ev.sport === activeSportDef.sportName && matchesActiveLeague(ev);
+              })
+              .sort((left, right) => new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime());
             if (isSuspended)
               return (
                 <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
@@ -1730,8 +2221,8 @@ export function Sports() {
                 </div>
               );
             return visible.length === 0
-              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No recent results.</p>
-              : visible.map((ev) => <FinishedCard key={ev.id} ev={ev} sportDef={activeSportDef} />);
+              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No recent or live results.</p>
+              : visible.map((ev) => <ResultCard key={ev.id} ev={ev} sportDef={activeSportDef} />);
           })()}
         </div>
       )}
@@ -1740,7 +2231,10 @@ export function Sports() {
         event={betModal?.event ?? null}
         direction={betModal?.direction ?? null}
         sportKey={activeSport}
-        onClose={() => { setBetModal(null); setBetHashes(getSportBetHashesForKey(activeSport)); }}
+        onClose={() => {
+          setBetModal(null);
+          setBetListVersion((current) => current + 1);
+        }}
       />
     </div>
   );

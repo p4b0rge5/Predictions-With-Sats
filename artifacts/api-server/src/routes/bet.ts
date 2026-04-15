@@ -9,8 +9,10 @@ import { db, betsTable, marketWindowsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getActiveWindow, getWindowClosesAt } from "../lib/market";
 import { getCachedBtcPrice } from "../lib/price";
+import { getPublicBaseUrl } from "../lib/public-base-url";
 import { createInvoice } from "../lib/alby";
 import { encodeLnurl } from "./withdraw";
+import { getEffectiveCryptoPayoutSats } from "../lib/effective-crypto-payout";
 
 const router: IRouter = Router();
 
@@ -76,7 +78,7 @@ router.post("/bet", async (req, res): Promise<void> => {
     })
     .returning();
 
-  const memo = `Lightning Bet — ${direction.toUpperCase()} on ${asset.toUpperCase()} (window #${win.id})`;
+  const memo = `Predictions With Sats — ${direction.toUpperCase()} on ${asset.toUpperCase()} (window #${win.id})`;
 
   let invoice: { paymentHash: string; paymentRequest: string; expiresAt: string; verifyUrl: string | null };
   try {
@@ -140,9 +142,7 @@ router.get("/bet/:paymentHash", async (req, res): Promise<void> => {
   // Build the LNURL-Withdraw encoded string if the bet has a withdrawToken
   let withdrawLnurl: string | null = null;
   if (bet.withdrawToken && bet.withdrawStatus === "unclaimed") {
-    const host = req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost";
-    const proto = req.headers["x-forwarded-proto"] ?? (req.secure ? "https" : "http");
-    const withdrawUrl = `${proto}://${host}/api/withdraw/${bet.withdrawToken}`;
+    const withdrawUrl = `${getPublicBaseUrl(req)}/api/withdraw/${bet.withdrawToken}`;
     withdrawLnurl = encodeLnurl(withdrawUrl);
   }
 
@@ -153,13 +153,19 @@ router.get("/bet/:paymentHash", async (req, res): Promise<void> => {
     .where(eq(marketWindowsTable.id, bet.windowId))
     .limit(1);
 
+  const effectivePayoutSats = getEffectiveCryptoPayoutSats({
+    payoutSats: bet.payoutSats,
+    amountSats: bet.amountSats,
+    windowOutcome: window?.outcome,
+  });
+
   const data = GetBetStatusResponse.parse({
     id: bet.id,
     paymentHash: bet.paymentHash,
     direction: bet.direction,
     amountSats: bet.amountSats,
     status: bet.status,
-    payoutSats: bet.payoutSats,
+    payoutSats: effectivePayoutSats,
     windowId: bet.windowId,
     createdAt: bet.createdAt.toISOString(),
     paidAt: bet.paidAt?.toISOString() ?? null,

@@ -14,7 +14,9 @@
  */
 
 import { logger } from "./logger";
+import { reserveSportsRequests } from "./sports-request-budget";
 import type { SportEvent } from "./sports";
+import { getSportsDateWindowStrings } from "./sports-date-window";
 
 const API_NFL_BASE = "https://v1.american-football.api-sports.io";
 const API_NFL_KEY  = process.env.API_FOOTBALL_KEY ?? "";
@@ -119,6 +121,18 @@ async function nflFetch(path: string): Promise<NflApiResponse> {
     logger.warn("API_FOOTBALL_KEY not set — skipping American Football API request");
     return { errors: [], results: 0, response: [] };
   }
+  const budget = await reserveSportsRequests("nfl", 1);
+  if (!budget.allowed) {
+    logger.warn(
+      { provider: "nfl", path, used: budget.used, remaining: budget.remaining },
+      "Sports provider daily request budget exhausted",
+    );
+    return {
+      errors: { budget: "Daily request budget exhausted" },
+      results: 0,
+      response: [],
+    };
+  }
   const url = `${API_NFL_BASE}${path}`;
   const res = await fetch(url, {
     headers: { "x-apisports-key": API_NFL_KEY, Accept: "application/json" },
@@ -162,10 +176,21 @@ const FORCE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
 
 const nflCache: {
   upcoming:  SportEvent[];
+  live:      SportEvent[];
   finished:  SportEvent[];
   fetchedAt: number;
   suspended: boolean;
-} = { upcoming: [], finished: [], fetchedAt: 0, suspended: false };
+} = { upcoming: [], live: [], finished: [], fetchedAt: 0, suspended: false };
+let refreshPromise: Promise<{ upcoming: SportEvent[]; live: SportEvent[]; finished: SportEvent[]; suspended: boolean }> | null = null;
+
+function normalizeEventStatus(ev: SportEvent, now: number): SportEvent["status"] {
+  if (ev.status !== "upcoming") return ev.status;
+  const kickoff = new Date(ev.startsAt).getTime();
+  if (kickoff <= now && kickoff > now - MAX_GAME_AGE_MS) {
+    return "live";
+  }
+  return ev.status;
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -173,12 +198,13 @@ const nflCache: {
 
 export async function getNflEvents(forceRefresh = false): Promise<{
   upcoming:  SportEvent[];
+  live:      SportEvent[];
   finished:  SportEvent[];
   suspended: boolean;
 }> {
   // During off-season, return empty results without making any API calls
   if (isNflOffseason()) {
-    return { upcoming: [], finished: [], suspended: false };
+    return { upcoming: [], live: [], finished: [], suspended: false };
   }
 
   const cacheAge = Date.now() - nflCache.fetchedAt;
@@ -186,6 +212,7 @@ export async function getNflEvents(forceRefresh = false): Promise<{
   if (!canForce && cacheAge < CACHE_TTL_MS) {
     return {
       upcoming:  nflCache.upcoming,
+      live:      nflCache.live,
       finished:  nflCache.finished,
       suspended: nflCache.suspended,
     };
@@ -194,73 +221,86 @@ export async function getNflEvents(forceRefresh = false): Promise<{
     logger.info({ cacheAgeMin: Math.round(cacheAge / 60_000) }, "NFL cache force-refreshed for settlement");
   }
 
-  const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
-  const today     = toDateStr(new Date());
-  const tomorrow  = toDateStr(new Date(Date.now() + 86_400_000));
-  const yesterday = toDateStr(new Date(Date.now() - 86_400_000));
-  const season    = currentNflSeason();
+  if (refreshPromise) {
+    return refreshPromise;
+  }
 
-  const NFL_LEAGUE_IDS = [NFL_LEAGUE_ID, NFL_PLAYOFFS_ID];
+  refreshPromise = (async () => {
+    const season    = currentNflSeason();
 
-  const [todayData, tomorrowData, yesterdayData] = await Promise.allSettled([
-    nflFetch(`/games?date=${today}&league=${NFL_LEAGUE_ID}&season=${season}`),
-    nflFetch(`/games?date=${tomorrow}&league=${NFL_LEAGUE_ID}&season=${season}`),
-    nflFetch(`/games?date=${yesterday}&league=${NFL_LEAGUE_ID}&season=${season}`),
-  ]);
+    const NFL_LEAGUE_IDS = [NFL_LEAGUE_ID, NFL_PLAYOFFS_ID];
+    const dateWindow = getSportsDateWindowStrings();
+    const dateFetches = await Promise.allSettled(
+      dateWindow.map((date) => nflFetch(`/games?date=${date}&league=${NFL_LEAGUE_ID}&season=${season}`)),
+    );
 
-  const allGames: NflGame[] = [];
-  let apiErrored = false;
+    const allGames: NflGame[] = [];
+    let apiErrored = false;
 
-  for (const result of [todayData, tomorrowData, yesterdayData]) {
-    if (result.status === "fulfilled") {
-      if (hasErrors(result.value.errors)) {
-        logger.warn({ errors: result.value.errors }, "American Football API returned errors");
+    for (const result of dateFetches) {
+      if (result.status === "fulfilled") {
+        if (hasErrors(result.value.errors)) {
+          logger.warn({ errors: result.value.errors }, "American Football API returned errors");
+          apiErrored = true;
+        }
+        const nflGames = (result.value.response ?? []).filter(
+          (g) => typeof g.league?.id === "number" && NFL_LEAGUE_IDS.includes(g.league.id),
+        );
+        allGames.push(...nflGames);
+      } else {
+        logger.warn({ err: result.reason }, "American Football API date fetch failed");
         apiErrored = true;
       }
-      const nflGames = (result.value.response ?? []).filter(
-        (g) => NFL_LEAGUE_IDS.includes(g.league.id),
-      );
-      allGames.push(...nflGames);
-    } else {
-      logger.warn({ err: result.reason }, "American Football API date fetch failed");
-      apiErrored = true;
     }
+
+    if (apiErrored && allGames.length === 0) {
+      nflCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
+      nflCache.suspended = true;
+      logger.warn("American Football API error — serving stale cache, retrying in 15 min");
+      return { upcoming: nflCache.upcoming, live: nflCache.live, finished: nflCache.finished, suspended: true };
+    }
+
+    const now    = Date.now();
+    const mapped = allGames
+      .map(mapGame)
+      .map((ev) => ({ ...ev, status: normalizeEventStatus(ev, now) }));
+
+    const upcoming = mapped
+      .filter((ev) => {
+        if (ev.status !== "upcoming") return false;
+        const kickoff = new Date(ev.startsAt).getTime();
+        return kickoff > now;
+      })
+      .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+
+    const live = mapped
+      .filter((ev) => ev.status === "live")
+      .sort((a, b) => b.startsAt.localeCompare(a.startsAt));
+
+    const finished = mapped
+      .filter((ev) => ev.status === "finished")
+      .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
+      .slice(0, 20);
+
+    nflCache.upcoming  = upcoming;
+    nflCache.live      = live;
+    nflCache.finished  = finished;
+    nflCache.fetchedAt = Date.now();
+    nflCache.suspended = false;
+
+    logger.info(
+      { upcoming: upcoming.length, live: live.length, finished: finished.length, total: allGames.length, season },
+      "NFL fixtures refreshed",
+    );
+
+    return { upcoming: nflCache.upcoming, live: nflCache.live, finished: nflCache.finished, suspended: false };
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
   }
-
-  if (apiErrored && allGames.length === 0) {
-    nflCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
-    nflCache.suspended = true;
-    logger.warn("American Football API error — serving stale cache, retrying in 15 min");
-    return { upcoming: nflCache.upcoming, finished: nflCache.finished, suspended: true };
-  }
-
-  const mapped = allGames.map(mapGame);
-  const now    = Date.now();
-
-  const upcoming = mapped
-    .filter((ev) => {
-      if (ev.status !== "upcoming") return false;
-      const kickoff = new Date(ev.startsAt).getTime();
-      return kickoff > now - MAX_GAME_AGE_MS;
-    })
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-
-  const finished = mapped
-    .filter((ev) => ev.status === "finished")
-    .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
-    .slice(0, 20);
-
-  nflCache.upcoming  = upcoming;
-  nflCache.finished  = finished;
-  nflCache.fetchedAt = Date.now();
-  nflCache.suspended = false;
-
-  logger.info(
-    { upcoming: upcoming.length, finished: finished.length, total: allGames.length, season },
-    "NFL fixtures refreshed",
-  );
-
-  return { upcoming: nflCache.upcoming, finished: nflCache.finished, suspended: false };
 }
 
 // ---------------------------------------------------------------------------

@@ -1,116 +1,165 @@
-/**
- * Weather Market Engine
- *
- * Predicts whether tomorrow's max temperature in a given city
- * will exceed a threshold (°C). Markets open 2 days ahead, close
- * at midnight local time, and settle at 23:59 UTC the target day.
- *
- * Uses Open-Meteo — free, no API key required.
- */
-
-import { db, weatherMarketsTable, weatherBetsTable } from "@workspace/db";
-import { eq, and, lt, inArray } from "drizzle-orm";
+import { db, weatherBetsTable, weatherMarketsTable, type WeatherOutcomeRecord } from "@workspace/db";
+import { and, eq, gte } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import { fetchPolymarketWeatherMarkets, type ExternalWeatherMarket } from "./polymarket-weather";
 import { logger } from "./logger";
 
-// ── City definitions ──────────────────────────────────────────────────────────
+const PLATFORM_FEE = 0.02;
+const NO_LIQUIDITY_REFUND_FEE = 0.005;
+const SYNC_TTL_MS = 5 * 60 * 1000;
 
-export interface CityDef {
-  key: string;
-  name: string;
-  country: string;
-  emoji: string;
-  latitude: number;
-  longitude: number;
-  threshold: number;
+let lastSuccessfulSyncAt = 0;
+let activeSync: Promise<void> | null = null;
+let latestPolymarketRelevance = new Map<string, number>();
+
+function normalizeMarketOutcomes(raw: unknown): WeatherOutcomeRecord[] {
+  if (!Array.isArray(raw)) return [];
+
+  return raw.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+
+    const candidate = item as Partial<WeatherOutcomeRecord>;
+    if (typeof candidate.key !== "string" || typeof candidate.label !== "string") return [];
+
+    return [{
+      key: candidate.key,
+      label: candidate.label,
+      price: typeof candidate.price === "number" && Number.isFinite(candidate.price) ? candidate.price : null,
+      poolSats: typeof candidate.poolSats === "number" && Number.isFinite(candidate.poolSats) ? candidate.poolSats : 0,
+      isWinner: typeof candidate.isWinner === "boolean" ? candidate.isWinner : null,
+      sourceMarketId: typeof candidate.sourceMarketId === "string" ? candidate.sourceMarketId : undefined,
+      sortOrder: typeof candidate.sortOrder === "number" && Number.isFinite(candidate.sortOrder) ? candidate.sortOrder : undefined,
+    }];
+  });
 }
 
-export const WEATHER_CITIES: CityDef[] = [
-  { key: "sao-paulo",   name: "São Paulo",   country: "BR", emoji: "🇧🇷", latitude: -23.5505, longitude: -46.6333, threshold: 28 },
-  { key: "new-york",    name: "New York",    country: "US", emoji: "🇺🇸", latitude:  40.7128, longitude: -74.0060, threshold: 15 },
-  { key: "london",      name: "London",      country: "GB", emoji: "🇬🇧", latitude:  51.5074, longitude: -0.1278,  threshold: 14 },
-  { key: "miami",       name: "Miami",       country: "US", emoji: "🌴", latitude:  25.7617, longitude: -80.1918, threshold: 30 },
-  { key: "tokyo",       name: "Tokyo",       country: "JP", emoji: "🇯🇵", latitude:  35.6762, longitude: 139.6503, threshold: 18 },
-  { key: "dubai",       name: "Dubai",       country: "AE", emoji: "🇦🇪", latitude:  25.2048, longitude:  55.2708, threshold: 35 },
-];
-
-// ── Open-Meteo fetcher ────────────────────────────────────────────────────────
-
-export interface WeatherForecast {
-  dates: string[];
-  maxTemps: number[];
-  currentTemp: number | null;
+function mergeOutcomePools(
+  incoming: ExternalWeatherMarket["outcomes"],
+  existing: WeatherOutcomeRecord[],
+): WeatherOutcomeRecord[] {
+  const existingByKey = new Map(
+    existing.map((outcome) => [outcome.sourceMarketId ?? outcome.key, outcome]),
+  );
+  return incoming.map((outcome) => ({
+    ...outcome,
+    poolSats: existingByKey.get(outcome.sourceMarketId ?? outcome.key)?.poolSats ?? 0,
+  }));
 }
 
-export async function fetchForecast(lat: number, lon: number): Promise<WeatherForecast> {
-  const url =
-    `https://api.open-meteo.com/v1/forecast` +
-    `?latitude=${lat}&longitude=${lon}` +
-    `&daily=temperature_2m_max` +
-    `&current=temperature_2m` +
-    `&timezone=UTC` +
-    `&forecast_days=3`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
-  const data = (await res.json()) as {
-    current?: { temperature_2m?: number };
-    daily: { time: string[]; temperature_2m_max: number[] };
-  };
+function getLegacyPools(outcomes: WeatherOutcomeRecord[]): { totalYesSats: number; totalNoSats: number } {
+  const byKey = new Map(outcomes.map((outcome) => [outcome.key, outcome.poolSats]));
   return {
-    dates: data.daily.time,
-    maxTemps: data.daily.temperature_2m_max,
-    currentTemp: data.current?.temperature_2m ?? null,
+    totalYesSats: byKey.get("yes") ?? 0,
+    totalNoSats: byKey.get("no") ?? 0,
   };
 }
 
-// ── Market CRUD ───────────────────────────────────────────────────────────────
+function getMarketStatus(market: ExternalWeatherMarket): "open" | "settled" {
+  return market.winningOutcome ? "settled" : market.status;
+}
 
-export async function getOrCreateMarketForCity(city: CityDef, date: string) {
-  const [existing] = await db
+function formatThreshold(value: number | null): string {
+  return value === null ? "0" : value.toFixed(1);
+}
+
+export async function getOrSyncWeatherMarkets(force = false): Promise<void> {
+  if (!force && Date.now() - lastSuccessfulSyncAt < SYNC_TTL_MS) return;
+  if (activeSync) return activeSync;
+
+  activeSync = (async () => {
+    const externalMarkets = await fetchPolymarketWeatherMarkets();
+    latestPolymarketRelevance = new Map(
+      externalMarkets.map((market, index) => [market.externalMarketId, market.relevanceRank ?? index]),
+    );
+
+    for (const externalMarket of externalMarkets) {
+      const [existing] = await db
+        .select()
+        .from(weatherMarketsTable)
+        .where(eq(weatherMarketsTable.externalMarketId, externalMarket.externalMarketId))
+        .limit(1);
+
+      const mergedOutcomes = mergeOutcomePools(externalMarket.outcomes, normalizeMarketOutcomes(existing?.outcomes));
+      const { totalYesSats, totalNoSats } = getLegacyPools(mergedOutcomes);
+      const values = {
+        city: externalMarket.city,
+        country: externalMarket.country,
+        latitude: "0",
+        longitude: "0",
+        date: externalMarket.date,
+        threshold: formatThreshold(externalMarket.threshold),
+        provider: "polymarket",
+        externalMarketId: externalMarket.externalMarketId,
+        question: externalMarket.question,
+        subtitle: externalMarket.subtitle,
+        sourceUrl: externalMarket.sourceUrl,
+        outcomes: mergedOutcomes,
+        winningOutcome: externalMarket.winningOutcome,
+        resolvedValue: externalMarket.resolvedValue,
+        status: getMarketStatus(externalMarket),
+        outcome: externalMarket.winningOutcome,
+        actualTemp: null,
+        totalYesSats,
+        totalNoSats,
+        settledAt: externalMarket.winningOutcome ? (externalMarket.settledAt ?? existing?.settledAt ?? new Date()) : null,
+      } as const;
+
+      if (existing) {
+        await db
+          .update(weatherMarketsTable)
+          .set(values)
+          .where(eq(weatherMarketsTable.id, existing.id));
+      } else {
+        await db.insert(weatherMarketsTable).values(values);
+      }
+    }
+
+    lastSuccessfulSyncAt = Date.now();
+    await settleResolvedWeatherMarkets();
+  })()
+    .catch((err) => {
+      logger.warn({ err }, "Weather market sync failed");
+      throw err;
+    })
+    .finally(() => {
+      activeSync = null;
+    });
+
+  return activeSync;
+}
+
+export async function listWeatherMarkets(): Promise<(typeof weatherMarketsTable.$inferSelect)[]> {
+  await getOrSyncWeatherMarkets();
+
+  const historyStart = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
+  const markets = await db
     .select()
     .from(weatherMarketsTable)
-    .where(and(eq(weatherMarketsTable.city, city.name), eq(weatherMarketsTable.date, date)))
-    .limit(1);
-  if (existing) return existing;
+    .where(gte(weatherMarketsTable.date, historyStart))
+    .orderBy(weatherMarketsTable.date, weatherMarketsTable.city);
 
-  const [created] = await db
-    .insert(weatherMarketsTable)
-    .values({
-      city: city.name,
-      country: city.country,
-      latitude: city.latitude.toString(),
-      longitude: city.longitude.toString(),
-      date,
-      threshold: city.threshold.toString(),
-      status: "open",
-    })
-    .returning();
-
-  logger.info({ city: city.name, date, threshold: city.threshold }, "Weather market created");
-  return created;
-}
-
-export async function ensureTodayAndTomorrowMarkets(): Promise<void> {
-  const now = new Date();
-  const today = toDateString(now);
-  const tomorrow = toDateString(new Date(now.getTime() + 86_400_000));
-
-  for (const city of WEATHER_CITIES) {
-    for (const date of [today, tomorrow]) {
-      await getOrCreateMarketForCity(city, date).catch((err) =>
-        logger.warn({ err, city: city.name, date }, "Failed to ensure weather market"),
-      );
+  const sortedMarkets = [...markets].sort((left, right) => {
+    const leftRank = left.externalMarketId ? latestPolymarketRelevance.get(left.externalMarketId) : undefined;
+    const rightRank = right.externalMarketId ? latestPolymarketRelevance.get(right.externalMarketId) : undefined;
+    if (leftRank !== undefined || rightRank !== undefined) {
+      if (leftRank === undefined) return 1;
+      if (rightRank === undefined) return -1;
+      if (leftRank !== rightRank) return leftRank - rightRank;
     }
-  }
+
+    if (left.date !== right.date) return left.date.localeCompare(right.date);
+    return left.city.localeCompare(right.city);
+  });
+
+  const polymarketMarkets = sortedMarkets.filter(
+    (market) => market.provider === "polymarket" && market.externalMarketId?.startsWith("group:"),
+  );
+  return polymarketMarkets.length > 0 ? polymarketMarkets : sortedMarkets;
 }
 
-function toDateString(d: Date): string {
-  return d.toISOString().slice(0, 10);
+function getWinningOutcome(market: typeof weatherMarketsTable.$inferSelect): string | null {
+  return market.winningOutcome ?? market.outcome ?? null;
 }
-
-// ── Settlement ─────────────────────────────────────────────────────────────────
-
-const PLATFORM_FEE = 0.02;
 
 export async function settleWeatherMarket(marketId: number): Promise<void> {
   const [market] = await db
@@ -119,42 +168,10 @@ export async function settleWeatherMarket(marketId: number): Promise<void> {
     .where(eq(weatherMarketsTable.id, marketId))
     .limit(1);
 
-  if (!market || market.status !== "open") return;
+  if (!market) return;
 
-  // Check if the market date has passed
-  const today = toDateString(new Date());
-  if (market.date >= today) return; // not yet resolved
-
-  // Fetch actual max temp for that date from Open-Meteo historical
-  const lat = parseFloat(market.latitude);
-  const lon = parseFloat(market.longitude);
-  const histUrl =
-    `https://api.open-meteo.com/v1/forecast` +
-    `?latitude=${lat}&longitude=${lon}` +
-    `&daily=temperature_2m_max` +
-    `&timezone=UTC` +
-    `&start_date=${market.date}&end_date=${market.date}`;
-
-  let actualTemp: number;
-  try {
-    const res = await fetch(histUrl);
-    const data = (await res.json()) as {
-      daily: { time: string[]; temperature_2m_max: number[] };
-    };
-    actualTemp = data.daily.temperature_2m_max[0];
-    if (actualTemp === null || actualTemp === undefined) {
-      logger.warn({ marketId, date: market.date }, "No weather data yet for settlement");
-      return;
-    }
-  } catch (err) {
-    logger.warn({ err, marketId }, "Open-Meteo fetch failed for settlement");
-    return;
-  }
-
-  const threshold = parseFloat(market.threshold);
-  const outcome: "yes" | "no" = actualTemp >= threshold ? "yes" : "no";
-
-  logger.info({ marketId, city: market.city, date: market.date, actualTemp, threshold, outcome }, "Settling weather market");
+  const winningOutcome = getWinningOutcome(market);
+  if (!winningOutcome) return;
 
   const paidBets = await db
     .select()
@@ -164,42 +181,74 @@ export async function settleWeatherMarket(marketId: number): Promise<void> {
   if (paidBets.length === 0) {
     await db
       .update(weatherMarketsTable)
-      .set({ status: "settled", outcome, actualTemp: actualTemp.toFixed(1), settledAt: new Date() })
+      .set({
+        status: "settled",
+        winningOutcome,
+        outcome: winningOutcome,
+        settledAt: market.settledAt ?? new Date(),
+      })
       .where(eq(weatherMarketsTable.id, marketId));
     return;
   }
 
-  const winnerBets = paidBets.filter((b) => b.direction === outcome);
-  const loserBets = paidBets.filter((b) => b.direction !== outcome);
+  const winnerBets = paidBets.filter((bet) => bet.direction === winningOutcome);
+  const totalPool = paidBets.reduce((sum, bet) => sum + bet.amountSats, 0);
+  const payablePool = Math.floor(totalPool * (1 - PLATFORM_FEE));
+  const totalWinnerStake = winnerBets.reduce((sum, bet) => sum + bet.amountSats, 0);
+  const paidOutcomeCount = new Set(paidBets.map((bet) => bet.direction)).size;
 
-  if (winnerBets.length === 0) {
-    // No winners — house keeps pool
-    await db
-      .update(weatherBetsTable)
-      .set({ status: "lost" })
-      .where(inArray(weatherBetsTable.id, loserBets.map((b) => b.id)));
-  } else {
-    const totalPool = paidBets.reduce((sum, b) => sum + b.amountSats, 0);
-    const payablePool = Math.floor(totalPool * (1 - PLATFORM_FEE));
-    const totalWinnerStake = winnerBets.reduce((sum, b) => sum + b.amountSats, 0);
-
+  if (paidOutcomeCount <= 1) {
     for (const bet of paidBets) {
-      const isWinner = bet.direction === outcome;
-      const payoutSats = isWinner
-        ? Math.floor((bet.amountSats / totalWinnerStake) * payablePool)
-        : null;
+      const refundSats = Math.floor(bet.amountSats * (1 - NO_LIQUIDITY_REFUND_FEE));
       await db
         .update(weatherBetsTable)
         .set({
-          status: isWinner ? "won" : "lost",
-          payoutSats,
-          ...(isWinner ? { withdrawToken: randomUUID(), withdrawStatus: "unclaimed" } : {}),
+          status: "refunded",
+          payoutSats: refundSats,
+          withdrawToken: bet.withdrawToken ?? randomUUID(),
+          withdrawStatus: "unclaimed",
         })
         .where(eq(weatherBetsTable.id, bet.id));
     }
+
+    await db
+      .update(weatherBetsTable)
+      .set({ status: "expired" })
+      .where(and(eq(weatherBetsTable.marketId, marketId), eq(weatherBetsTable.status, "pending")));
+
+    await db
+      .update(weatherMarketsTable)
+      .set({
+        status: "settled",
+        winningOutcome,
+        outcome: winningOutcome,
+        settledAt: market.settledAt ?? new Date(),
+      })
+      .where(eq(weatherMarketsTable.id, marketId));
+
+    logger.info(
+      { marketId, winningOutcome, refundedBets: paidBets.length, refundFeeRate: NO_LIQUIDITY_REFUND_FEE },
+      "Weather market settled with no opposing liquidity",
+    );
+    return;
   }
 
-  // Expire pending bets
+  for (const bet of paidBets) {
+    const isWinner = bet.direction === winningOutcome && totalWinnerStake > 0;
+    const payoutSats = isWinner
+      ? Math.floor((bet.amountSats / totalWinnerStake) * payablePool)
+      : null;
+
+    await db
+      .update(weatherBetsTable)
+      .set({
+        status: isWinner ? "won" : "lost",
+        payoutSats,
+        ...(isWinner ? { withdrawToken: bet.withdrawToken ?? randomUUID(), withdrawStatus: "unclaimed" } : {}),
+      })
+      .where(eq(weatherBetsTable.id, bet.id));
+  }
+
   await db
     .update(weatherBetsTable)
     .set({ status: "expired" })
@@ -207,53 +256,64 @@ export async function settleWeatherMarket(marketId: number): Promise<void> {
 
   await db
     .update(weatherMarketsTable)
-    .set({ status: "settled", outcome, actualTemp: actualTemp.toFixed(1), settledAt: new Date() })
+    .set({
+      status: "settled",
+      winningOutcome,
+      outcome: winningOutcome,
+      settledAt: market.settledAt ?? new Date(),
+    })
     .where(eq(weatherMarketsTable.id, marketId));
-
-  logger.info({ marketId, outcome, actualTemp }, "Weather market settled");
 }
 
-export async function runWeatherSettlementCycle(): Promise<void> {
-  await ensureTodayAndTomorrowMarkets();
-
-  // Settle any open markets with past dates
-  const now = new Date();
-  const today = toDateString(now);
-  const openPastMarkets = await db
+export async function settleResolvedWeatherMarkets(): Promise<void> {
+  const markets = await db
     .select()
     .from(weatherMarketsTable)
-    .where(and(eq(weatherMarketsTable.status, "open"), lt(weatherMarketsTable.date, today)));
+    .where(eq(weatherMarketsTable.provider, "polymarket"));
 
-  for (const market of openPastMarkets) {
+  for (const market of markets) {
+    if (!getWinningOutcome(market)) continue;
     await settleWeatherMarket(market.id).catch((err) =>
       logger.warn({ err, marketId: market.id }, "Weather settlement error"),
     );
   }
 }
 
-// ── Pool helpers ──────────────────────────────────────────────────────────────
+export async function runWeatherSettlementCycle(): Promise<void> {
+  await getOrSyncWeatherMarkets(true);
+}
 
 export async function addToWeatherPool(
   marketId: number,
-  direction: "yes" | "no",
+  outcomeKey: string,
   amountSats: number,
 ): Promise<void> {
-  const market = await db
+  const [market] = await db
     .select()
     .from(weatherMarketsTable)
     .where(eq(weatherMarketsTable.id, marketId))
     .limit(1);
-  if (!market[0]) throw new Error(`Weather market ${marketId} not found`);
 
-  if (direction === "yes") {
-    await db
-      .update(weatherMarketsTable)
-      .set({ totalYesSats: market[0].totalYesSats + amountSats })
-      .where(eq(weatherMarketsTable.id, marketId));
-  } else {
-    await db
-      .update(weatherMarketsTable)
-      .set({ totalNoSats: market[0].totalNoSats + amountSats })
-      .where(eq(weatherMarketsTable.id, marketId));
-  }
+  if (!market) throw new Error(`Weather market ${marketId} not found`);
+
+  const outcomes = normalizeMarketOutcomes(market.outcomes);
+  const updated = outcomes.map((outcome) =>
+    outcome.key === outcomeKey
+      ? { ...outcome, poolSats: outcome.poolSats + amountSats }
+      : outcome,
+  );
+
+  const { totalYesSats, totalNoSats } = getLegacyPools(updated);
+
+  await db
+    .update(weatherMarketsTable)
+    .set({ outcomes: updated, totalYesSats, totalNoSats })
+    .where(eq(weatherMarketsTable.id, marketId));
+}
+
+export function getOutcomeForMarket(
+  market: typeof weatherMarketsTable.$inferSelect,
+  outcomeKey: string,
+): WeatherOutcomeRecord | null {
+  return normalizeMarketOutcomes(market.outcomes).find((outcome) => outcome.key === outcomeKey) ?? null;
 }

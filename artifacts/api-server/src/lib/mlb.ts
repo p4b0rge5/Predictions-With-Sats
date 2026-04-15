@@ -15,7 +15,9 @@
  */
 
 import { logger } from "./logger";
+import { reserveSportsRequests } from "./sports-request-budget";
 import type { SportEvent } from "./sports";
+import { getSportsDateWindowStrings } from "./sports-date-window";
 
 const API_MLB_BASE = "https://v1.baseball.api-sports.io";
 const API_MLB_KEY  = process.env.API_FOOTBALL_KEY ?? "";
@@ -125,6 +127,18 @@ async function mlbFetch(path: string): Promise<BaseballApiResponse> {
     logger.warn("API_FOOTBALL_KEY not set — skipping Baseball API request");
     return { errors: [], results: 0, response: [] };
   }
+  const budget = await reserveSportsRequests("mlb", 1);
+  if (!budget.allowed) {
+    logger.warn(
+      { provider: "mlb", path, used: budget.used, remaining: budget.remaining },
+      "Sports provider daily request budget exhausted",
+    );
+    return {
+      errors: { budget: "Daily request budget exhausted" },
+      results: 0,
+      response: [],
+    };
+  }
   const url = `${API_MLB_BASE}${path}`;
   const res = await fetch(url, {
     headers: { "x-apisports-key": API_MLB_KEY, Accept: "application/json" },
@@ -171,10 +185,21 @@ const FORCE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
 
 const mlbCache: {
   upcoming:  SportEvent[];
+  live:      SportEvent[];
   finished:  SportEvent[];
   fetchedAt: number;
   suspended: boolean;
-} = { upcoming: [], finished: [], fetchedAt: 0, suspended: false };
+} = { upcoming: [], live: [], finished: [], fetchedAt: 0, suspended: false };
+let refreshPromise: Promise<{ upcoming: SportEvent[]; live: SportEvent[]; finished: SportEvent[]; suspended: boolean }> | null = null;
+
+function normalizeEventStatus(ev: SportEvent, now: number): SportEvent["status"] {
+  if (ev.status !== "upcoming") return ev.status;
+  const kickoff = new Date(ev.startsAt).getTime();
+  if (kickoff <= now && kickoff > now - MAX_GAME_AGE_MS) {
+    return "live";
+  }
+  return ev.status;
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -182,11 +207,12 @@ const mlbCache: {
 
 export async function getMlbEvents(forceRefresh = false): Promise<{
   upcoming:  SportEvent[];
+  live:      SportEvent[];
   finished:  SportEvent[];
   suspended: boolean;
 }> {
   if (isMlbOffseason()) {
-    return { upcoming: [], finished: [], suspended: false };
+    return { upcoming: [], live: [], finished: [], suspended: false };
   }
 
   const cacheAge = Date.now() - mlbCache.fetchedAt;
@@ -194,6 +220,7 @@ export async function getMlbEvents(forceRefresh = false): Promise<{
   if (!canForce && cacheAge < CACHE_TTL_MS) {
     return {
       upcoming:  mlbCache.upcoming,
+      live:      mlbCache.live,
       finished:  mlbCache.finished,
       suspended: mlbCache.suspended,
     };
@@ -202,73 +229,86 @@ export async function getMlbEvents(forceRefresh = false): Promise<{
     logger.info({ cacheAgeMin: Math.round(cacheAge / 60_000) }, "MLB cache force-refreshed for settlement");
   }
 
-  const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
-  const today     = toDateStr(new Date());
-  const tomorrow  = toDateStr(new Date(Date.now() + 86_400_000));
-  const yesterday = toDateStr(new Date(Date.now() - 86_400_000));
-  const season    = currentMlbSeason();
+  if (refreshPromise) {
+    return refreshPromise;
+  }
 
-  const MLB_LEAGUE_IDS = [MLB_LEAGUE_ID, MLB_PLAYOFFS_ID];
+  refreshPromise = (async () => {
+    const season    = currentMlbSeason();
 
-  const [todayData, tomorrowData, yesterdayData] = await Promise.allSettled([
-    mlbFetch(`/games?date=${today}&league=${MLB_LEAGUE_ID}&season=${season}`),
-    mlbFetch(`/games?date=${tomorrow}&league=${MLB_LEAGUE_ID}&season=${season}`),
-    mlbFetch(`/games?date=${yesterday}&league=${MLB_LEAGUE_ID}&season=${season}`),
-  ]);
+    const MLB_LEAGUE_IDS = [MLB_LEAGUE_ID, MLB_PLAYOFFS_ID];
+    const dateWindow = getSportsDateWindowStrings();
+    const dateFetches = await Promise.allSettled(
+      dateWindow.map((date) => mlbFetch(`/games?date=${date}&league=${MLB_LEAGUE_ID}&season=${season}`)),
+    );
 
-  const allGames: BaseballGame[] = [];
-  let apiErrored = false;
+    const allGames: BaseballGame[] = [];
+    let apiErrored = false;
 
-  for (const result of [todayData, tomorrowData, yesterdayData]) {
-    if (result.status === "fulfilled") {
-      if (hasErrors(result.value.errors)) {
-        logger.warn({ errors: result.value.errors }, "Baseball API returned errors");
+    for (const result of dateFetches) {
+      if (result.status === "fulfilled") {
+        if (hasErrors(result.value.errors)) {
+          logger.warn({ errors: result.value.errors }, "Baseball API returned errors");
+          apiErrored = true;
+        }
+        const mlbGames = (result.value.response ?? []).filter(
+          (g) => typeof g.league?.id === "number" && MLB_LEAGUE_IDS.includes(g.league.id),
+        );
+        allGames.push(...mlbGames);
+      } else {
+        logger.warn({ err: result.reason }, "Baseball API date fetch failed");
         apiErrored = true;
       }
-      const mlbGames = (result.value.response ?? []).filter(
-        (g) => MLB_LEAGUE_IDS.includes(g.league.id),
-      );
-      allGames.push(...mlbGames);
-    } else {
-      logger.warn({ err: result.reason }, "Baseball API date fetch failed");
-      apiErrored = true;
     }
+
+    if (apiErrored && allGames.length === 0) {
+      mlbCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
+      mlbCache.suspended = true;
+      logger.warn("Baseball API error — serving stale cache, retrying in 15 min");
+      return { upcoming: mlbCache.upcoming, live: mlbCache.live, finished: mlbCache.finished, suspended: true };
+    }
+
+    const now    = Date.now();
+    const mapped = allGames
+      .map(mapGame)
+      .map((ev) => ({ ...ev, status: normalizeEventStatus(ev, now) }));
+
+    const upcoming = mapped
+      .filter((ev) => {
+        if (ev.status !== "upcoming") return false;
+        const kickoff = new Date(ev.startsAt).getTime();
+        return kickoff > now;
+      })
+      .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+
+    const live = mapped
+      .filter((ev) => ev.status === "live")
+      .sort((a, b) => b.startsAt.localeCompare(a.startsAt));
+
+    const finished = mapped
+      .filter((ev) => ev.status === "finished")
+      .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
+      .slice(0, 20);
+
+    mlbCache.upcoming  = upcoming;
+    mlbCache.live      = live;
+    mlbCache.finished  = finished;
+    mlbCache.fetchedAt = Date.now();
+    mlbCache.suspended = false;
+
+    logger.info(
+      { upcoming: upcoming.length, live: live.length, finished: finished.length, total: allGames.length, season },
+      "MLB fixtures refreshed",
+    );
+
+    return { upcoming: mlbCache.upcoming, live: mlbCache.live, finished: mlbCache.finished, suspended: false };
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
   }
-
-  if (apiErrored && allGames.length === 0) {
-    mlbCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
-    mlbCache.suspended = true;
-    logger.warn("Baseball API error — serving stale cache, retrying in 15 min");
-    return { upcoming: mlbCache.upcoming, finished: mlbCache.finished, suspended: true };
-  }
-
-  const mapped = allGames.map(mapGame);
-  const now    = Date.now();
-
-  const upcoming = mapped
-    .filter((ev) => {
-      if (ev.status !== "upcoming") return false;
-      const kickoff = new Date(ev.startsAt).getTime();
-      return kickoff > now - MAX_GAME_AGE_MS;
-    })
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-
-  const finished = mapped
-    .filter((ev) => ev.status === "finished")
-    .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
-    .slice(0, 20);
-
-  mlbCache.upcoming  = upcoming;
-  mlbCache.finished  = finished;
-  mlbCache.fetchedAt = Date.now();
-  mlbCache.suspended = false;
-
-  logger.info(
-    { upcoming: upcoming.length, finished: finished.length, total: allGames.length, season },
-    "MLB fixtures refreshed",
-  );
-
-  return { upcoming: mlbCache.upcoming, finished: mlbCache.finished, suspended: false };
 }
 
 // ---------------------------------------------------------------------------

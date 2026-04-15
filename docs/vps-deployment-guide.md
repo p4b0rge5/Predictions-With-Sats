@@ -205,8 +205,8 @@ pnpm --filter @workspace/api-server run build
 
 ```bash
 PORT=3001 BASE_PATH=/ NODE_ENV=production \
-  pnpm --filter @workspace/lightning-bet run build
-# Output: artifacts/lightning-bet/dist/public/
+  pnpm --filter @workspace/predictions-with-sats-web run build
+# Output: artifacts/predictions-with-sats-web/dist/public/
 ```
 
 ---
@@ -268,7 +268,7 @@ server {
     server_name pwsats.com www.pwsats.com;
 
     # Frontend (arquivos estáticos React)
-    root /home/pwsats/app/artifacts/lightning-bet/dist/public;
+    root /home/pwsats/app/artifacts/predictions-with-sats-web/dist/public;
     index index.html;
 
     # React Router — redireciona tudo para index.html
@@ -365,7 +365,7 @@ DATABASE_URL=postgresql://pwsats:SENHA@localhost:5432/pwsats_db \
 # 4. Rebuildar
 pnpm --filter @workspace/api-server run build
 PORT=3001 BASE_PATH=/ NODE_ENV=production \
-  pnpm --filter @workspace/lightning-bet run build
+  pnpm --filter @workspace/predictions-with-sats-web run build
 
 # 5. Reiniciar API
 pm2 restart pwsats-api

@@ -14,7 +14,7 @@
 
 import { randomUUID } from "node:crypto";
 import { db, sportMarketsTable, sportBetsTable } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, isNull } from "drizzle-orm";
 import { logger } from "./logger";
 import type { SportEvent } from "./sports";
 
@@ -69,6 +69,13 @@ export async function getMarketByEventId(eventId: string) {
     .where(eq(sportMarketsTable.eventId, eventId))
     .limit(1);
   return market ?? null;
+}
+
+export async function markMarketFinished(marketId: number, finishedAt = new Date()) {
+  await db
+    .update(sportMarketsTable)
+    .set({ finishedAt })
+    .where(and(eq(sportMarketsTable.id, marketId), isNull(sportMarketsTable.finishedAt)));
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +138,14 @@ export async function settleMarket(
   if (paidBets.length === 0) {
     await db
       .update(sportMarketsTable)
-      .set({ status: "settled", outcome, homeScore, awayScore, settledAt: new Date() })
+      .set({
+        status: "settled",
+        outcome,
+        homeScore,
+        awayScore,
+        finishedAt: market.finishedAt ?? new Date(),
+        settledAt: new Date(),
+      })
       .where(eq(sportMarketsTable.id, marketId));
     logger.info({ marketId, outcome }, "Sport market settled (no paid bets)");
     return;
@@ -188,6 +202,13 @@ export async function settleMarket(
 
   await db
     .update(sportMarketsTable)
-    .set({ status: "settled", outcome, homeScore, awayScore, settledAt: new Date() })
+    .set({
+      status: "settled",
+      outcome,
+      homeScore,
+      awayScore,
+      finishedAt: market.finishedAt ?? new Date(),
+      settledAt: new Date(),
+    })
     .where(eq(sportMarketsTable.id, marketId));
 }

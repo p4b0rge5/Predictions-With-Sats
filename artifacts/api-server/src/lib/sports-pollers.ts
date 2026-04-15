@@ -13,7 +13,7 @@
 import { db, sportBetsTable, sportMarketsTable } from "@workspace/db";
 import { eq, and, lt } from "drizzle-orm";
 import { logger } from "./logger";
-import { settleMarket } from "./sports-market";
+import { markMarketFinished, settleMarket } from "./sports-market";
 import { getSportsEvents, fetchFixtureById } from "./sports";
 import { getNbaEvents, fetchNbaGameById } from "./nba";
 import { getNflEvents, fetchNflGameById } from "./nfl";
@@ -108,6 +108,30 @@ function getExpectedDurationMs(eventId: string): number {
   return 110 * 60 * 1000;                                    // Soccer: ~110 min
 }
 
+type SportLoaderResult = Awaited<ReturnType<typeof getSportsEvents>>;
+type MarketSport = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby";
+
+function sportFromEventId(eventId: string): MarketSport {
+  if (eventId.startsWith("nba_")) return "nba";
+  if (eventId.startsWith("nfl_")) return "nfl";
+  if (eventId.startsWith("mlb_")) return "mlb";
+  if (eventId.startsWith("mma_")) return "mma";
+  if (eventId.startsWith("rugby_")) return "rugby";
+  return "football";
+}
+
+async function loadSettlementEvents(
+  sport: MarketSport,
+  forceRefresh: boolean,
+): Promise<SportLoaderResult> {
+  if (sport === "nba") return getNbaEvents(forceRefresh);
+  if (sport === "nfl") return getNflEvents(forceRefresh);
+  if (sport === "mlb") return getMlbEvents(forceRefresh);
+  if (sport === "mma") return getMmaEvents(forceRefresh);
+  if (sport === "rugby") return getRugbyEvents(forceRefresh);
+  return getSportsEvents(forceRefresh);
+}
+
 async function pollSportSettlement(): Promise<void> {
   const now = new Date();
 
@@ -121,22 +145,23 @@ async function pollSportSettlement(): Promise<void> {
 
   logger.info({ count: openMarkets.length }, "Settlement poller: checking open sport markets");
 
-  // Determine if any market is past the expected match duration (game should be done by now).
-  // In that case, force-refresh the API caches so we see the latest scores.
   const nowMs = Date.now();
-  const hasPastDue = openMarkets.some(
-    (m) => nowMs - new Date(m.startsAt).getTime() > getExpectedDurationMs(m.eventId),
+  const sportsToLoad = new Map<MarketSport, boolean>();
+  for (const market of openMarkets) {
+    const sport = sportFromEventId(market.eventId);
+    const isPastDue = nowMs - new Date(market.startsAt).getTime() > getExpectedDurationMs(market.eventId);
+    sportsToLoad.set(sport, (sportsToLoad.get(sport) ?? false) || isPastDue);
+  }
+
+  const settledEventsBySport = new Map<MarketSport, SportLoaderResult>();
+  await Promise.all(
+    [...sportsToLoad.entries()].map(async ([sport, shouldForceRefresh]) => {
+      const events = await loadSettlementEvents(sport, shouldForceRefresh);
+      settledEventsBySport.set(sport, events);
+    }),
   );
 
-  const [soccer, nba, nfl, mlb, mma, rugby] = await Promise.all([
-    getSportsEvents(hasPastDue),
-    getNbaEvents(hasPastDue),
-    getNflEvents(hasPastDue),
-    getMlbEvents(hasPastDue),
-    getMmaEvents(hasPastDue),
-    getRugbyEvents(hasPastDue),
-  ]);
-  const allFinished = [...soccer.finished, ...nba.finished, ...nfl.finished, ...mlb.finished, ...mma.finished, ...rugby.finished];
+  const allFinished = [...settledEventsBySport.values()].flatMap((events) => events.finished);
   const finishedById = new Map(allFinished.map((e) => [e.id, e]));
 
   for (const market of openMarkets) {
@@ -189,6 +214,8 @@ async function pollSportSettlement(): Promise<void> {
         );
         continue;
       }
+
+      await markMarketFinished(market.id);
 
       logger.info(
         {

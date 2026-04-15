@@ -9,80 +9,29 @@
  */
 
 import { Router, type IRouter } from "express";
-import { randomUUID, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import { db, weatherMarketsTable, weatherBetsTable } from "@workspace/db";
-import { eq, and, gte } from "drizzle-orm";
-import { addToWeatherPool, WEATHER_CITIES, fetchForecast } from "../lib/weather";
+import { eq, and } from "drizzle-orm";
+import {
+  addToWeatherPool,
+  getOutcomeForMarket,
+  listWeatherMarkets,
+} from "../lib/weather";
 import { createInvoice } from "../lib/alby";
 import { coinosPayInvoice } from "../lib/coinos";
 import { getCachedBtcPrice } from "../lib/price";
+import { getPublicBaseUrl } from "../lib/public-base-url";
 import { logger } from "../lib/logger";
+import { validateExactInvoiceAmount } from "../lib/lightning-invoice";
+import { deriveWithdrawK1 } from "../lib/withdraw-k1";
+import { toLnurlWithdrawDescription } from "../lib/lnurl-withdraw";
 import { bech32 } from "bech32";
 
 const router: IRouter = Router();
 
 const MIN_AMOUNT_USD = 0.50;
-
-// ---------------------------------------------------------------------------
-// Temps cache (30-min TTL)
-// ---------------------------------------------------------------------------
-
-interface CityTemp {
-  key: string;
-  name: string;
-  emoji: string;
-  threshold: number;
-  currentTemp: number | null;
-  todayMax: number | null;
-  tomorrowMax: number | null;
-}
-
-let tempsCache: { data: CityTemp[]; ts: number; complete: boolean } | null = null;
-const TEMPS_TTL_FULL_MS  = 30 * 60 * 1000; // 30 min when all cities have data
-const TEMPS_TTL_PARTIAL_MS = 2 * 60 * 1000; // 2 min when some are null (retry soon)
-
-async function fetchWithRetry(lat: number, lon: number, retries = 3): Promise<WeatherForecast | null> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await fetchForecast(lat, lon);
-    } catch {
-      if (i < retries - 1) await new Promise((r) => setTimeout(r, 600));
-    }
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// GET /api/weather/temps — current forecast max temps for all cities
-// ---------------------------------------------------------------------------
-
 router.get("/weather/temps", async (_req, res) => {
-  const now = Date.now();
-  if (tempsCache) {
-    const ttl = tempsCache.complete ? TEMPS_TTL_FULL_MS : TEMPS_TTL_PARTIAL_MS;
-    if (now - tempsCache.ts < ttl) return res.json(tempsCache.data);
-  }
-
-  // Fetch sequentially to avoid rate-limiting (6 simultaneous requests get dropped)
-  const results: CityTemp[] = [];
-  for (const city of WEATHER_CITIES) {
-    const forecast = await fetchWithRetry(city.latitude, city.longitude);
-    results.push({
-      key: city.key,
-      name: city.name,
-      emoji: city.emoji,
-      threshold: city.threshold,
-      currentTemp: forecast?.currentTemp ?? null,
-      todayMax: forecast?.maxTemps[0] ?? null,
-      tomorrowMax: forecast?.maxTemps[1] ?? null,
-    } as CityTemp);
-    // Small pause between requests to be a good API citizen
-    await new Promise((r) => setTimeout(r, 200));
-  }
-
-  const complete = results.every((r) => r.todayMax !== null);
-  tempsCache = { data: results, ts: now, complete };
-  return res.json(results);
+  res.json([]);
 });
 const PAYOUT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 const BTC_SATS = 100_000_000;
@@ -93,15 +42,7 @@ function usdToSats(usd: number, btcPriceUsd: number): number {
 
 function encodeLnurl(url: string): string {
   const words = bech32.toWords(Buffer.from(url, "utf8"));
-  return bech32.encode("lnurl", words, 1500).toUpperCase();
-}
-
-type ExpressRequest = Parameters<Parameters<typeof router.get>[1]>[0];
-
-function getPublicBase(req: ExpressRequest): string {
-  const host = req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost";
-  const proto = req.headers["x-forwarded-proto"] ?? (req.secure ? "https" : "http");
-  return `${proto}://${host}`;
+  return bech32.encode("lnurl", words, 1500);
 }
 
 // ---------------------------------------------------------------------------
@@ -110,30 +51,28 @@ function getPublicBase(req: ExpressRequest): string {
 
 router.get("/weather/markets", async (_req, res): Promise<void> => {
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    const markets = await db
-      .select()
-      .from(weatherMarketsTable)
-      .where(gte(weatherMarketsTable.date, today))
-      .orderBy(weatherMarketsTable.date, weatherMarketsTable.city);
-
-    // Attach city emoji
-    const cityMap = new Map(WEATHER_CITIES.map((c) => [c.name, c]));
+    const markets = await listWeatherMarkets();
 
     res.json(
       markets.map((m) => ({
         id: m.id,
         city: m.city,
         country: m.country,
-        emoji: cityMap.get(m.city)?.emoji ?? "🌍",
+        emoji: "🌡️",
         date: m.date,
-        threshold: parseFloat(m.threshold),
+        threshold: Number.parseFloat(m.threshold),
+        question: m.question ?? `Weather market · ${m.city}`,
+        subtitle: m.subtitle ?? null,
+        sourceUrl: m.sourceUrl ?? null,
         status: m.status,
-        outcome: m.outcome,
+        outcome: m.winningOutcome ?? m.outcome,
         actualTemp: m.actualTemp !== null ? parseFloat(m.actualTemp) : null,
         totalYesSats: m.totalYesSats,
         totalNoSats: m.totalNoSats,
         settledAt: m.settledAt?.toISOString() ?? null,
+        resolvedValue: m.resolvedValue ?? null,
+        provider: m.provider,
+        outcomes: Array.isArray(m.outcomes) ? m.outcomes : [],
       })),
     );
   } catch (err) {
@@ -147,19 +86,16 @@ router.get("/weather/markets", async (_req, res): Promise<void> => {
 // ---------------------------------------------------------------------------
 
 router.post("/weather/bets", async (req, res): Promise<void> => {
-  const { marketId, direction, amountUsd } = req.body as {
+  const { marketId, direction, outcomeKey, amountUsd } = req.body as {
     marketId?: number;
     direction?: string;
+    outcomeKey?: string;
     amountUsd?: number;
   };
+  const selectedOutcomeKey = outcomeKey ?? direction;
 
-  if (!marketId || !direction || !amountUsd) {
-    res.status(400).json({ error: "marketId, direction, and amountUsd are required" });
-    return;
-  }
-
-  if (direction !== "yes" && direction !== "no") {
-    res.status(400).json({ error: "direction must be yes or no" });
+  if (!marketId || !selectedOutcomeKey || !amountUsd) {
+    res.status(400).json({ error: "marketId, outcomeKey, and amountUsd are required" });
     return;
   }
 
@@ -182,17 +118,24 @@ router.post("/weather/bets", async (req, res): Promise<void> => {
     return;
   }
 
+  const outcome = getOutcomeForMarket(market, selectedOutcomeKey);
+  if (!outcome) {
+    res.status(400).json({ error: "Selected outcome is not valid for this weather market" });
+    return;
+  }
+
   try {
     const invoice = await createInvoice(
       amountSats,
-      `Weather: Will ${market.city} reach ${market.threshold}°C on ${market.date}? (${direction.toUpperCase()})`,
+      `Weather: ${market.question ?? market.city} (${outcome.label})`,
     );
 
     const [bet] = await db
       .insert(weatherBetsTable)
       .values({
         marketId,
-        direction,
+        direction: selectedOutcomeKey,
+        outcomeLabel: outcome.label,
         amountSats,
         paymentHash: invoice.paymentHash,
         paymentRequest: invoice.paymentRequest,
@@ -238,9 +181,9 @@ router.get("/weather/bets/:hash", async (req, res): Promise<void> => {
     .where(eq(weatherMarketsTable.id, bet.marketId))
     .limit(1);
 
-  const publicBase = getPublicBase(req);
+  const publicBase = getPublicBaseUrl(req);
   const withdrawLnurl =
-    bet.status === "won" && bet.withdrawToken
+    (bet.status === "won" || bet.status === "refunded") && bet.withdrawToken && bet.withdrawStatus === "unclaimed"
       ? encodeLnurl(`${publicBase}/api/weather/withdraw/${bet.withdrawToken}`)
       : null;
 
@@ -248,6 +191,7 @@ router.get("/weather/bets/:hash", async (req, res): Promise<void> => {
     id: bet.id,
     paymentHash: bet.paymentHash,
     direction: bet.direction,
+    outcomeLabel: bet.outcomeLabel ?? null,
     amountSats: bet.amountSats,
     status: bet.status,
     payoutSats: bet.payoutSats ?? null,
@@ -261,12 +205,56 @@ router.get("/weather/bets/:hash", async (req, res): Promise<void> => {
           city: market.city,
           date: market.date,
           threshold: parseFloat(market.threshold),
+          question: market.question ?? null,
+          subtitle: market.subtitle ?? null,
           status: market.status,
-          outcome: market.outcome ?? null,
+          outcome: market.winningOutcome ?? market.outcome ?? null,
           actualTemp: market.actualTemp !== null ? parseFloat(market.actualTemp) : null,
+          resolvedValue: market.resolvedValue ?? null,
+          outcomes: Array.isArray(market.outcomes) ? market.outcomes : [],
         }
       : null,
   });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/weather/bets/:hash/verify
+// ---------------------------------------------------------------------------
+
+router.post("/weather/bets/:hash/verify", async (req, res): Promise<void> => {
+  const { hash } = req.params;
+  const rawPreimage = req.body?.preimage;
+
+  if (typeof rawPreimage !== "string" || rawPreimage.trim().length === 0) {
+    res.status(400).json({ error: "preimage field is required" });
+    return;
+  }
+
+  const preimage = rawPreimage.trim().toLowerCase();
+  const computedHash = createHash("sha256").update(Buffer.from(preimage, "hex")).digest("hex");
+  if (computedHash !== hash.toLowerCase()) {
+    res.status(400).json({ error: "Invalid preimage for this payment hash" });
+    return;
+  }
+
+  const [bet] = await db
+    .update(weatherBetsTable)
+    .set({ status: "paid", paidAt: new Date() })
+    .where(and(eq(weatherBetsTable.paymentHash, hash), eq(weatherBetsTable.status, "pending")))
+    .returning();
+
+  if (!bet) {
+    res.status(404).json({ error: "Bet not found or already confirmed" });
+    return;
+  }
+
+  try {
+    await addToWeatherPool(bet.marketId, bet.direction, bet.amountSats);
+  } catch (err) {
+    logger.warn({ err, weatherBetId: bet.id }, "Failed to update weather outcome pool after preimage verify");
+  }
+
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -275,7 +263,7 @@ router.get("/weather/bets/:hash", async (req, res): Promise<void> => {
 
 router.get("/weather/withdraw/:token", async (req, res): Promise<void> => {
   const { token } = req.params;
-  const publicBase = getPublicBase(req);
+  const publicBase = getPublicBaseUrl(req);
 
   const [bet] = await db
     .select()
@@ -283,7 +271,7 @@ router.get("/weather/withdraw/:token", async (req, res): Promise<void> => {
     .where(eq(weatherBetsTable.withdrawToken, token))
     .limit(1);
 
-  if (!bet || bet.status !== "won" || !bet.payoutSats) {
+  if (!bet || (bet.status !== "won" && bet.status !== "refunded") || !bet.payoutSats) {
     res.status(404).json({ status: "ERROR", reason: "Payout not found or not claimable" });
     return;
   }
@@ -299,7 +287,6 @@ router.get("/weather/withdraw/:token", async (req, res): Promise<void> => {
     return;
   }
 
-  const k1 = createHash("sha256").update(token).digest("hex");
   const callbackUrl = `${publicBase}/api/weather/withdraw/${token}/callback`;
 
   // Join market for city/date/threshold context
@@ -309,17 +296,19 @@ router.get("/weather/withdraw/:token", async (req, res): Promise<void> => {
     .where(eq(weatherMarketsTable.id, bet.marketId))
     .limit(1);
 
-  const dirLabel  = bet.direction === "yes" ? "YES" : "NO";
-  const threshold = market?.threshold ?? "?";
   const city      = market?.city ?? "Unknown";
-  const date      = market?.date ? ` · ${market.date}` : "";
-  const defaultDescription = `PWSats Win — ${dirLabel} (≥${threshold}°C) — ${city}${date} (Weather)`;
+  const date      = market?.date ? ` ${market.date}` : "";
+  const pickLabel = bet.outcomeLabel ?? bet.direction;
+  const defaultDescription =
+    bet.status === "refunded"
+      ? `PWSats refund ${city}${date} Weather`
+      : `PWSats win ${pickLabel} ${city}${date} Weather`;
 
   res.json({
     tag: "withdrawRequest",
     callback: callbackUrl,
-    k1,
-    defaultDescription,
+    k1: deriveWithdrawK1(token),
+    defaultDescription: toLnurlWithdrawDescription(defaultDescription),
     minWithdrawable: bet.payoutSats * 1000,
     maxWithdrawable: bet.payoutSats * 1000,
   });
@@ -331,10 +320,15 @@ router.get("/weather/withdraw/:token", async (req, res): Promise<void> => {
 
 router.get("/weather/withdraw/:token/callback", async (req, res): Promise<void> => {
   const { token } = req.params;
-  const { pr } = req.query as { pr?: string };
+  const { k1, pr } = req.query as { k1?: string; pr?: string };
 
-  if (!pr) {
-    res.json({ status: "ERROR", reason: "Missing pr parameter" });
+  if (!k1 || !pr) {
+    res.json({ status: "ERROR", reason: "Missing k1 or pr parameter" });
+    return;
+  }
+
+  if (k1 !== deriveWithdrawK1(token)) {
+    res.json({ status: "ERROR", reason: "Invalid k1 parameter" });
     return;
   }
 
@@ -344,7 +338,7 @@ router.get("/weather/withdraw/:token/callback", async (req, res): Promise<void> 
     .where(eq(weatherBetsTable.withdrawToken, token))
     .limit(1);
 
-  if (!bet || bet.status !== "won") {
+  if (!bet || (bet.status !== "won" && bet.status !== "refunded")) {
     res.json({ status: "ERROR", reason: "Payout not found or not claimable" });
     return;
   }
@@ -354,20 +348,39 @@ router.get("/weather/withdraw/:token/callback", async (req, res): Promise<void> 
     return;
   }
 
+  if (bet.payoutSats === null) {
+    res.json({ status: "ERROR", reason: "Payout amount not available" });
+    return;
+  }
+
   try {
-    await db
+    validateExactInvoiceAmount(pr, bet.payoutSats);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "Invalid withdrawal invoice";
+    res.json({ status: "ERROR", reason });
+    return;
+  }
+
+  try {
+    const [claimed] = await db
       .update(weatherBetsTable)
       .set({ withdrawStatus: "claimed", claimedAt: new Date() })
-      .where(eq(weatherBetsTable.id, bet.id));
+      .where(and(eq(weatherBetsTable.id, bet.id), eq(weatherBetsTable.withdrawStatus, "unclaimed")))
+      .returning();
 
-    await coinosPayInvoice(pr);
+    if (!claimed) {
+      res.json({ status: "ERROR", reason: "Already claimed" });
+      return;
+    }
+
+    await coinosPayInvoice(pr, bet.payoutSats);
 
     res.json({ status: "OK" });
     logger.info({ betId: bet.id, token }, "Weather payout claimed");
   } catch (err) {
     await db
       .update(weatherBetsTable)
-      .set({ withdrawStatus: "unclaimed" })
+      .set({ withdrawStatus: "unclaimed", claimedAt: null })
       .where(eq(weatherBetsTable.id, bet.id));
     logger.error({ err, betId: bet.id }, "Weather payout failed");
     res.json({ status: "ERROR", reason: "Payment failed" });
@@ -395,7 +408,7 @@ router.post("/weather/withdraw/:token/pay-to-address", async (req, res): Promise
     .limit(1);
 
   if (!bet) { res.status(404).json({ error: "Withdraw token not found or already claimed." }); return; }
-  if (bet.status !== "won" || !bet.payoutSats) { res.status(409).json({ error: "Bet not eligible for withdrawal." }); return; }
+  if ((bet.status !== "won" && bet.status !== "refunded") || !bet.payoutSats) { res.status(409).json({ error: "Bet not eligible for withdrawal." }); return; }
 
   const [user, domain] = address.split("@");
   let callbackUrl: string, minSendable: number, maxSendable: number;
@@ -417,10 +430,13 @@ router.post("/weather/withdraw/:token/pay-to-address", async (req, res): Promise
 
   let bolt11: string;
   try {
-    const invRes = await fetch(`${callbackUrl}?amount=${amountMsats}`, { signal: AbortSignal.timeout(10_000) });
+    const invoiceUrl = new URL(callbackUrl);
+    invoiceUrl.searchParams.set("amount", String(amountMsats));
+    const invRes = await fetch(invoiceUrl, { signal: AbortSignal.timeout(10_000) });
     if (!invRes.ok) throw new Error(`HTTP ${invRes.status}`);
     const inv = await invRes.json() as { pr?: string; reason?: string };
     if (!inv.pr) throw new Error(inv.reason ?? "No invoice in response");
+    validateExactInvoiceAmount(inv.pr, bet.payoutSats);
     bolt11 = inv.pr;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

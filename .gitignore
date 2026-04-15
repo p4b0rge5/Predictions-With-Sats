@@ -41,9 +41,20 @@ testem.log
 .DS_Store
 Thumbs.db
 
+# local environment files
+.env
+.env.*
+!.env.example
+
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
 # Replit
 .cache/
 .local/
+.runtime/
+
+# local tool metadata and caches
+.codex
+.gamma_cache/
+artifacts/api-server/.gamma_cache/

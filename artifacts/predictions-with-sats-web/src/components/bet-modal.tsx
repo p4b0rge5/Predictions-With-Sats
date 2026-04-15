@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Copy, XCircle, Clock, Zap, ChevronDown, ChevronUp, ShieldCheck } from "lucide-react";
 import { saveBetHashForAsset } from "@/components/my-bet-widget";
+import { getProjectedPayout } from "@/lib/payout-preview";
 
 interface BetModalProps {
   isOpen: boolean;
@@ -17,6 +18,8 @@ interface BetModalProps {
   btcPriceUsd: number;
   windowId: number;
   asset: "btc" | "eth" | "sol";
+  totalUpSats: number;
+  totalDownSats: number;
 }
 
 declare global {
@@ -29,6 +32,7 @@ declare global {
 }
 
 type InputMode = "sats" | "usd";
+const SHOW_PROJECTED_PAYOUT_UI = false;
 
 const SATS_PRESETS = [546, 1000, 5000, 10000];
 const USD_PRESETS  = [0.5, 1, 5, 10];
@@ -54,7 +58,16 @@ function AmountToggle({ mode, onChange }: { mode: InputMode; onChange: (m: Input
 
 const API_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
-export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId, asset }: BetModalProps) {
+export function BetModal({
+  isOpen,
+  onClose,
+  direction,
+  btcPriceUsd,
+  windowId,
+  asset,
+  totalUpSats,
+  totalDownSats,
+}: BetModalProps) {
   const [inputMode, setInputMode]   = useState<InputMode>("usd");
   const [rawAmount, setRawAmount]   = useState<string>("0.5");
   const { toast } = useToast();
@@ -87,6 +100,15 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId, as
   const usdAmount = inputMode === "usd"
     ? (parseFloat(rawAmount) || 0)
     : (satsAmount / 100_000_000 * btcRate);
+  const selectedPoolSats = direction === "up" ? totalUpSats : totalDownSats;
+  const opposingPoolSats = direction === "up" ? totalDownSats : totalUpSats;
+  const totalPoolSats = totalUpSats + totalDownSats;
+  const projectedPayout = getProjectedPayout({
+    stakeSats: satsAmount,
+    selectedPoolSats,
+    totalPoolSats,
+  });
+  const formatSats = (value: number) => new Intl.NumberFormat("en-US").format(value);
 
   useEffect(() => { setWeblnAvailable(typeof window.webln !== "undefined"); }, []);
 
@@ -240,7 +262,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId, as
                 <span>Min: $0.50 USD</span>
                 {inputMode === "sats"
                   ? <span>≈ ${usdAmount.toFixed(2)} USD</span>
-                  : <span>≈ {new Intl.NumberFormat("en-US").format(satsAmount)} sats</span>
+                  : <span>≈ {formatSats(satsAmount)} sats</span>
                 }
               </div>
             </div>
@@ -262,15 +284,43 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId, as
               }
             </div>
 
+            {SHOW_PROJECTED_PAYOUT_UI && projectedPayout && (
+              <div className="rounded-lg border border-border/50 bg-card/40 px-3 py-2.5 text-[11px] font-mono">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-bold text-foreground">{formatSats(satsAmount)} sats</span>
+                  <span className={projectedPayout.profitSats >= 0 ? "text-green-400" : "text-yellow-400"}>
+                    {projectedPayout.roiPct >= 0 ? "+" : ""}{projectedPayout.roiPct.toFixed(1)}% if win
+                  </span>
+                </div>
+                <div className="mt-1 flex items-end justify-between gap-3">
+                  <span className="text-muted-foreground uppercase tracking-wider">Projected payout</span>
+                  <span className="text-muted-foreground">
+                    {formatSats(projectedPayout.payoutSats)} sats total
+                  </span>
+                </div>
+                <div className="mt-1 flex items-end justify-between gap-3">
+                  <span className="text-muted-foreground uppercase tracking-wider">Net</span>
+                  <span className="text-muted-foreground">
+                    {projectedPayout.profitSats >= 0 ? "+" : ""}{formatSats(projectedPayout.profitSats)} sats
+                  </span>
+                </div>
+              </div>
+            )}
+
             <Button
               type="submit"
-              className={`w-full h-12 text-base font-bold uppercase tracking-wider text-white ${
+              className={`w-full h-auto min-h-12 py-3 text-base font-bold uppercase tracking-wider text-white flex flex-col items-center justify-center gap-1 ${
                 isUp ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
               }`}
               disabled={createBet.isPending || usdAmount < 0.50}
               data-testid="button-submit-bet"
             >
-              {createBet.isPending ? "Generating invoice..." : "Generate Invoice"}
+              <span>{createBet.isPending ? "Generating invoice..." : "Generate Invoice"}</span>
+              {SHOW_PROJECTED_PAYOUT_UI && projectedPayout && !createBet.isPending && (
+                <span className="text-[10px] font-normal opacity-90">
+                  {formatSats(satsAmount)} sats · {projectedPayout.roiPct >= 0 ? "+" : ""}{projectedPayout.roiPct.toFixed(1)}% if win
+                </span>
+              )}
             </Button>
           </form>
         ) : (
@@ -279,7 +329,7 @@ export function BetModal({ isOpen, onClose, direction, btcPriceUsd, windowId, as
               <>
                 <div className="text-center">
                   <p className="text-xl font-bold text-yellow-400 leading-tight">
-                    Pay {new Intl.NumberFormat("en-US").format(satsAmount)} sats
+                    Pay {formatSats(satsAmount)} sats
                   </p>
                   <p className="text-sm text-muted-foreground mt-0.5">≈ ${usdAmount.toFixed(2)} USD</p>
                 </div>

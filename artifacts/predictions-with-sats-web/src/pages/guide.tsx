@@ -80,7 +80,7 @@ const GUIDE_STEPS: GuideStep[] = [
     cardTint: "bg-emerald-400/5",
     cardBorder: "border-emerald-400/30",
     title: "Fees & Edge Cases",
-    body: "2% house fee on every settlement.\n• No opposing bets — your stake is refunded at 98% (shown as REFUND).\n• Keep your preimage (payment proof) — you can verify your bet manually via the preimage field.\n• Unpaid invoices expire when the window closes.",
+    body: "2% house fee on normal settlements.\n• No opposing bets — your stake returns as REFUND minus a 0.5% refund fee.\n• Keep your preimage (payment proof) — you can verify your bet manually via the preimage field.\n• Unpaid invoices expire when the window closes.",
   },
   {
     icon: QrCode,
@@ -89,7 +89,7 @@ const GUIDE_STEPS: GuideStep[] = [
     cardTint: "bg-purple-400/5",
     cardBorder: "border-purple-400/30",
     title: "Find Your Bet Later",
-    body: "All bets placed in the current browser session appear in the My Bets section of the Live tab. If you change devices, use the Look up bet by hash field and paste your 64-character payment hash to retrieve any past result.",
+    body: "All bets placed in the current browser session appear in My Bets. If you change devices, use the global My Bets page to import a past bet with your payment hash or preimage.",
   },
 ];
 
@@ -99,7 +99,7 @@ const GUIDE_STEPS: GuideStep[] = [
 
 export function Guide({ onDone }: GuideProps = {}) {
   const navigate = useNavigate();
-  const handleDone = () => { if (onDone) onDone(); else navigate("/"); };
+  const handleDone = () => { if (onDone) onDone(); else navigate("/app"); };
 
   return (
     <GuidePager

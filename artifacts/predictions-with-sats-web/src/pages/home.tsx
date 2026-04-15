@@ -1,15 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   ArrowUpCircle, ArrowDownCircle, AlertCircle,
-  TrendingUp, TrendingDown, Search, ChevronDown, ChevronUp,
-  Zap, Clock, QrCode, Trophy, ShieldCheck, Wallet,
+  TrendingUp, TrendingDown,
+  Clock, QrCode, Trophy, ShieldCheck, Wallet,
 } from "lucide-react";
 import { BetModal } from "@/components/bet-modal";
-import { MyBetsList, getBetHashesForAsset, removeBetHashForAsset } from "@/components/my-bet-widget";
+import {
+  MyBetsList,
+  getBetHashesForAsset,
+  removeBetHashForAsset,
+  saveBetHashForAsset,
+} from "@/components/my-bet-widget";
 import { GuidePager } from "@/components/guide-pager";
+import { ErrorState, LoadingState } from "@/components/query-state";
 import { SiBitcoin, SiEthereum, SiSolana } from "react-icons/si";
 import {
   ResponsiveContainer, AreaChart, Area,
@@ -17,13 +23,14 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { History } from "@/pages/history";
+import { getPoolMultiple } from "@/lib/payout-preview";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type CryptoKey = "bitcoin" | "ethereum" | "solana";
-type ContentTab = "guide" | "my-bets" | "live" | "history";
+type ContentTab = "guide" | "live" | "myBets" | "history";
 type AssetParam = "btc" | "eth" | "sol";
 
 interface PricePoint { time: number; price: number }
@@ -59,7 +66,7 @@ const CRYPTOS: CryptoDef[] = [
     chartColor: "#f97316",
     gradientId: "priceGradBtc",
     dotColor: "#f97316",
-    cardTint: "bg-orange-500/15 border-orange-500/35",
+    cardTint: "surface-tint-orange",
   },
   {
     key: "ethereum",
@@ -72,7 +79,7 @@ const CRYPTOS: CryptoDef[] = [
     chartColor: "#818cf8",
     gradientId: "priceGradEth",
     dotColor: "#818cf8",
-    cardTint: "bg-indigo-500/15 border-indigo-500/35",
+    cardTint: "surface-tint-indigo",
   },
   {
     key: "solana",
@@ -85,7 +92,7 @@ const CRYPTOS: CryptoDef[] = [
     chartColor: "#a855f7",
     gradientId: "priceGradSol",
     dotColor: "#a855f7",
-    cardTint: "bg-purple-500/15 border-purple-500/35",
+    cardTint: "surface-tint-purple",
   },
 ];
 
@@ -155,7 +162,7 @@ const GUIDE_STEPS = [
     cardTint: "bg-emerald-400/5",
     cardBorder: "border-emerald-400/30",
     title: "Fees & Edge Cases",
-    body: "2% house fee on every settlement.\n• No opposing bets — your stake is refunded at 98% (shown as REFUND).\n• Keep your preimage — you can verify your bet manually via the preimage field.\n• Unpaid invoices expire when the window closes.",
+    body: "2% house fee on normal settlements.\n• No opposing bets — your stake returns as REFUND minus a 0.5% refund fee.\n• Keep your preimage — you can verify your bet manually via the preimage field.\n• Unpaid invoices expire when the window closes.",
   },
   {
     icon: QrCode,
@@ -164,14 +171,23 @@ const GUIDE_STEPS = [
     cardTint: "bg-purple-400/5",
     cardBorder: "border-purple-400/30",
     title: "Find Your Bet Later",
-    body: "All bets placed in the current session appear in the My Bets section. If you change devices, use the Look up bet by hash field and paste your 64-character payment hash to retrieve any past result.",
+    body: "All bets placed in the current session appear in My Bets. If you change devices, use the global My Bets page to import a past bet with your payment hash or preimage.",
   },
 ];
 
 function CryptoGuide({ def, onDone }: { def: CryptoDef; onDone?: () => void }) {
+  const guideSteps = GUIDE_STEPS.map((step, index) => (
+    index === 0
+      ? {
+          ...step,
+          icon: TrendingUp,
+        }
+      : step
+  ));
+
   return (
     <GuidePager
-      steps={GUIDE_STEPS}
+      steps={guideSteps}
       onDone={onDone}
       header={
         <>
@@ -221,8 +237,14 @@ async function fetchMarket(asset: AssetParam): Promise<MarketData> {
 // Crypto Prediction Component
 // ---------------------------------------------------------------------------
 
-function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: () => void }) {
-  const { data: market, isLoading, refetch } = useQuery<MarketData>({
+function CryptoPrediction({
+  def,
+  onShowGuide,
+}: {
+  def: CryptoDef;
+  onShowGuide: () => void;
+}) {
+  const { data: market, isLoading, error, refetch } = useQuery<MarketData>({
     queryKey: ["/api/market/current", def.asset],
     queryFn: () => fetchMarket(def.asset),
     refetchInterval: 3000,
@@ -232,10 +254,6 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
   const [pricePoints, setPricePoints] = useState<PricePoint[]>([]);
   const priceHistory = useRef<PricePoint[]>([]);
   const lastWindowId = useRef<number | null>(null);
-  const [betHashes, setBetHashes] = useState<string[]>([]);
-  const [lookupHash, setLookupHash] = useState("");
-  const [lookedUpHash, setLookedUpHash] = useState<string | null>(null);
-  const [showLookup, setShowLookup] = useState(false);
   const [secsLeft, setSecsLeft] = useState<number>(0);
   const [transitioning, setTransitioning] = useState(false);
   const transitionedWindowId = useRef<number | null>(null);
@@ -278,8 +296,6 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
     prevSecsLeftRef.current = secsLeft;
   }, [secsLeft]);
 
-  useEffect(() => { setBetHashes(getBetHashesForAsset(def.asset)); }, [def.asset]);
-
   useEffect(() => {
     if (!market || !market.btcPriceUsd || market.status === "none") return;
     if (lastWindowId.current !== (market.windowId ?? null)) {
@@ -294,14 +310,18 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
   }, [market]);
 
   if (isLoading || !market) {
-    return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="font-mono text-muted-foreground tracking-widest text-sm">LOADING MARKET DATA...</p>
-        </div>
-      </div>
-    );
+    if (error) {
+      return (
+        <ErrorState
+          title="FAILED TO LOAD MARKET DATA"
+          description={error instanceof Error ? error.message : "Unknown network error"}
+          onRetry={() => void refetch()}
+          cardClassName="border-red-400/20 bg-background/60"
+        />
+      );
+    }
+
+    return <LoadingState label="LOADING MARKET DATA..." />;
   }
 
   const { status, btcPriceUsd: assetPrice, openPrice, totalUpSats, totalDownSats, closesAt, windowId } = market;
@@ -316,6 +336,10 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
   const isNone           = transitioning ? false : status === "none";
   const totalSats        = displayUpSats + displayDownSats;
   const upPercent        = totalSats > 0 ? (displayUpSats / totalSats) * 100 : 50;
+  const upMultiple       = getPoolMultiple({ selectedPoolSats: displayUpSats, totalPoolSats: totalSats });
+  const downMultiple     = getPoolMultiple({ selectedPoolSats: displayDownSats, totalPoolSats: totalSats });
+  const canShowUpReturn  = displayDownSats > 0;
+  const canShowDownReturn = displayUpSats > 0;
   const priceChangeDollar = displayOpenPrice ? assetPrice - displayOpenPrice : 0;
   const priceChangeAbs   = Math.abs(priceChangeDollar);
   const priceUp          = priceChangeDollar > 0;
@@ -323,6 +347,11 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
 
   const formatSats = (sats: number) => new Intl.NumberFormat("en-US").format(sats);
   const formatUsd  = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatReturnPercent = (poolMultiple: number | null) => {
+    if (!poolMultiple) return null;
+    const roiPct = (poolMultiple - 1) * 100;
+    return `${roiPct >= 0 ? "+" : ""}${roiPct.toFixed(0)}% if win`;
+  };
   const mins = Math.floor(displaySecsLeft / 60);
   const secs = displaySecsLeft % 60;
 
@@ -342,7 +371,7 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
   const { chartColor, gradientId, dotColor } = def;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4 px-0">
+    <div className="max-w-4xl mx-auto card-stack px-0">
       {isNone ? (
         <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
           <AlertCircle className="h-12 w-12 text-muted-foreground" />
@@ -457,20 +486,28 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
           </div>
 
           {/* UP / DOWN Buttons */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="card-grid-2">
             <Button onClick={() => setBetDirection("up")} disabled={isClosed}
               className="h-20 sm:h-24 text-lg sm:text-xl font-mono font-bold bg-green-500/10 text-green-500 border-2 border-green-500/40 hover:bg-green-500/20 hover:border-green-500 transition-all flex flex-col gap-1">
               <div className="flex items-center gap-2">
                 <ArrowUpCircle className="h-5 w-5 sm:h-6 sm:w-6" /> BET UP
               </div>
-              <span className="text-[10px] sm:text-xs font-normal opacity-70">{formatSats(displayUpSats)} sats in pool</span>
+              <span className="text-[10px] sm:text-xs font-normal opacity-70">
+                {canShowUpReturn && upMultiple
+                  ? `${formatSats(displayUpSats)} sats in pool · ${formatReturnPercent(upMultiple)}`
+                  : `${formatSats(displayUpSats)} sats in pool`}
+              </span>
             </Button>
             <Button onClick={() => setBetDirection("down")} disabled={isClosed}
               className="h-20 sm:h-24 text-lg sm:text-xl font-mono font-bold bg-red-500/10 text-red-500 border-2 border-red-500/40 hover:bg-red-500/20 hover:border-red-500 transition-all flex flex-col gap-1">
               <div className="flex items-center gap-2">
                 <ArrowDownCircle className="h-5 w-5 sm:h-6 sm:w-6" /> BET DOWN
               </div>
-              <span className="text-[10px] sm:text-xs font-normal opacity-70">{formatSats(displayDownSats)} sats in pool</span>
+              <span className="text-[10px] sm:text-xs font-normal opacity-70">
+                {canShowDownReturn && downMultiple
+                  ? `${formatSats(displayDownSats)} sats in pool · ${formatReturnPercent(downMultiple)}`
+                  : `${formatSats(displayDownSats)} sats in pool`}
+              </span>
             </Button>
           </div>
 
@@ -488,33 +525,15 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
         </>
       )}
 
-      {/* Bet lookup */}
-      <div className={`rounded-xl border ${def.cardTint} font-mono overflow-hidden`}>
-        <button onClick={() => setShowLookup(v => !v)}
-          className="w-full px-4 py-3 flex items-center justify-between text-xs text-muted-foreground hover:text-foreground transition-colors">
-          <span className="flex items-center gap-1.5"><Search className="h-3 w-3" /> Look up bet by hash</span>
-          {showLookup ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-        </button>
-        {showLookup && (
-          <div className="px-4 pb-4 space-y-2">
-            <p className="text-[10px] text-muted-foreground">Paste a 64-char payment hash to look up a bet result.</p>
-            <div className="flex gap-2">
-              <Input value={lookupHash} onChange={e => setLookupHash(e.target.value.trim().toLowerCase())}
-                placeholder="payment hash (64 hex chars)" className="font-mono text-xs h-8" />
-              <Button size="sm" className="h-8 text-xs shrink-0" disabled={lookupHash.length !== 64}
-                onClick={() => { setLookedUpHash(lookupHash); setShowLookup(false); setLookupHash(""); }}>
-                Search
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {lookedUpHash && <MyBetsList hashes={[lookedUpHash]} onDismiss={() => setLookedUpHash(null)} />}
-
       {betDirection && market.windowId && (
-        <BetModal isOpen={true} onClose={() => { setBetDirection(null); setBetHashes(getBetHashesForAsset(def.asset)); }}
-          direction={betDirection} btcPriceUsd={assetPrice} windowId={market.windowId} asset={def.asset} />
+        <BetModal isOpen={true} onClose={() => { setBetDirection(null); }}
+          direction={betDirection}
+          btcPriceUsd={assetPrice}
+          windowId={market.windowId}
+          asset={def.asset}
+          totalUpSats={displayUpSats}
+          totalDownSats={displayDownSats}
+        />
       )}
 
       <button onClick={onShowGuide}
@@ -530,10 +549,37 @@ function CryptoPrediction({ def, onShowGuide }: { def: CryptoDef; onShowGuide: (
 // ---------------------------------------------------------------------------
 
 export function Home() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeCrypto, setActiveCrypto] = useState<CryptoKey>("bitcoin");
   const [activeTab, setActiveTab] = useState<ContentTab>("live");
+  const [, setBetListVersion] = useState(0);
 
   const def = CRYPTOS.find((c) => c.key === activeCrypto)!;
+  const betHashes = getBetHashesForAsset(def.asset);
+
+  const recoverCryptoBet = (asset: AssetParam, paymentHash: string) => {
+    saveBetHashForAsset(asset, paymentHash);
+    const targetCrypto = CRYPTOS.find((crypto) => crypto.asset === asset);
+    if (targetCrypto && targetCrypto.key !== activeCrypto) {
+      setActiveCrypto(targetCrypto.key);
+    }
+    setActiveTab("live");
+  };
+
+  useEffect(() => {
+    const paymentHash = searchParams.get("bet")?.trim().toLowerCase();
+    const asset = searchParams.get("asset");
+
+    if (!paymentHash || !/^[0-9a-f]{64}$/.test(paymentHash)) return;
+    if (asset !== "btc" && asset !== "eth" && asset !== "sol") return;
+
+    recoverCryptoBet(asset, paymentHash);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("bet");
+    next.delete("asset");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const handleCryptoSwitch = (key: CryptoKey) => {
     setActiveCrypto(key);
@@ -542,7 +588,7 @@ export function Home() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-0">
+    <div className="max-w-4xl mx-auto space-y-0">
 
       {/* Crypto asset chips */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
@@ -568,7 +614,7 @@ export function Home() {
         {([
           { key: "live",     label: "Markets" },
           { key: "guide",    label: "Guide" },
-          { key: "my-bets",  label: "My Bets" },
+          { key: "myBets",   label: "My Bets" },
           { key: "history",  label: "Results" },
         ] as { key: ContentTab; label: string }[]).map((t) => (
           <button
@@ -589,19 +635,45 @@ export function Home() {
           onDone={() => { setActiveTab("live"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
         />
       )}
-      {activeTab === "my-bets" && (() => {
-        const hashes = getBetHashesForAsset(def.asset);
-        if (hashes.length === 0) return (
-          <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
-            <Zap className="h-10 w-10" />
-            <p className="font-mono text-sm">No {def.label} bets yet</p>
-            <p className="font-mono text-xs text-center opacity-60">Bets you place on {def.label} will appear here.</p>
+      {activeTab === "myBets" && (
+        <div className="card-stack">
+          <div className="flex items-center justify-between gap-2 pb-1">
+            <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
+              {def.label} — My Bets
+            </p>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-background/70 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+              <Wallet className="h-3.5 w-3.5 text-emerald-400" />
+              {betHashes.length} saved
+            </span>
           </div>
-        );
-        return <MyBetsList hashes={hashes} onDismiss={(hash) => { removeBetHashForAsset(def.asset, hash); setActiveTab("my-bets"); }} />;
-      })()}
+
+          {betHashes.length === 0 ? (
+            <div className="rounded-xl border border-border/50 bg-background/60 p-6 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-border/50 bg-muted/40 text-muted-foreground">
+                <Wallet className="h-5 w-5 text-emerald-400" />
+              </div>
+              <p className="font-mono text-sm text-foreground">No saved {def.label} bets yet.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Bets placed in this browser for {def.label.toLowerCase()} will appear here automatically.
+              </p>
+            </div>
+          ) : (
+            <MyBetsList
+              hashes={betHashes}
+              onDismiss={(hash) => {
+                removeBetHashForAsset(def.asset, hash);
+                setBetListVersion((current) => current + 1);
+              }}
+            />
+          )}
+        </div>
+      )}
       {activeTab === "live" && (
-        <CryptoPrediction key={def.asset} def={def} onShowGuide={() => setActiveTab("guide")} />
+        <CryptoPrediction
+          key={def.asset}
+          def={def}
+          onShowGuide={() => setActiveTab("guide")}
+        />
       )}
       {activeTab === "history" && (
         <History asset={def.asset} />

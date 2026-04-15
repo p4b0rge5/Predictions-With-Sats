@@ -18,7 +18,9 @@
  */
 
 import { logger } from "./logger";
+import { reserveSportsRequests } from "./sports-request-budget";
 import type { SportEvent } from "./sports";
+import { getSportsDateWindowStrings } from "./sports-date-window";
 
 const API_MMA_BASE = "https://v1.mma.api-sports.io";
 const API_MMA_KEY  = process.env.API_FOOTBALL_KEY ?? "";
@@ -74,6 +76,11 @@ interface MmaApiResponse {
   errors:   Record<string, string> | unknown[];
   results:  number;
   response: MmaFight[];
+}
+
+function hasSupportedLeague(fight: MmaFight): boolean {
+  const leagueId = fight.league?.id;
+  return typeof leagueId === "number" && MMA_LEAGUE_IDS.has(leagueId);
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +152,18 @@ async function mmaFetch(path: string): Promise<MmaApiResponse> {
     logger.warn("API_FOOTBALL_KEY not set — skipping MMA API request");
     return { errors: [], results: 0, response: [] };
   }
+  const budget = await reserveSportsRequests("mma", 1);
+  if (!budget.allowed) {
+    logger.warn(
+      { provider: "mma", path, used: budget.used, remaining: budget.remaining },
+      "Sports provider daily request budget exhausted",
+    );
+    return {
+      errors: { budget: "Daily request budget exhausted" },
+      results: 0,
+      response: [],
+    };
+  }
   const url = `${API_MMA_BASE}${path}`;
   const res = await fetch(url, {
     headers: { "x-apisports-key": API_MMA_KEY, Accept: "application/json" },
@@ -160,20 +179,31 @@ function hasErrors(errors: MmaApiResponse["errors"]): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Cache (30-min TTL on success, 15-min retry on error)
+// Cache (1h TTL on success, 15-min retry on error)
 // ---------------------------------------------------------------------------
 
-const CACHE_TTL_MS              = 30 * 60 * 1000;   // 30 min
+const CACHE_TTL_MS              = 60 * 60 * 1000;   // 1 hour
 const CACHE_ERROR_TTL_MS        = 15 * 60 * 1000;
 const MAX_FIGHT_AGE_MS          = 7 * 60 * 60 * 1000; // MMA events run up to 7h with prelims
 const FORCE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
 
 const mmaCache: {
   upcoming:  SportEvent[];
+  live:      SportEvent[];
   finished:  SportEvent[];
   fetchedAt: number;
   suspended: boolean;
-} = { upcoming: [], finished: [], fetchedAt: 0, suspended: false };
+} = { upcoming: [], live: [], finished: [], fetchedAt: 0, suspended: false };
+let refreshPromise: Promise<{ upcoming: SportEvent[]; live: SportEvent[]; finished: SportEvent[]; suspended: boolean }> | null = null;
+
+function normalizeEventStatus(ev: SportEvent, now: number): SportEvent["status"] {
+  if (ev.status !== "upcoming") return ev.status;
+  const kickoff = new Date(ev.startsAt).getTime();
+  if (kickoff <= now && kickoff > now - MAX_FIGHT_AGE_MS) {
+    return "live";
+  }
+  return ev.status;
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -181,6 +211,7 @@ const mmaCache: {
 
 export async function getMmaEvents(forceRefresh = false): Promise<{
   upcoming:  SportEvent[];
+  live:      SportEvent[];
   finished:  SportEvent[];
   suspended: boolean;
 }> {
@@ -189,6 +220,7 @@ export async function getMmaEvents(forceRefresh = false): Promise<{
   if (!canForce && cacheAge < CACHE_TTL_MS) {
     return {
       upcoming:  mmaCache.upcoming,
+      live:      mmaCache.live,
       finished:  mmaCache.finished,
       suspended: mmaCache.suspended,
     };
@@ -197,70 +229,81 @@ export async function getMmaEvents(forceRefresh = false): Promise<{
     logger.info({ cacheAgeMin: Math.round(cacheAge / 60_000) }, "MMA cache force-refreshed for settlement");
   }
 
-  const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
-  const today     = toDateStr(new Date());
-  const tomorrow  = toDateStr(new Date(Date.now() + 86_400_000));
-  const yesterday = toDateStr(new Date(Date.now() - 86_400_000));
+  if (refreshPromise) {
+    return refreshPromise;
+  }
 
-  const [todayData, tomorrowData, yesterdayData] = await Promise.allSettled([
-    mmaFetch(`/fights?date=${today}`),
-    mmaFetch(`/fights?date=${tomorrow}`),
-    mmaFetch(`/fights?date=${yesterday}`),
-  ]);
+  refreshPromise = (async () => {
+    const dateWindow = getSportsDateWindowStrings();
+    const dateFetches = await Promise.allSettled(
+      dateWindow.map((date) => mmaFetch(`/fights?date=${date}`)),
+    );
 
-  const allFights: MmaFight[] = [];
-  let apiErrored = false;
+    const allFights: MmaFight[] = [];
+    let apiErrored = false;
 
-  for (const result of [todayData, tomorrowData, yesterdayData]) {
-    if (result.status === "fulfilled") {
-      if (hasErrors(result.value.errors)) {
-        logger.warn({ errors: result.value.errors }, "MMA API returned errors");
+    for (const result of dateFetches) {
+      if (result.status === "fulfilled") {
+        if (hasErrors(result.value.errors)) {
+          logger.warn({ errors: result.value.errors }, "MMA API returned errors");
+          apiErrored = true;
+        }
+        const mmaFights = (result.value.response ?? []).filter(hasSupportedLeague);
+        allFights.push(...mmaFights);
+      } else {
+        logger.warn({ err: result.reason }, "MMA API date fetch failed");
         apiErrored = true;
       }
-      const mmaFights = (result.value.response ?? []).filter(
-        (f) => MMA_LEAGUE_IDS.has(f.league.id),
-      );
-      allFights.push(...mmaFights);
-    } else {
-      logger.warn({ err: result.reason }, "MMA API date fetch failed");
-      apiErrored = true;
     }
+
+    if (apiErrored && allFights.length === 0) {
+      mmaCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
+      mmaCache.suspended = true;
+      logger.warn("MMA API error — serving stale cache, retrying in 15 min");
+      return { upcoming: mmaCache.upcoming, live: mmaCache.live, finished: mmaCache.finished, suspended: true };
+    }
+
+    const now    = Date.now();
+    const mapped = allFights
+      .map(mapFight)
+      .map((ev) => ({ ...ev, status: normalizeEventStatus(ev, now) }));
+
+    const upcoming = mapped
+      .filter((ev) => {
+        if (ev.status !== "upcoming") return false;
+        const start = new Date(ev.startsAt).getTime();
+        return start > now;
+      })
+      .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+
+    const live = mapped
+      .filter((ev) => ev.status === "live")
+      .sort((a, b) => b.startsAt.localeCompare(a.startsAt));
+
+    const finished = mapped
+      .filter((ev) => ev.status === "finished")
+      .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
+      .slice(0, 20);
+
+    mmaCache.upcoming  = upcoming;
+    mmaCache.live      = live;
+    mmaCache.finished  = finished;
+    mmaCache.fetchedAt = Date.now();
+    mmaCache.suspended = false;
+
+    logger.info(
+      { upcoming: upcoming.length, live: live.length, finished: finished.length, total: allFights.length },
+      "MMA fights refreshed",
+    );
+
+    return { upcoming: mmaCache.upcoming, live: mmaCache.live, finished: mmaCache.finished, suspended: false };
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
   }
-
-  if (apiErrored && allFights.length === 0) {
-    mmaCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
-    mmaCache.suspended = true;
-    logger.warn("MMA API error — serving stale cache, retrying in 15 min");
-    return { upcoming: mmaCache.upcoming, finished: mmaCache.finished, suspended: true };
-  }
-
-  const mapped = allFights.map(mapFight);
-  const now    = Date.now();
-
-  const upcoming = mapped
-    .filter((ev) => {
-      if (ev.status !== "upcoming") return false;
-      const start = new Date(ev.startsAt).getTime();
-      return start > now - MAX_FIGHT_AGE_MS;
-    })
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-
-  const finished = mapped
-    .filter((ev) => ev.status === "finished")
-    .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
-    .slice(0, 20);
-
-  mmaCache.upcoming  = upcoming;
-  mmaCache.finished  = finished;
-  mmaCache.fetchedAt = Date.now();
-  mmaCache.suspended = false;
-
-  logger.info(
-    { upcoming: upcoming.length, finished: finished.length, total: allFights.length },
-    "MMA fights refreshed",
-  );
-
-  return { upcoming: mmaCache.upcoming, finished: mmaCache.finished, suspended: false };
 }
 
 // ---------------------------------------------------------------------------

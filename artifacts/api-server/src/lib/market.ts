@@ -9,6 +9,7 @@ import { logger } from "./logger";
 
 const WINDOW_DURATION_MS = 5 * 60 * 1000;
 const PLATFORM_FEE = 0.02;
+const NO_LIQUIDITY_REFUND_FEE = 0.005;
 
 export const SUPPORTED_ASSETS: CryptoAsset[] = ["btc", "eth", "sol"];
 
@@ -105,14 +106,17 @@ async function settleWindow(windowId: number, asset: CryptoAsset): Promise<void>
   if (hasNoLiquidity) {
     outcome = "no_liquidity";
     for (const bet of paidBets) {
-      // Full refund — no platform fee when there is no counterpart to match the bet
-      const refundSats = bet.amountSats;
+      // Refund unmatched bets with the reduced refund fee charged at claim time.
+      const refundSats = Math.floor(bet.amountSats * (1 - NO_LIQUIDITY_REFUND_FEE));
       await db
         .update(betsTable)
         .set({ status: "won", payoutSats: refundSats, withdrawToken: randomUUID(), withdrawStatus: "unclaimed" })
         .where(eq(betsTable.id, bet.id));
     }
-    logger.info({ windowId, asset, refundedBets: paidBets.length }, "No-liquidity — full refund (no fee)");
+    logger.info(
+      { windowId, asset, refundedBets: paidBets.length, refundFeeRate: NO_LIQUIDITY_REFUND_FEE },
+      "No-liquidity — refund prepared with reduced fee",
+    );
   } else {
     if (closePrice > openPriceNum) outcome = "up";
     else if (closePrice < openPriceNum) outcome = "down";

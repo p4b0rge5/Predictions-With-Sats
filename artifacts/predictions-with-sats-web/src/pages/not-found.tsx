@@ -10,7 +10,7 @@ export default function NotFound() {
         <p className="text-muted-foreground text-sm">This window doesn't exist.</p>
       </div>
       <Button asChild variant="outline" className="font-mono uppercase tracking-wider">
-        <Link to="/">Back to Live</Link>
+        <Link to="/">Back to Home</Link>
       </Button>
     </div>
   );

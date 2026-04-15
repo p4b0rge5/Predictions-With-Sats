@@ -1,16 +1,24 @@
 import { useGetPlatformStats, getGetPlatformStatsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorState, LoadingState } from "@/components/query-state";
 import { Activity, Hash, Zap, TrendingUp } from "lucide-react";
 
 export function Stats() {
-  const { data: stats, isLoading } = useGetPlatformStats({ query: { refetchInterval: 60000, queryKey: getGetPlatformStatsQueryKey() } });
+  const { data: stats, isLoading, error, refetch } = useGetPlatformStats({ query: { refetchInterval: 60000, queryKey: getGetPlatformStatsQueryKey() } });
 
   if (isLoading || !stats) {
-    return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
+    if (error) {
+      return (
+        <ErrorState
+          title="FAILED TO LOAD PLATFORM STATS"
+          description={error instanceof Error ? error.message : "Unknown network error"}
+          onRetry={() => void refetch()}
+          cardClassName="border-red-400/20 bg-background/60"
+        />
+      );
+    }
+
+    return <LoadingState label="LOADING PLATFORM STATS..." />;
   }
 
   const formatSats = (sats: number) => new Intl.NumberFormat("en-US").format(sats);

@@ -12,7 +12,9 @@
  */
 
 import { logger } from "./logger";
+import { reserveSportsRequests } from "./sports-request-budget";
 import type { SportEvent } from "./sports";
+import { getSportsDateWindowStrings } from "./sports-date-window";
 
 const API_NBA_BASE = "https://v1.basketball.api-sports.io";
 const API_NBA_KEY  = process.env.API_FOOTBALL_KEY ?? "";
@@ -111,6 +113,18 @@ async function nbsFetch(path: string): Promise<BasketballApiResponse> {
     logger.warn("API_FOOTBALL_KEY not set — skipping Basketball API request");
     return { errors: [], results: 0, response: [] };
   }
+  const budget = await reserveSportsRequests("nba", 1);
+  if (!budget.allowed) {
+    logger.warn(
+      { provider: "nba", path, used: budget.used, remaining: budget.remaining },
+      "Sports provider daily request budget exhausted",
+    );
+    return {
+      errors: { budget: "Daily request budget exhausted" },
+      results: 0,
+      response: [],
+    };
+  }
   const url = `${API_NBA_BASE}${path}`;
   const res = await fetch(url, {
     headers: { "x-apisports-key": API_NBA_KEY, Accept: "application/json" },
@@ -134,12 +148,23 @@ const CACHE_ERROR_TTL_MS       = 15 * 60 * 1000;
 const MAX_GAME_AGE_MS          = 4 * 60 * 60 * 1000; // games ~3-3.5h with OT
 const FORCE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000;    // 10 minutes between force-refreshes
 
+function normalizeEventStatus(ev: SportEvent, now: number): SportEvent["status"] {
+  if (ev.status !== "upcoming") return ev.status;
+  const kickoff = new Date(ev.startsAt).getTime();
+  if (kickoff <= now && kickoff > now - MAX_GAME_AGE_MS) {
+    return "live";
+  }
+  return ev.status;
+}
+
 const nbaCache: {
   upcoming:  SportEvent[];
+  live:      SportEvent[];
   finished:  SportEvent[];
   fetchedAt: number;
   suspended: boolean;
-} = { upcoming: [], finished: [], fetchedAt: 0, suspended: false };
+} = { upcoming: [], live: [], finished: [], fetchedAt: 0, suspended: false };
+let refreshPromise: Promise<{ upcoming: SportEvent[]; live: SportEvent[]; finished: SportEvent[]; suspended: boolean }> | null = null;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -147,6 +172,7 @@ const nbaCache: {
 
 export async function getNbaEvents(forceRefresh = false): Promise<{
   upcoming:  SportEvent[];
+  live:      SportEvent[];
   finished:  SportEvent[];
   suspended: boolean;
 }> {
@@ -155,6 +181,7 @@ export async function getNbaEvents(forceRefresh = false): Promise<{
   if (!canForce && cacheAge < CACHE_TTL_MS) {
     return {
       upcoming:  nbaCache.upcoming,
+      live:      nbaCache.live,
       finished:  nbaCache.finished,
       suspended: nbaCache.suspended,
     };
@@ -163,75 +190,84 @@ export async function getNbaEvents(forceRefresh = false): Promise<{
     logger.info({ cacheAgeMin: Math.round(cacheAge / 60_000) }, "NBA cache force-refreshed for settlement");
   }
 
-  const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
-  const today     = toDateStr(new Date());
-  const tomorrow  = toDateStr(new Date(Date.now() + 86_400_000));
-  const yesterday = toDateStr(new Date(Date.now() - 86_400_000));
+  if (refreshPromise) {
+    return refreshPromise;
+  }
 
-  const NBA_LEAGUE_IDS = [NBA_LEAGUE_ID, NBA_PLAYOFFS_ID];
+  refreshPromise = (async () => {
+    const NBA_LEAGUE_IDS = [NBA_LEAGUE_ID, NBA_PLAYOFFS_ID];
+    const dateWindow = getSportsDateWindowStrings();
+    const dateFetches = await Promise.allSettled(
+      dateWindow.map((date) => nbsFetch(`/games?date=${date}`)),
+    );
 
-  // Fetch each date without league filter, then filter in code.
-  // The Basketball API accepts one league ID at a time; fetching all and filtering is simpler.
-  const [todayData, tomorrowData, yesterdayData] = await Promise.allSettled([
-    nbsFetch(`/games?date=${today}`),
-    nbsFetch(`/games?date=${tomorrow}`),
-    nbsFetch(`/games?date=${yesterday}`),
-  ]);
+    const allGames: BasketballGame[] = [];
+    let apiErrored = false;
 
-  const allGames: BasketballGame[] = [];
-  let apiErrored = false;
-
-  for (const result of [todayData, tomorrowData, yesterdayData]) {
-    if (result.status === "fulfilled") {
-      if (hasErrors(result.value.errors)) {
-        logger.warn({ errors: result.value.errors }, "Basketball API returned errors");
+    for (const result of dateFetches) {
+      if (result.status === "fulfilled") {
+        if (hasErrors(result.value.errors)) {
+          logger.warn({ errors: result.value.errors }, "Basketball API returned errors");
+          apiErrored = true;
+        }
+        const nbaGames = (result.value.response ?? []).filter(
+          (g) => typeof g.league?.id === "number" && NBA_LEAGUE_IDS.includes(g.league.id),
+        );
+        allGames.push(...nbaGames);
+      } else {
+        logger.warn({ err: result.reason }, "Basketball API date fetch failed");
         apiErrored = true;
       }
-      // Filter to NBA regular season and playoffs only
-      const nbaGames = (result.value.response ?? []).filter(
-        (g) => NBA_LEAGUE_IDS.includes(g.league.id),
-      );
-      allGames.push(...nbaGames);
-    } else {
-      logger.warn({ err: result.reason }, "Basketball API date fetch failed");
-      apiErrored = true;
     }
+
+    if (apiErrored && allGames.length === 0) {
+      nbaCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
+      nbaCache.suspended = true;
+      logger.warn("Basketball API error — serving stale cache, retrying in 15 min");
+      return { upcoming: nbaCache.upcoming, live: nbaCache.live, finished: nbaCache.finished, suspended: true };
+    }
+
+    const now    = Date.now();
+    const mapped = allGames
+      .map(mapGame)
+      .map((ev) => ({ ...ev, status: normalizeEventStatus(ev, now) }));
+
+    const upcoming = mapped
+      .filter((ev) => {
+        if (ev.status !== "upcoming") return false;
+        const tip = new Date(ev.startsAt).getTime();
+        return tip > now;
+      })
+      .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+
+    const live = mapped
+      .filter((ev) => ev.status === "live")
+      .sort((a, b) => b.startsAt.localeCompare(a.startsAt));
+
+    const finished = mapped
+      .filter((ev) => ev.status === "finished")
+      .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
+      .slice(0, 20);
+
+    nbaCache.upcoming  = upcoming;
+    nbaCache.live      = live;
+    nbaCache.finished  = finished;
+    nbaCache.fetchedAt = Date.now();
+    nbaCache.suspended = false;
+
+    logger.info(
+      { upcoming: upcoming.length, live: live.length, finished: finished.length, total: allGames.length },
+      "NBA/Basketball fixtures refreshed",
+    );
+
+    return { upcoming: nbaCache.upcoming, live: nbaCache.live, finished: nbaCache.finished, suspended: false };
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
   }
-
-  if (apiErrored && allGames.length === 0) {
-    nbaCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
-    nbaCache.suspended = true;
-    logger.warn("Basketball API error — serving stale cache, retrying in 15 min");
-    return { upcoming: nbaCache.upcoming, finished: nbaCache.finished, suspended: true };
-  }
-
-  const mapped = allGames.map(mapGame);
-  const now    = Date.now();
-
-  const upcoming = mapped
-    .filter((ev) => {
-      if (ev.status !== "upcoming") return false;
-      const tip = new Date(ev.startsAt).getTime();
-      return tip > now - MAX_GAME_AGE_MS;
-    })
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-
-  const finished = mapped
-    .filter((ev) => ev.status === "finished")
-    .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
-    .slice(0, 20);
-
-  nbaCache.upcoming  = upcoming;
-  nbaCache.finished  = finished;
-  nbaCache.fetchedAt = Date.now();
-  nbaCache.suspended = false;
-
-  logger.info(
-    { upcoming: upcoming.length, finished: finished.length, total: allGames.length },
-    "NBA/Basketball fixtures refreshed",
-  );
-
-  return { upcoming: nbaCache.upcoming, finished: nbaCache.finished, suspended: false };
 }
 
 // ---------------------------------------------------------------------------

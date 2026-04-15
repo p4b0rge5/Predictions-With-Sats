@@ -10,6 +10,7 @@ export const weatherBetsTable = pgTable("weather_bets", {
   id: serial("id").primaryKey(),
   marketId: integer("market_id").notNull(),
   direction: text("direction").notNull(),
+  outcomeLabel: text("outcome_label"),
   amountSats: integer("amount_sats").notNull(),
   paymentHash: text("payment_hash").notNull().unique(),
   paymentRequest: text("payment_request").notNull(),

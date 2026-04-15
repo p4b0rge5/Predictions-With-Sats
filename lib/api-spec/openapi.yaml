@@ -3,7 +3,7 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: Lightning Bet API specification
+  description: Predictions With Sats API specification
 servers:
   - url: /api
     description: Base API path
@@ -221,9 +221,14 @@ components:
           type: string
           enum: [up, down]
           description: Bet direction
+        asset:
+          type: string
+          enum: [btc, eth, sol]
+          description: Which crypto market to bet on
       required:
         - amountUsd
         - direction
+        - asset
 
     BetResponse:
       type: object
@@ -279,6 +284,16 @@ components:
         paidAt:
           type: ["string", "null"]
           format: date-time
+        withdrawToken:
+          type: ["string", "null"]
+          description: LNURL-Withdraw token, present when status="won"
+        withdrawStatus:
+          type: ["string", "null"]
+          description: unclaimed | claimed
+        withdrawLnurl:
+          type: ["string", "null"]
+        windowOutcome:
+          type: ["string", "null"]
       required:
         - id
         - paymentHash
