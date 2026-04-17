@@ -1,0 +1,375 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Predictions With Sats API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: market
+    description: Market window operations
+  - name: bet
+    description: Bet placement and status
+  - name: stats
+    description: Platform statistics
+  - name: webhook
+    description: Payment webhook handlers
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /market/current:
+    get:
+      operationId: getCurrentMarket
+      tags: [market]
+      summary: Get current market window
+      description: Returns the active betting window with current BTC price and countdown
+      responses:
+        "200":
+          description: Current market data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentMarket"
+
+  /market/history:
+    get:
+      operationId: getMarketHistory
+      tags: [market]
+      summary: Get recent market history
+      description: Returns the last settled market windows with outcomes
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: List of settled windows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SettledWindow"
+
+  /bet:
+    post:
+      operationId: createBet
+      tags: [bet]
+      summary: Place a bet
+      description: Creates a bet and returns a Lightning invoice for payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBetBody"
+      responses:
+        "201":
+          description: Bet created with Lightning invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BetResponse"
+        "400":
+          description: Invalid request or window closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /bet/{paymentHash}:
+    get:
+      operationId: getBetStatus
+      tags: [bet]
+      summary: Get bet status
+      description: Returns the current status of a bet by its payment hash
+      parameters:
+        - name: paymentHash
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bet status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BetStatus"
+        "404":
+          description: Bet not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /webhook/alby:
+    post:
+      operationId: albyWebhook
+      tags: [webhook]
+      summary: Alby payment webhook
+      description: Receives payment confirmation from Alby
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookResponse"
+        "400":
+          description: Invalid webhook signature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /stats:
+    get:
+      operationId: getPlatformStats
+      tags: [stats]
+      summary: Get platform statistics
+      description: Returns aggregate stats for the platform
+      responses:
+        "200":
+          description: Platform statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformStats"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    CurrentMarket:
+      type: object
+      properties:
+        windowId:
+          type: ["integer", "null"]
+        status:
+          type: string
+          description: "open, closed, or none"
+        btcPriceUsd:
+          type: number
+          description: Current BTC price in USD
+        openPrice:
+          type: ["number", "null"]
+          description: BTC price when window opened
+        secondsRemaining:
+          type: integer
+          description: Seconds until window closes
+        totalUpSats:
+          type: integer
+          description: Total sats bet on UP
+        totalDownSats:
+          type: integer
+          description: Total sats bet on DOWN
+        closesAt:
+          type: ["string", "null"]
+          format: date-time
+      required:
+        - windowId
+        - status
+        - btcPriceUsd
+        - openPrice
+        - secondsRemaining
+        - totalUpSats
+        - totalDownSats
+        - closesAt
+
+    CreateBetBody:
+      type: object
+      properties:
+        amountUsd:
+          type: number
+          description: Bet amount in USD (converted to sats by server)
+          minimum: 0.5
+        direction:
+          type: string
+          enum: [up, down]
+          description: Bet direction
+        asset:
+          type: string
+          enum: [btc, eth, sol]
+          description: Which crypto market to bet on
+      required:
+        - amountUsd
+        - direction
+        - asset
+
+    BetResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        paymentHash:
+          type: string
+        paymentRequest:
+          type: string
+          description: BOLT11 Lightning invoice
+        amountSats:
+          type: integer
+        direction:
+          type: string
+          enum: [up, down]
+        expiresAt:
+          type: string
+          format: date-time
+        windowId:
+          type: integer
+      required:
+        - id
+        - paymentHash
+        - paymentRequest
+        - amountSats
+        - direction
+        - expiresAt
+        - windowId
+
+    BetStatus:
+      type: object
+      properties:
+        id:
+          type: integer
+        paymentHash:
+          type: string
+        direction:
+          type: string
+          enum: [up, down]
+        amountSats:
+          type: integer
+        status:
+          type: string
+          description: "pending, paid, won, lost, expired"
+        payoutSats:
+          type: ["integer", "null"]
+        windowId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        paidAt:
+          type: ["string", "null"]
+          format: date-time
+        withdrawToken:
+          type: ["string", "null"]
+          description: LNURL-Withdraw token, present when status="won"
+        withdrawStatus:
+          type: ["string", "null"]
+          description: unclaimed | claimed
+        withdrawLnurl:
+          type: ["string", "null"]
+        windowOutcome:
+          type: ["string", "null"]
+      required:
+        - id
+        - paymentHash
+        - direction
+        - amountSats
+        - status
+        - payoutSats
+        - windowId
+        - createdAt
+        - paidAt
+
+    SettledWindow:
+      type: object
+      properties:
+        id:
+          type: integer
+        outcome:
+          type: ["string", "null"]
+          description: "up, down, or draw"
+        openPrice:
+          type: ["number", "null"]
+        closePrice:
+          type: ["number", "null"]
+        priceChangePercent:
+          type: ["number", "null"]
+        totalUpSats:
+          type: integer
+        totalDownSats:
+          type: integer
+        openedAt:
+          type: string
+          format: date-time
+        settledAt:
+          type: ["string", "null"]
+          format: date-time
+      required:
+        - id
+        - outcome
+        - openPrice
+        - closePrice
+        - priceChangePercent
+        - totalUpSats
+        - totalDownSats
+        - openedAt
+        - settledAt
+
+    PlatformStats:
+      type: object
+      properties:
+        totalBets:
+          type: integer
+        totalVolumeSats:
+          type: integer
+        totalWindowsSettled:
+          type: integer
+        upWinRate:
+          type: number
+          description: Fraction of settled windows where UP won (0-1)
+      required:
+        - totalBets
+        - totalVolumeSats
+        - totalWindowsSettled
+        - upWinRate
+
+    WebhookResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required:
+        - ok
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
