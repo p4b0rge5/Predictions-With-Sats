@@ -1,8 +1,0 @@
-uploads = []
-generated = []
-
-[[outputs]]
-id = "2QpJHYadid5Ho-dQfGVlT"
-uri = "file://docs/vps-deployment-guide.md"
-type = "text"
-title = "Guia de Deploy — VPS Produção"
