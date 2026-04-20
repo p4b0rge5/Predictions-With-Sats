@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueries } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   AlertCircle,
@@ -1118,6 +1118,63 @@ export function SportsPolyBetStatusCard({ hash, onDismiss }: { hash: string; onD
   );
 }
 
+function SeparatedSportsPolyBetList({ hashes, onDismiss }: { hashes: string[]; onDismiss: (hash: string) => void }) {
+  const statusQueries = useQueries({
+    queries: hashes.map((hash) => ({
+      queryKey: [`/api/sports-poly/bets/${hash}`],
+      queryFn: async () => {
+        const r = await fetch(`${API_BASE}/api/sports-poly/bets/${hash}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<SportsPolyBetRecord>;
+      },
+      staleTime: 20_000,
+    })),
+  });
+
+  const open: string[] = [];
+  const closed: string[] = [];
+  hashes.forEach((hash, i) => {
+    const d = statusQueries[i]?.data;
+    const isOpen =
+      !d?.status ||
+      d.status === "pending" ||
+      d.status === "paid" ||
+      (d.status === "won" && d.withdrawStatus === "unclaimed");
+    if (isOpen) open.push(hash);
+    else closed.push(hash);
+  });
+
+  const showSections = open.length > 0 && closed.length > 0;
+
+  const renderCards = (group: string[]) =>
+    group.map((hash) => (
+      <SportsPolyBetStatusCard key={hash} hash={hash} onDismiss={() => onDismiss(hash)} />
+    ));
+
+  return (
+    <div className="card-stack">
+      {showSections ? (
+        <>
+          <div className="space-y-3">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <Clock className="h-3 w-3" /> Open ({open.length})
+            </p>
+            {renderCards(open)}
+          </div>
+          <div className="space-y-3">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <CheckCircle2 className="h-3 w-3" /> Closed ({closed.length})
+            </p>
+            {renderCards(closed)}
+          </div>
+        </>
+      ) : (
+        renderCards(hashes)
+      )}
+    </div>
+  );
+}
+
 export function SportsPoly() {
   const [activeTab, setActiveTab] = useState<ContentTab>("markets");
   const [activeCategory, setActiveCategory] = useState<SportsPolyCategoryKey>("soccer");
@@ -1215,23 +1272,19 @@ export function SportsPoly() {
               </p>
             </div>
           ) : (
-            <div className="card-stack">
-              {sportsPolyBetHashes.map((hash) => (
-                <SportsPolyBetStatusCard
-                  key={hash}
-                  hash={hash}
-                  onDismiss={() => {
-                    removeSportsPolyBetHash(hash);
-                    setBetListVersion((current) => current + 1);
-                  }}
-                />
-              ))}
-            </div>
+            <SeparatedSportsPolyBetList
+              hashes={sportsPolyBetHashes}
+              onDismiss={(hash) => {
+                removeSportsPolyBetHash(hash);
+                setBetListVersion((current) => current + 1);
+              }}
+            />
           )}
         </div>
       )}
 
       {activeTab === "markets" && (
+        <>
         <div className="card-stack">
           <div className="flex items-center justify-between gap-2 pb-1">
             <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
@@ -1292,6 +1345,13 @@ export function SportsPoly() {
             ))
           )}
         </div>
+        <button
+          onClick={() => setActiveTab("guide")}
+          className="w-full text-center text-[11px] text-muted-foreground/60 hover:text-muted-foreground font-mono py-1 transition-colors"
+        >
+          New here? Read the guide →
+        </button>
+        </>
       )}
 
       {activeTab === "results" && (

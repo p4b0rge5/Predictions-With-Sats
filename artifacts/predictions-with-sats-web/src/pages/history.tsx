@@ -3,7 +3,7 @@ import { ErrorState, LoadingState } from "@/components/query-state";
 import { format } from "date-fns";
 import { ArrowUpRight, ArrowDownRight, Minus, Clock } from "lucide-react";
 
-type AssetParam = "btc" | "eth" | "sol";
+type AssetParam = "btc" | "eth" | "sol" | "xrp" | "bnb";
 
 interface HistoryItem {
   id: number;
@@ -32,18 +32,20 @@ const ASSET_CARD_TINT: Record<AssetParam, string> = {
   btc: "surface-tint-orange",
   eth: "surface-tint-indigo",
   sol: "surface-tint-purple",
+  xrp: "surface-tint-blue",
+  bnb: "surface-tint-yellow",
 };
 
 const API_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
-async function fetchHistory(asset: AssetParam): Promise<HistoryItem[]> {
-  const res = await fetch(`${API_BASE}/api/market/history?limit=50&asset=${asset}`);
+async function fetchHistory(asset: AssetParam, intervalMins: number): Promise<HistoryItem[]> {
+  const res = await fetch(`${API_BASE}/api/market/history?limit=50&asset=${asset}&interval=${intervalMins}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<HistoryItem[]>;
 }
 
-async function fetchCurrentMarket(asset: AssetParam): Promise<CurrentMarketItem> {
-  const res = await fetch(`${API_BASE}/api/market/current?asset=${asset}`);
+async function fetchCurrentMarket(asset: AssetParam, intervalMins: number): Promise<CurrentMarketItem> {
+  const res = await fetch(`${API_BASE}/api/market/current?asset=${asset}&interval=${intervalMins}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<CurrentMarketItem>;
 }
@@ -51,9 +53,11 @@ async function fetchCurrentMarket(asset: AssetParam): Promise<CurrentMarketItem>
 function HistoryCard({
   item,
   cardTint,
+  intervalMins,
 }: {
   item: HistoryItem;
   cardTint: string;
+  intervalMins: number;
 }) {
   const formatUsd = (n: number) =>
     n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -124,7 +128,7 @@ function HistoryCard({
       <div className="card-row-between-wrap">
         <div className="flex min-w-0 flex-col">
           <span className="text-xs text-muted-foreground">
-            {format(new Date(item.openedAt), "MMM d, HH:mm")}–{format(new Date(new Date(item.openedAt).getTime() + 5 * 60 * 1000), "HH:mm")}
+            {format(new Date(item.openedAt), "MMM d, HH:mm")}–{format(new Date(new Date(item.openedAt).getTime() + intervalMins * 60 * 1000), "HH:mm")}
           </span>
           <span className="text-[10px] text-muted-foreground/50 font-mono">Window #{item.id}</span>
         </div>
@@ -158,11 +162,11 @@ function HistoryCard({
   );
 }
 
-function PendingHistoryCard({ item, cardTint }: { item: CurrentMarketItem; cardTint: string }) {
+function PendingHistoryCard({ item, cardTint, intervalMins }: { item: CurrentMarketItem; cardTint: string; intervalMins: number }) {
   const formatUsd = (n: number) =>
     n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const formatSats = (sats: number) => new Intl.NumberFormat("en-US").format(sats);
-  const openedAt = item.closesAt ? new Date(new Date(item.closesAt).getTime() - 5 * 60 * 1000) : null;
+  const openedAt = item.closesAt ? new Date(new Date(item.closesAt).getTime() - intervalMins * 60 * 1000) : null;
   const totalSats = item.totalUpSats + item.totalDownSats;
 
   return (
@@ -203,15 +207,15 @@ function PendingHistoryCard({ item, cardTint }: { item: CurrentMarketItem; cardT
   );
 }
 
-export function History({ asset = "btc" }: { asset?: AssetParam }) {
+export function History({ asset = "btc", intervalMins = 5 }: { asset?: AssetParam; intervalMins?: 5 | 15 | 30 }) {
   const { data: history, isLoading, error, refetch } = useQuery<HistoryItem[]>({
-    queryKey: ["/api/market/history", asset],
-    queryFn: () => fetchHistory(asset),
+    queryKey: ["/api/market/history", asset, intervalMins],
+    queryFn: () => fetchHistory(asset, intervalMins),
     refetchInterval: 15000,
   });
   const { data: currentMarket } = useQuery<CurrentMarketItem>({
-    queryKey: ["/api/market/current", asset, "history-results"],
-    queryFn: () => fetchCurrentMarket(asset),
+    queryKey: ["/api/market/current", asset, intervalMins, "history-results"],
+    queryFn: () => fetchCurrentMarket(asset, intervalMins),
     refetchInterval: 3000,
     retry: 1,
   });
@@ -251,9 +255,9 @@ export function History({ asset = "btc" }: { asset?: AssetParam }) {
         </div>
       ) : (
         <div className="card-grid-2">
-          {pendingCurrentWindow && <PendingHistoryCard item={pendingCurrentWindow} cardTint={cardTint} />}
+          {pendingCurrentWindow && <PendingHistoryCard item={pendingCurrentWindow} cardTint={cardTint} intervalMins={intervalMins} />}
           {history!.map((item) => (
-            <HistoryCard key={item.id} item={item} cardTint={cardTint} />
+            <HistoryCard key={item.id} item={item} cardTint={cardTint} intervalMins={intervalMins} />
           ))}
         </div>
       )}

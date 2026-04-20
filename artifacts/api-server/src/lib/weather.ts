@@ -129,9 +129,9 @@ export async function getOrSyncWeatherMarkets(force = false): Promise<void> {
 }
 
 export async function listWeatherMarkets(): Promise<(typeof weatherMarketsTable.$inferSelect)[]> {
-  await getOrSyncWeatherMarkets();
+  getOrSyncWeatherMarkets().catch((err) => logger.warn({ err }, "Background weather sync failed"));
 
-  const historyStart = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
+  const historyStart = new Date(Date.now() - 45 * 86_400_000).toISOString().slice(0, 10);
   const markets = await db
     .select()
     .from(weatherMarketsTable)

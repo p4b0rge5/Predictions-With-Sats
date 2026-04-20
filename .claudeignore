@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.pnpm-home/
+
+# Lock files
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+build/
+out-tsc/
+*.tsbuildinfo
+
+# Runtime & logs
+.runtime/
+*.log
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Caches & temp
+.cache/
+.gamma_cache/
+tmp/
+
+# Replit artifacts
+.replit-artifact/
+.replit
+.replitignore
+replit.md
+
+# IDE & editor
+.vscode/
+.idea/
+.cursor/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Assets & images (non-essential for code context)
+attached_assets/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.webp
+
+# Agent & local tooling metadata
+.agents/
+.local/
+.xdg/
+.codex

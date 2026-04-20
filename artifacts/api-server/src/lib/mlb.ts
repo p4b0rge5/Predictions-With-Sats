@@ -1,17 +1,17 @@
 /**
- * MLB data — powered by api-sports.io Baseball API
+ * Baseball data — powered by api-sports.io Baseball API
  *
  * Base URL: https://v1.baseball.api-sports.io
  * Same API key as Football/Basketball/American Football APIs (x-apisports-key header).
  *
- * MLB has NO draws — extra innings are played until a winner is decided.
+ * Baseball has NO draws — extra innings are played until a winner is decided.
  * Event IDs are prefixed with "mlb_" to avoid collisions.
+ * Covers all leagues returned by the API (MLB, LMB, etc.).
  *
  * Free plan: 100 req/day (separate quota from other api-sports.io APIs).
- * Request budget: today + tomorrow + yesterday = 3 req per refresh (1h TTL → ~72/day).
+ * Request budget: date-only queries → ~8 req/day with 3h TTL, well under cap.
  *
- * Off-season guard: December–February → no regular-season games scheduled.
- * MLB season: Opening Day (late March/April) through World Series (October/November).
+ * Off-season guard: December–February → no games scheduled globally.
  */
 
 import { logger } from "./logger";
@@ -22,8 +22,7 @@ import { getSportsDateWindowStrings } from "./sports-date-window";
 const API_MLB_BASE = "https://v1.baseball.api-sports.io";
 const API_MLB_KEY  = process.env.API_FOOTBALL_KEY ?? "";
 
-const MLB_LEAGUE_ID   = 1; // MLB Regular Season
-const MLB_PLAYOFFS_ID = 2; // MLB Playoffs (ALCS/NLCS/World Series)
+const MLB_PLAYOFFS_ID = 2; // MLB Playoffs (ALCS/NLCS/World Series) — used for display label only
 
 // ---------------------------------------------------------------------------
 // Types — Baseball API response format
@@ -94,10 +93,10 @@ function parseMlbOutcome(
 }
 
 function mapGame(g: BaseballGame): SportEvent {
-  const homeScore = g.scores.home.total;
-  const awayScore = g.scores.away.total;
-  const status    = parseMlbStatus(g.status.short);
-  const leagueName = g.league.id === MLB_PLAYOFFS_ID ? "MLB Playoffs" : "MLB";
+  const homeScore  = g.scores.home.total;
+  const awayScore  = g.scores.away.total;
+  const status     = parseMlbStatus(g.status.short);
+  const leagueName = g.league.id === MLB_PLAYOFFS_ID ? "MLB Playoffs" : g.league.name;
   return {
     id:         `mlb_${g.id}`,
     event:      `${g.teams.home.name} vs ${g.teams.away.name}`,
@@ -106,9 +105,10 @@ function mapGame(g: BaseballGame): SportEvent {
     homeBadge:  g.teams.home.logo || null,
     awayBadge:  g.teams.away.logo || null,
     leagueLogo: g.league.logo || null,
+    leagueId:   g.league.id,
     league:     leagueName,
     sport:      "Baseball",
-    country:    "USA",
+    country:    g.country.name,
     startsAt:   g.date,
     status,
     homeScore,
@@ -175,10 +175,10 @@ function currentMlbSeason(): number {
 }
 
 // ---------------------------------------------------------------------------
-// Cache (1h TTL on success, 15-min retry on error)
+// Cache (3h TTL on success, 15-min retry on error)
 // ---------------------------------------------------------------------------
 
-const CACHE_TTL_MS             = 60 * 60 * 1000;    // 1 hour
+const CACHE_TTL_MS             = 3 * 60 * 60 * 1000; // 3 hours — keeps daily requests at ~64 (under 100/day budget)
 const CACHE_ERROR_TTL_MS       = 15 * 60 * 1000;
 const MAX_GAME_AGE_MS          = 5 * 60 * 60 * 1000; // MLB games can run 4-5h with extras
 const FORCE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
@@ -234,12 +234,11 @@ export async function getMlbEvents(forceRefresh = false): Promise<{
   }
 
   refreshPromise = (async () => {
-    const season    = currentMlbSeason();
+    const season = currentMlbSeason();
 
-    const MLB_LEAGUE_IDS = [MLB_LEAGUE_ID, MLB_PLAYOFFS_ID];
     const dateWindow = getSportsDateWindowStrings();
     const dateFetches = await Promise.allSettled(
-      dateWindow.map((date) => mlbFetch(`/games?date=${date}&league=${MLB_LEAGUE_ID}&season=${season}`)),
+      dateWindow.map((date) => mlbFetch(`/games?date=${date}`)),
     );
 
     const allGames: BaseballGame[] = [];
@@ -251,10 +250,7 @@ export async function getMlbEvents(forceRefresh = false): Promise<{
           logger.warn({ errors: result.value.errors }, "Baseball API returned errors");
           apiErrored = true;
         }
-        const mlbGames = (result.value.response ?? []).filter(
-          (g) => typeof g.league?.id === "number" && MLB_LEAGUE_IDS.includes(g.league.id),
-        );
-        allGames.push(...mlbGames);
+        allGames.push(...(result.value.response ?? []));
       } else {
         logger.warn({ err: result.reason }, "Baseball API date fetch failed");
         apiErrored = true;
@@ -263,9 +259,12 @@ export async function getMlbEvents(forceRefresh = false): Promise<{
 
     if (apiErrored && allGames.length === 0) {
       mlbCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
-      mlbCache.suspended = true;
-      logger.warn("Baseball API error — serving stale cache, retrying in 15 min");
-      return { upcoming: mlbCache.upcoming, live: mlbCache.live, finished: mlbCache.finished, suspended: true };
+      const hasStale = mlbCache.upcoming.length > 0 || mlbCache.live.length > 0 || mlbCache.finished.length > 0;
+      mlbCache.suspended = !hasStale;
+      logger.warn({ hasStale }, hasStale
+        ? "Baseball API error — serving stale cache without suspension"
+        : "Baseball API error — no stale data available, suspending");
+      return { upcoming: mlbCache.upcoming, live: mlbCache.live, finished: mlbCache.finished, suspended: mlbCache.suspended };
     }
 
     const now    = Date.now();
@@ -303,12 +302,13 @@ export async function getMlbEvents(forceRefresh = false): Promise<{
 
     return { upcoming: mlbCache.upcoming, live: mlbCache.live, finished: mlbCache.finished, suspended: false };
   })();
+  refreshPromise.catch(() => {}).finally(() => { refreshPromise = null; });
 
-  try {
-    return await refreshPromise;
-  } finally {
-    refreshPromise = null;
+  if (!canForce && mlbCache.fetchedAt > 0) {
+    return { upcoming: mlbCache.upcoming, live: mlbCache.live, finished: mlbCache.finished, suspended: mlbCache.suspended };
   }
+
+  return refreshPromise;
 }
 
 // ---------------------------------------------------------------------------

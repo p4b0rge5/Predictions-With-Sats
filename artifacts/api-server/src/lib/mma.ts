@@ -8,9 +8,9 @@
  * the market remains unsettled and is handled manually.
  * Event IDs are prefixed with "mma_" to avoid collision with other sport IDs.
  *
- * Free plan: 100 req/day (separate quota from other api-sports.io APIs).
- * Request budget: today + tomorrow + yesterday = 3 req per refresh (30-min TTL → ~144/day →
- *   cap at 30-min TTL to stay under 100 req/day: 3 req/refresh × 33 refreshes = 99 req/day max).
+ * Free plan: 100 req/day (separate quota from other api-sports.io APIs), allows only yesterday
+ * + today + tomorrow.
+ * Request budget: 3-day window → 3 req per refresh (3h TTL → 8 refreshes/day → ~24 req/day).
  *
  * No off-season guard: MMA events (UFC, Bellator, ONE Championship, PFL) run year-round.
  *
@@ -20,7 +20,18 @@
 import { logger } from "./logger";
 import { reserveSportsRequests } from "./sports-request-budget";
 import type { SportEvent } from "./sports";
-import { getSportsDateWindowStrings } from "./sports-date-window";
+
+// Free plan only allows yesterday + today + tomorrow (3 days).
+// Using 8 days wastes quota and causes plan errors for 5 of the 8 dates.
+function getMmaDateWindowStrings(nowMs = Date.now()): string[] {
+  const base = new Date(nowMs);
+  base.setUTCHours(0, 0, 0, 0);
+  return [-1, 0, 1].map((offset) => {
+    const d = new Date(base);
+    d.setUTCDate(base.getUTCDate() + offset);
+    return d.toISOString().slice(0, 10);
+  });
+}
 
 const API_MMA_BASE = "https://v1.mma.api-sports.io";
 const API_MMA_KEY  = process.env.API_FOOTBALL_KEY ?? "";
@@ -36,19 +47,30 @@ const MMA_LEAGUE_IDS  = new Set([MMA_UFC_ID, MMA_BELLATOR_ID, MMA_ONE_ID, MMA_PF
 // Types — MMA API response format
 // ---------------------------------------------------------------------------
 
+interface MmaFighter {
+  id: number;
+  name: string;
+  logo: string;
+  winner: boolean;
+}
+
 interface MmaFight {
   id: number;
   date: string;        // "2024-03-09T23:00:00+00:00"
   time: string;
   timestamp: number;
   timezone: string;
-  season: number;
+  slug?: string;       // "UFC Fight Night: Burns vs. Malott"
+  is_main?: boolean;
+  category?: string;   // "Lightweight", "Welterweight", etc.
+  season?: number;
   status: {
     short:  string;    // "NS","FT","LIVE","CANC","POST","SUSP"
     long:   string;
-    timer:  string | null;
+    timer?: string | null;
   };
-  league: {
+  // New API format uses first/second; old format used home/away inside a league wrapper
+  league?: {
     id:     number;
     name:   string;
     season: number;
@@ -56,8 +78,12 @@ interface MmaFight {
     country?: { name: string; code: string; flag: string };
   };
   fighters: {
-    home: { id: number; name: string; logo: string };
-    away: { id: number; name: string; logo: string };
+    // New API format
+    first?:  MmaFighter;
+    second?: MmaFighter;
+    // Legacy API format
+    home?: { id: number; name: string; logo: string };
+    away?: { id: number; name: string; logo: string };
   };
   scores?: {
     home?: { total: number | null };
@@ -78,8 +104,25 @@ interface MmaApiResponse {
   response: MmaFight[];
 }
 
+// Major promotion slugs (substring match) for when league field is absent.
+// Order matters: longer names first to avoid "ONE" matching before "ONE Championship".
+const MMA_SLUG_KEYWORDS = ["ONE Championship", "UFC Fight Night", "UFC", "Bellator", "PFL"];
+
+// Extracts the promotion label from a slug like "UFC Fight Night: Burns vs. Malott" → "UFC Fight Night"
+function promotionFromSlug(slug: string): string {
+  for (const kw of MMA_SLUG_KEYWORDS) {
+    if (slug.includes(kw)) return kw;
+  }
+  return slug.split(":")[0]?.trim() ?? slug;
+}
+
 function hasSupportedLeague(fight: MmaFight): boolean {
-  const leagueId = fight.league?.id;
+  // New API format: no league field, use slug to identify supported promotions
+  if (!fight.league) {
+    const slug = fight.slug ?? "";
+    return MMA_SLUG_KEYWORDS.some((kw) => slug.includes(kw));
+  }
+  const leagueId = fight.league.id;
   return typeof leagueId === "number" && MMA_LEAGUE_IDS.has(leagueId);
 }
 
@@ -101,11 +144,16 @@ function parseMmaOutcome(fight: MmaFight): SportEvent["outcome"] {
   // Prefer explicit result.winner from API
   if (fight.result?.winner === "home") return "home";
   if (fight.result?.winner === "away") return "away";
-  // Fallback to winner object
+  // Fallback to winner object — support both first/second and home/away layouts
   if (fight.winner) {
-    if (fight.winner.id === fight.fighters.home.id) return "home";
-    if (fight.winner.id === fight.fighters.away.id) return "away";
+    const homeId = (fight.fighters.first ?? fight.fighters.home)?.id;
+    const awayId = (fight.fighters.second ?? fight.fighters.away)?.id;
+    if (fight.winner.id === homeId) return "home";
+    if (fight.winner.id === awayId) return "away";
   }
+  // Fallback: check fighters[].winner flag (new API format)
+  if (fight.fighters.first?.winner === true) return "home";
+  if (fight.fighters.second?.winner === true) return "away";
   // Fallback to scores
   const h = fight.scores?.home?.total ?? null;
   const a = fight.scores?.away?.total ?? null;
@@ -120,20 +168,25 @@ function mapFight(f: MmaFight): SportEvent {
   const status = parseMmaStatus(f.status.short);
   const h = f.scores?.home?.total ?? null;
   const a = f.scores?.away?.total ?? null;
-  const leagueName = f.league.name ?? "MMA";
-  // Build a descriptive event name: "Jon Jones vs Stipe Miocic"
-  const event = `${f.fighters.home.name} vs ${f.fighters.away.name}`;
+
+  // Support both new API format (first/second) and legacy format (home/away)
+  const homeFighter = f.fighters.first ?? f.fighters.home;
+  const awayFighter = f.fighters.second ?? f.fighters.away;
+
+  const leagueName = f.league?.name ?? (f.slug ? promotionFromSlug(f.slug) : "MMA");
+  const event = `${homeFighter?.name ?? "?"} vs ${awayFighter?.name ?? "?"}`;
+
   return {
     id:         `mma_${f.id}`,
     event,
-    homeTeam:   f.fighters.home.name,
-    awayTeam:   f.fighters.away.name,
-    homeBadge:  f.fighters.home.logo || null,
-    awayBadge:  f.fighters.away.logo || null,
-    leagueLogo: f.league.logo || null,
+    homeTeam:   homeFighter?.name ?? "TBD",
+    awayTeam:   awayFighter?.name ?? "TBD",
+    homeBadge:  homeFighter?.logo || null,
+    awayBadge:  awayFighter?.logo || null,
+    leagueLogo: f.league?.logo || null,
     league:     leagueName,
     sport:      "MMA",
-    country:    f.league.country?.name ?? "USA",
+    country:    f.league?.country?.name ?? "USA",
     startsAt:   f.date,
     status,
     homeScore:  h,
@@ -179,10 +232,10 @@ function hasErrors(errors: MmaApiResponse["errors"]): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Cache (1h TTL on success, 15-min retry on error)
+// Cache (3h TTL on success, 15-min retry on error)
 // ---------------------------------------------------------------------------
 
-const CACHE_TTL_MS              = 60 * 60 * 1000;   // 1 hour
+const CACHE_TTL_MS              = 3 * 60 * 60 * 1000; // 3 hours — keeps daily requests at ~64 (under 100/day budget)
 const CACHE_ERROR_TTL_MS        = 15 * 60 * 1000;
 const MAX_FIGHT_AGE_MS          = 7 * 60 * 60 * 1000; // MMA events run up to 7h with prelims
 const FORCE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
@@ -234,7 +287,7 @@ export async function getMmaEvents(forceRefresh = false): Promise<{
   }
 
   refreshPromise = (async () => {
-    const dateWindow = getSportsDateWindowStrings();
+    const dateWindow = getMmaDateWindowStrings();
     const dateFetches = await Promise.allSettled(
       dateWindow.map((date) => mmaFetch(`/fights?date=${date}`)),
     );
@@ -258,9 +311,12 @@ export async function getMmaEvents(forceRefresh = false): Promise<{
 
     if (apiErrored && allFights.length === 0) {
       mmaCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
-      mmaCache.suspended = true;
-      logger.warn("MMA API error — serving stale cache, retrying in 15 min");
-      return { upcoming: mmaCache.upcoming, live: mmaCache.live, finished: mmaCache.finished, suspended: true };
+      const hasStale = mmaCache.upcoming.length > 0 || mmaCache.live.length > 0 || mmaCache.finished.length > 0;
+      mmaCache.suspended = !hasStale;
+      logger.warn({ hasStale }, hasStale
+        ? "MMA API error — serving stale cache without suspension"
+        : "MMA API error — no stale data available, suspending");
+      return { upcoming: mmaCache.upcoming, live: mmaCache.live, finished: mmaCache.finished, suspended: mmaCache.suspended };
     }
 
     const now    = Date.now();
@@ -298,12 +354,13 @@ export async function getMmaEvents(forceRefresh = false): Promise<{
 
     return { upcoming: mmaCache.upcoming, live: mmaCache.live, finished: mmaCache.finished, suspended: false };
   })();
+  refreshPromise.catch(() => {}).finally(() => { refreshPromise = null; });
 
-  try {
-    return await refreshPromise;
-  } finally {
-    refreshPromise = null;
+  if (!canForce && mmaCache.fetchedAt > 0) {
+    return { upcoming: mmaCache.upcoming, live: mmaCache.live, finished: mmaCache.finished, suspended: mmaCache.suspended };
   }
+
+  return refreshPromise;
 }
 
 // ---------------------------------------------------------------------------

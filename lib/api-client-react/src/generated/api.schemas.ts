@@ -52,6 +52,8 @@ export const CreateBetBodyAsset = {
   btc: "btc",
   eth: "eth",
   sol: "sol",
+  xrp: "xrp",
+  bnb: "bnb",
 } as const;
 
 export interface CreateBetBody {
@@ -64,6 +66,8 @@ export interface CreateBetBody {
   direction: CreateBetBodyDirection;
   /** Which crypto market to bet on */
   asset: CreateBetBodyAsset;
+  /** Betting window interval in minutes */
+  intervalMinutes?: 5 | 15 | 30;
 }
 
 export type BetResponseDirection =

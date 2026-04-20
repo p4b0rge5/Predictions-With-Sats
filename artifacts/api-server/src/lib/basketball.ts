@@ -1,50 +1,71 @@
 /**
- * NBA data — powered by api-sports.io Basketball API
+ * International Basketball — powered by api-sports.io Basketball API
  *
- * Base URL: https://v1.basketball.api-sports.io
- * Same API key as API-Football (x-apisports-key header).
+ * Base URL: https://v1.basketball.api-sports.io  (same endpoint as nba.ts)
+ * Same API key as other api-sports.io APIs (x-apisports-key header).
  *
- * NBA has NO draws — outcomes are always "home" or "away" (OT decides ties).
- * Event IDs are prefixed with "nba_" to avoid collision with football IDs.
+ * This module covers ALL leagues EXCEPT NBA (12) and NBA Playoffs (13),
+ * which are handled by nba.ts. This avoids duplicate events between tabs.
  *
- * Free plan: 100 req/day per API.
- * Request budget: today + tomorrow + yesterday = 3 req per cache refresh (1h TTL → ~72/day).
+ * Basketball has NO draws — outcomes are always "home" or "away" (OT decides ties).
+ * Event IDs are prefixed with "basketball_" to avoid collision.
+ *
+ * NOTE: Both this module and nba.ts consume from the same api-sports.io
+ * Basketball API quota (100 req/day). They use separate budget keys so each
+ * has its own 100/day ceiling in the tracker, but in practice both draw from
+ * the same underlying API limit. Use conservative TTLs to stay within budget.
+ *
+ * Free plan: 100 req/day (shared with NBA module on api-sports.io side).
+ * 3-day window × 3h TTL → ~24 req/day for this module.
  */
 
 import { logger } from "./logger";
 import { reserveSportsRequests } from "./sports-request-budget";
 import type { SportEvent } from "./sports";
-import { getSportsDateWindowStrings } from "./sports-date-window";
 
-const API_NBA_BASE = "https://v1.basketball.api-sports.io";
-const API_NBA_KEY  = process.env.API_FOOTBALL_KEY ?? "";
+// Free plan only allows yesterday + today + tomorrow (3 days).
+function getBasketballDateWindowStrings(nowMs = Date.now()): string[] {
+  const base = new Date(nowMs);
+  base.setUTCHours(0, 0, 0, 0);
+  return [-1, 0, 1].map((offset) => {
+    const d = new Date(base);
+    d.setUTCDate(base.getUTCDate() + offset);
+    return d.toISOString().slice(0, 10);
+  });
+}
 
-// NBA league IDs in the Basketball API
-const NBA_LEAGUE_ID    = 12; // NBA Regular Season
-const NBA_PLAYOFFS_ID  = 13; // NBA Playoffs
+const API_BASKETBALL_BASE = "https://v1.basketball.api-sports.io";
+const API_BASKETBALL_KEY  = process.env.API_FOOTBALL_KEY ?? "";
+
+// Excluded from this module — handled by nba.ts
+const NBA_EXCLUDED_LEAGUE_IDS = new Set([12, 13]);
 
 // ---------------------------------------------------------------------------
-// Types — Basketball API response format (similar to Football API)
+// Types — Basketball API response format
 // ---------------------------------------------------------------------------
 
 interface BasketballGame {
   id: number;
-  date: string;          // ISO date string "2026-04-08T19:30:00+00:00"
+  date: string;
   time: string;
   timestamp: number;
+  timezone: string;
+  stage: string | null;
+  week: string | null;
+  venue: string | null;
+  status: {
+    long:  string;
+    short: string;   // "NS","Q1","Q2","Q3","Q4","HT","OT","BT","FT","AOT","POST","CANC","SUSP"
+    timer: string | null;
+  };
   league: {
     id:     number;
     name:   string;
     type:   string;
-    season: string;      // "2025-2026"
+    season: string | number;
     logo:   string;
   };
   country: { id: number; name: string; code: string; flag: string };
-  status: {
-    long:  string;       // "Game Finished", "Not Started", "In Play", etc.
-    short: string;       // "FT", "NS", "Q1", "Q2", "Q3", "Q4", "HT", "OT", "POST", "CANC"
-    timer: string | null;
-  };
   teams: {
     home: { id: number; name: string; logo: string };
     away: { id: number; name: string; logo: string };
@@ -65,36 +86,39 @@ interface BasketballApiResponse {
 // Status & outcome helpers
 // ---------------------------------------------------------------------------
 
+const FINISHED_STATUSES = new Set(["FT", "AOT"]);
+const LIVE_STATUSES     = new Set(["Q1", "Q2", "Q3", "Q4", "HT", "OT", "BT"]);
+
 function parseBasketballStatus(short: string): SportEvent["status"] {
   const s = (short ?? "").toUpperCase();
-  if (["FT", "AOT"].includes(s)) return "finished";
-  if (["Q1", "Q2", "Q3", "Q4", "HT", "OT", "BT"].includes(s)) return "live";
-  return "upcoming"; // "NS", "POST", "CANC", etc.
+  if (FINISHED_STATUSES.has(s)) return "finished";
+  if (LIVE_STATUSES.has(s))     return "live";
+  return "upcoming"; // "NS", "POST", "CANC", "SUSP", etc.
 }
 
 function parseBasketballOutcome(homeTotal: number | null, awayTotal: number | null): SportEvent["outcome"] {
   if (homeTotal === null || awayTotal === null) return null;
   if (homeTotal > awayTotal) return "home";
   if (awayTotal > homeTotal) return "away";
-  return null; // NBA always plays OT to decide — this is a safety fallback
+  return null; // OT always resolves ties — safety fallback
 }
 
 function mapGame(g: BasketballGame): SportEvent {
   const homeScore = g.scores.home.total;
   const awayScore = g.scores.away.total;
   const status    = parseBasketballStatus(g.status.short);
-  const leagueName = g.league.id === NBA_PLAYOFFS_ID ? "NBA Playoffs" : "NBA";
   return {
-    id:         `nba_${g.id}`,
+    id:         `basketball_${g.id}`,
     event:      `${g.teams.home.name} vs ${g.teams.away.name}`,
     homeTeam:   g.teams.home.name,
     awayTeam:   g.teams.away.name,
     homeBadge:  g.teams.home.logo || null,
     awayBadge:  g.teams.away.logo || null,
     leagueLogo: g.league.logo || null,
-    league:     leagueName,
+    leagueId:   g.league.id,
+    league:     g.league.name,
     sport:      "Basketball",
-    country:    "USA",
+    country:    g.country?.name ?? "Unknown",
     startsAt:   g.date,
     status,
     homeScore,
@@ -108,26 +132,22 @@ function mapGame(g: BasketballGame): SportEvent {
 // HTTP helper
 // ---------------------------------------------------------------------------
 
-async function nbsFetch(path: string): Promise<BasketballApiResponse> {
-  if (!API_NBA_KEY) {
+async function basketballFetch(path: string): Promise<BasketballApiResponse> {
+  if (!API_BASKETBALL_KEY) {
     logger.warn("API_FOOTBALL_KEY not set — skipping Basketball API request");
     return { errors: [], results: 0, response: [] };
   }
-  const budget = await reserveSportsRequests("nba", 1);
+  const budget = await reserveSportsRequests("basketball", 1);
   if (!budget.allowed) {
     logger.warn(
-      { provider: "nba", path, used: budget.used, remaining: budget.remaining },
+      { provider: "basketball", path, used: budget.used, remaining: budget.remaining },
       "Sports provider daily request budget exhausted",
     );
-    return {
-      errors: { budget: "Daily request budget exhausted" },
-      results: 0,
-      response: [],
-    };
+    return { errors: { budget: "Daily request budget exhausted" }, results: 0, response: [] };
   }
-  const url = `${API_NBA_BASE}${path}`;
+  const url = `${API_BASKETBALL_BASE}${path}`;
   const res = await fetch(url, {
-    headers: { "x-apisports-key": API_NBA_KEY, Accept: "application/json" },
+    headers: { "x-apisports-key": API_BASKETBALL_KEY, Accept: "application/json" },
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`Basketball API HTTP ${res.status} for ${path}`);
@@ -140,24 +160,22 @@ function hasErrors(errors: BasketballApiResponse["errors"]): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Cache (1h TTL on success, 15-min retry on error)
+// Cache (3h TTL on success, 15-min retry on error)
 // ---------------------------------------------------------------------------
 
-const CACHE_TTL_MS             = 60 * 60 * 1000;
-const CACHE_ERROR_TTL_MS       = 15 * 60 * 1000;
-const MAX_GAME_AGE_MS          = 4 * 60 * 60 * 1000; // games ~3-3.5h with OT
-const FORCE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000;    // 10 minutes between force-refreshes
+const CACHE_TTL_MS              = 3 * 60 * 60 * 1000;
+const CACHE_ERROR_TTL_MS        = 15 * 60 * 1000;
+const MAX_GAME_AGE_MS           = 4 * 60 * 60 * 1000; // games ~2.5–3.5h with OT
+const FORCE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000;
 
 function normalizeEventStatus(ev: SportEvent, now: number): SportEvent["status"] {
   if (ev.status !== "upcoming") return ev.status;
   const kickoff = new Date(ev.startsAt).getTime();
-  if (kickoff <= now && kickoff > now - MAX_GAME_AGE_MS) {
-    return "live";
-  }
+  if (kickoff <= now && kickoff > now - MAX_GAME_AGE_MS) return "live";
   return ev.status;
 }
 
-const nbaCache: {
+const basketballCache: {
   upcoming:  SportEvent[];
   live:      SportEvent[];
   finished:  SportEvent[];
@@ -170,35 +188,32 @@ let refreshPromise: Promise<{ upcoming: SportEvent[]; live: SportEvent[]; finish
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function getNbaEvents(forceRefresh = false): Promise<{
+export async function getBasketballEvents(forceRefresh = false): Promise<{
   upcoming:  SportEvent[];
   live:      SportEvent[];
   finished:  SportEvent[];
   suspended: boolean;
 }> {
-  const cacheAge = Date.now() - nbaCache.fetchedAt;
+  const cacheAge = Date.now() - basketballCache.fetchedAt;
   const canForce = forceRefresh && cacheAge >= FORCE_REFRESH_COOLDOWN_MS;
   if (!canForce && cacheAge < CACHE_TTL_MS) {
     return {
-      upcoming:  nbaCache.upcoming,
-      live:      nbaCache.live,
-      finished:  nbaCache.finished,
-      suspended: nbaCache.suspended,
+      upcoming:  basketballCache.upcoming,
+      live:      basketballCache.live,
+      finished:  basketballCache.finished,
+      suspended: basketballCache.suspended,
     };
   }
   if (canForce) {
-    logger.info({ cacheAgeMin: Math.round(cacheAge / 60_000) }, "NBA cache force-refreshed for settlement");
+    logger.info({ cacheAgeMin: Math.round(cacheAge / 60_000) }, "Basketball cache force-refreshed for settlement");
   }
 
-  if (refreshPromise) {
-    return refreshPromise;
-  }
+  if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
-    const NBA_LEAGUE_IDS = [NBA_LEAGUE_ID, NBA_PLAYOFFS_ID];
-    const dateWindow = getSportsDateWindowStrings();
+    const dateWindow = getBasketballDateWindowStrings();
     const dateFetches = await Promise.allSettled(
-      dateWindow.map((date) => nbsFetch(`/games?date=${date}`)),
+      dateWindow.map((date) => basketballFetch(`/games?date=${date}`)),
     );
 
     const allGames: BasketballGame[] = [];
@@ -210,10 +225,10 @@ export async function getNbaEvents(forceRefresh = false): Promise<{
           logger.warn({ errors: result.value.errors }, "Basketball API returned errors");
           apiErrored = true;
         }
-        const nbaGames = (result.value.response ?? []).filter(
-          (g) => typeof g.league?.id === "number" && NBA_LEAGUE_IDS.includes(g.league.id),
+        const games = (result.value.response ?? []).filter(
+          (g) => typeof g.league?.id === "number" && !NBA_EXCLUDED_LEAGUE_IDS.has(g.league.id),
         );
-        allGames.push(...nbaGames);
+        allGames.push(...games);
       } else {
         logger.warn({ err: result.reason }, "Basketball API date fetch failed");
         apiErrored = true;
@@ -221,13 +236,13 @@ export async function getNbaEvents(forceRefresh = false): Promise<{
     }
 
     if (apiErrored && allGames.length === 0) {
-      nbaCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
-      const hasStale = nbaCache.upcoming.length > 0 || nbaCache.live.length > 0 || nbaCache.finished.length > 0;
-      nbaCache.suspended = !hasStale;
+      basketballCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
+      const hasStale = basketballCache.upcoming.length > 0 || basketballCache.live.length > 0 || basketballCache.finished.length > 0;
+      basketballCache.suspended = !hasStale;
       logger.warn({ hasStale }, hasStale
         ? "Basketball API error — serving stale cache without suspension"
         : "Basketball API error — no stale data available, suspending");
-      return { upcoming: nbaCache.upcoming, live: nbaCache.live, finished: nbaCache.finished, suspended: nbaCache.suspended };
+      return { upcoming: basketballCache.upcoming, live: basketballCache.live, finished: basketballCache.finished, suspended: basketballCache.suspended };
     }
 
     const now    = Date.now();
@@ -238,8 +253,7 @@ export async function getNbaEvents(forceRefresh = false): Promise<{
     const upcoming = mapped
       .filter((ev) => {
         if (ev.status !== "upcoming") return false;
-        const tip = new Date(ev.startsAt).getTime();
-        return tip > now;
+        return new Date(ev.startsAt).getTime() > now;
       })
       .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 
@@ -252,23 +266,23 @@ export async function getNbaEvents(forceRefresh = false): Promise<{
       .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
       .slice(0, 20);
 
-    nbaCache.upcoming  = upcoming;
-    nbaCache.live      = live;
-    nbaCache.finished  = finished;
-    nbaCache.fetchedAt = Date.now();
-    nbaCache.suspended = false;
+    basketballCache.upcoming  = upcoming;
+    basketballCache.live      = live;
+    basketballCache.finished  = finished;
+    basketballCache.fetchedAt = Date.now();
+    basketballCache.suspended = false;
 
     logger.info(
       { upcoming: upcoming.length, live: live.length, finished: finished.length, total: allGames.length },
-      "NBA/Basketball fixtures refreshed",
+      "International Basketball fixtures refreshed",
     );
 
-    return { upcoming: nbaCache.upcoming, live: nbaCache.live, finished: nbaCache.finished, suspended: false };
+    return { upcoming: basketballCache.upcoming, live: basketballCache.live, finished: basketballCache.finished, suspended: false };
   })();
   refreshPromise.catch(() => {}).finally(() => { refreshPromise = null; });
 
-  if (!canForce && nbaCache.fetchedAt > 0) {
-    return { upcoming: nbaCache.upcoming, live: nbaCache.live, finished: nbaCache.finished, suspended: nbaCache.suspended };
+  if (!canForce && basketballCache.fetchedAt > 0) {
+    return { upcoming: basketballCache.upcoming, live: basketballCache.live, finished: basketballCache.finished, suspended: basketballCache.suspended };
   }
 
   return refreshPromise;
@@ -278,16 +292,15 @@ export async function getNbaEvents(forceRefresh = false): Promise<{
 // Single game lookup (used by settlement poller when cache is stale)
 // ---------------------------------------------------------------------------
 
-export async function fetchNbaGameById(nbaEventId: string): Promise<SportEvent | null> {
-  // eventId is prefixed with "nba_", strip it to get the numeric game ID
-  const gameId = nbaEventId.replace(/^nba_/, "");
+export async function fetchBasketballGameById(basketballEventId: string): Promise<SportEvent | null> {
+  const gameId = basketballEventId.replace(/^basketball_/, "");
   try {
-    const data = await nbsFetch(`/games?id=${gameId}`);
+    const data = await basketballFetch(`/games?id=${gameId}`);
     const g = data.response?.[0];
     if (!g) return null;
     return mapGame(g);
   } catch (err) {
-    logger.warn({ err, nbaEventId }, "Basketball API game lookup failed");
+    logger.warn({ err, basketballEventId }, "Basketball API game lookup failed");
     return null;
   }
 }

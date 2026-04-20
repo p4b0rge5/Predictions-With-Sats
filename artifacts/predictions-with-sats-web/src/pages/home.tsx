@@ -16,7 +16,7 @@ import {
 } from "@/components/my-bet-widget";
 import { GuidePager } from "@/components/guide-pager";
 import { ErrorState, LoadingState } from "@/components/query-state";
-import { SiBitcoin, SiEthereum, SiSolana } from "react-icons/si";
+import { SiBitcoin, SiEthereum, SiSolana, SiXrp, SiBinance } from "react-icons/si";
 import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, ReferenceLine, Tooltip, CartesianGrid,
@@ -29,9 +29,10 @@ import { getPoolMultiple } from "@/lib/payout-preview";
 // Types
 // ---------------------------------------------------------------------------
 
-type CryptoKey = "bitcoin" | "ethereum" | "solana";
+type CryptoKey = "bitcoin" | "ethereum" | "solana" | "ripple" | "binance";
 type ContentTab = "guide" | "live" | "myBets" | "history";
-type AssetParam = "btc" | "eth" | "sol";
+type AssetParam = "btc" | "eth" | "sol" | "xrp" | "bnb";
+type IntervalMins = 5 | 15 | 30;
 
 interface PricePoint { time: number; price: number }
 interface CustomDotProps { cx?: number; cy?: number; index?: number; dataLength?: number }
@@ -94,13 +95,43 @@ const CRYPTOS: CryptoDef[] = [
     dotColor: "#a855f7",
     cardTint: "surface-tint-purple",
   },
+  {
+    key: "ripple",
+    asset: "xrp",
+    label: "XRP",
+    symbol: "✕",
+    Icon: SiXrp,
+    bgColor: "bg-blue-500",
+    chipActive: "bg-blue-400/20 text-blue-300 border-blue-400/50",
+    chartColor: "#3b82f6",
+    gradientId: "priceGradXrp",
+    dotColor: "#3b82f6",
+    cardTint: "surface-tint-blue",
+  },
+  {
+    key: "binance",
+    asset: "bnb",
+    label: "BNB",
+    symbol: "◆",
+    Icon: SiBinance,
+    bgColor: "bg-yellow-500",
+    chipActive: "bg-yellow-400/20 text-yellow-300 border-yellow-400/50",
+    chartColor: "#eab308",
+    gradientId: "priceGradBnb",
+    dotColor: "#eab308",
+    cardTint: "surface-tint-yellow",
+  },
 ];
 
 // ---------------------------------------------------------------------------
 // Guide (generic for all crypto assets)
 // ---------------------------------------------------------------------------
 
-const GUIDE_STEPS = [
+function makeGuideSteps(intervalMins: IntervalMins) {
+  const marks5  = "(:00, :05, :10 … :55)";
+  const marks15 = "(:00, :15, :30, :45)";
+  const marks30 = "(:00, :30)";
+  return [
   {
     icon: SiBitcoin,
     color: "text-orange-400",
@@ -108,7 +139,7 @@ const GUIDE_STEPS = [
     cardTint: "bg-orange-400/5",
     cardBorder: "border-orange-400/30",
     title: "What is Crypto Prediction?",
-    body: "Every 5 minutes a new betting window opens. Predict whether the price will be higher (UP) or lower (DOWN) when the window closes. Winners split the entire pool minus a 2% fee — no accounts, no sign-ups.",
+    body: `Every ${intervalMins} minutes a new betting window opens. Predict whether the price will be higher (UP) or lower (DOWN) when the window closes. Winners split the entire pool minus a 2% fee — no accounts, no sign-ups.`,
   },
   {
     icon: Clock,
@@ -116,8 +147,8 @@ const GUIDE_STEPS = [
     iconBg: "bg-blue-400/15 border-blue-400/40",
     cardTint: "bg-blue-400/5",
     cardBorder: "border-blue-400/30",
-    title: "5-Minute Windows",
-    body: "Windows open on exact UTC minute marks (:00, :05, :10 … :55) and close 5 minutes later. A live countdown shows how much time remains. Bets are locked in the last 30 seconds.",
+    title: `${intervalMins}-Minute Windows`,
+    body: `Windows open on exact UTC minute marks ${intervalMins === 5 ? marks5 : intervalMins === 15 ? marks15 : marks30} and close ${intervalMins} minutes later. A live countdown shows how much time remains. Bets are locked in the last 30 seconds.`,
   },
   {
     icon: ArrowUpCircle,
@@ -173,10 +204,11 @@ const GUIDE_STEPS = [
     title: "Find Your Bet Later",
     body: "All bets placed in the current session appear in My Bets. If you change devices, use the global My Bets page to import a past bet with your payment hash or preimage.",
   },
-];
+  ];
+}
 
-function CryptoGuide({ def, onDone }: { def: CryptoDef; onDone?: () => void }) {
-  const guideSteps = GUIDE_STEPS.map((step, index) => (
+function CryptoGuide({ def, intervalMins, onDone }: { def: CryptoDef; intervalMins: IntervalMins; onDone?: () => void }) {
+  const guideSteps = makeGuideSteps(intervalMins).map((step, index) => (
     index === 0
       ? {
           ...step,
@@ -191,7 +223,7 @@ function CryptoGuide({ def, onDone }: { def: CryptoDef; onDone?: () => void }) {
       onDone={onDone}
       header={
         <>
-          <div className={`w-7 h-7 rounded-lg ${def.bgColor} flex items-center justify-center shrink-0`}>
+          <div className={`w-7 h-7 rounded-2xl ${def.bgColor} flex items-center justify-center shrink-0`}>
             <def.Icon className="text-white w-4 h-4" />
           </div>
           <h2 className="text-base font-bold font-mono uppercase tracking-wider">{def.label} Betting Guide</h2>
@@ -227,8 +259,8 @@ interface MarketData {
 
 const API_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
-async function fetchMarket(asset: AssetParam): Promise<MarketData> {
-  const res = await fetch(`${API_BASE}/api/market/current?asset=${asset}`);
+async function fetchMarket(asset: AssetParam, intervalMins: IntervalMins): Promise<MarketData> {
+  const res = await fetch(`${API_BASE}/api/market/current?asset=${asset}&interval=${intervalMins}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<MarketData>;
 }
@@ -239,14 +271,16 @@ async function fetchMarket(asset: AssetParam): Promise<MarketData> {
 
 function CryptoPrediction({
   def,
+  intervalMins,
   onShowGuide,
 }: {
   def: CryptoDef;
+  intervalMins: IntervalMins;
   onShowGuide: () => void;
 }) {
   const { data: market, isLoading, error, refetch } = useQuery<MarketData>({
-    queryKey: ["/api/market/current", def.asset],
-    queryFn: () => fetchMarket(def.asset),
+    queryKey: ["/api/market/current", def.asset, intervalMins],
+    queryFn: () => fetchMarket(def.asset, intervalMins),
     refetchInterval: 3000,
   });
 
@@ -273,7 +307,8 @@ function CryptoPrediction({
   }, [market?.windowId]);
 
   useEffect(() => {
-    if (market && !didTransitionRef.current) setSecsLeft(market.secondsRemaining ?? 0);
+    if (!market) return;
+    setSecsLeft(Math.min(market.secondsRemaining ?? 0, intervalMins * 60));
   }, [market?.secondsRemaining, market?.windowId]);
 
   useEffect(() => {
@@ -325,14 +360,15 @@ function CryptoPrediction({
   }
 
   const { status, btcPriceUsd: assetPrice, openPrice, totalUpSats, totalDownSats, closesAt, windowId } = market;
-  const nextClosesAtMs = closesAt ? new Date(closesAt).getTime() + 5 * 60 * 1000 : null;
-  const displayWindowId  = transitioning ? (windowId ?? 0) + 1 : windowId;
+  const intervalSecs     = intervalMins * 60;
+  const nextClosesAtMs   = closesAt ? new Date(closesAt).getTime() + intervalSecs * 1000 : null;
+  const displayWindowId  = windowId;
   const displayClosesAt  = transitioning && nextClosesAtMs ? new Date(nextClosesAtMs).toISOString() : closesAt;
   const displayOpenPrice = transitioning ? null : openPrice;
   const displayUpSats    = transitioning ? 0 : totalUpSats;
   const displayDownSats  = transitioning ? 0 : totalDownSats;
-  const displaySecsLeft  = transitioning ? 300 : secsLeft;
-  const isClosed         = transitioning ? false : (status === "closed" || secsLeft < 30);
+  const displaySecsLeft  = transitioning ? intervalSecs : Math.min(secsLeft, intervalSecs);
+  const isClosed         = transitioning ? false : (status === "closed" || displaySecsLeft < 30);
   const isNone           = transitioning ? false : status === "none";
   const totalSats        = displayUpSats + displayDownSats;
   const upPercent        = totalSats > 0 ? (displayUpSats / totalSats) * 100 : 50;
@@ -358,7 +394,7 @@ function CryptoPrediction({
   const windowTimeLabel = (() => {
     if (!displayClosesAt) return "";
     const closeDate = new Date(displayClosesAt);
-    const openDate  = new Date(closeDate.getTime() - 5 * 60 * 1000);
+    const openDate  = new Date(closeDate.getTime() - intervalMins * 60 * 1000);
     return `${format(openDate, "MMM d")}, ${format(openDate, "HH:mm")}–${format(closeDate, "HH:mm")} ET`;
   })();
 
@@ -371,7 +407,7 @@ function CryptoPrediction({
   const { chartColor, gradientId, dotColor } = def;
 
   return (
-    <div className="max-w-4xl mx-auto card-stack px-0">
+    <div className="card-stack">
       {isNone ? (
         <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
           <AlertCircle className="h-12 w-12 text-muted-foreground" />
@@ -381,17 +417,17 @@ function CryptoPrediction({
       ) : (
         <>
           {/* Header */}
-          <div className="flex items-center gap-3 pb-3 border-b border-border/40">
-            <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg ${def.bgColor} flex items-center justify-center shrink-0`}>
+          <div className={`flex items-center gap-3 rounded-xl border ${def.cardTint} px-3 py-3 sm:px-5 sm:py-4`}>
+            <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl ${def.bgColor} flex items-center justify-center shrink-0`}>
               <def.Icon className="text-white w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div className="min-w-0">
               <h1 className="text-base sm:text-xl lg:text-2xl font-bold leading-tight truncate">
-                {def.label} UP or DOWN — 5 minutes
+                {def.label} UP or DOWN — {intervalMins} minutes
               </h1>
-              <p className="text-xs lg:text-sm text-muted-foreground font-mono mt-0.5">
-                {windowTimeLabel}
-                {displayWindowId && <span className="ml-2 opacity-50">· Window #{displayWindowId}</span>}
+              <p className="text-muted-foreground font-mono mt-0.5 whitespace-nowrap overflow-hidden">
+                <span className="text-[10px] sm:text-xs lg:text-sm">{windowTimeLabel}</span>
+                {displayWindowId && <span className="ml-1.5 text-xs lg:text-sm opacity-50">· Window #{displayWindowId}</span>}
               </p>
             </div>
           </div>
@@ -399,14 +435,14 @@ function CryptoPrediction({
           {/* Stats Row */}
           <div className={`grid grid-cols-3 gap-2 sm:gap-4 lg:gap-6 rounded-xl border ${def.cardTint} px-3 py-3 sm:px-5 sm:py-4 lg:px-6 lg:py-5`}>
             <div className="space-y-1 min-w-0">
-              <p className="text-[9px] sm:text-xs lg:text-sm text-muted-foreground font-mono uppercase tracking-wider truncate">Price to beat</p>
+              <p className="text-[9px] sm:text-xs lg:text-sm text-muted-foreground font-mono tracking-wide truncate">Price to beat</p>
               <p className="text-sm sm:text-xl lg:text-2xl font-mono font-bold leading-tight truncate">
                 ${displayOpenPrice ? formatUsd(displayOpenPrice) : "—"}
               </p>
             </div>
             <div className="space-y-1 text-center min-w-0">
               <div className="flex items-center justify-center gap-1">
-                <p className="text-[9px] sm:text-xs lg:text-sm text-muted-foreground font-mono uppercase tracking-wider">Now</p>
+                <p className="text-[9px] sm:text-xs lg:text-sm text-muted-foreground font-mono tracking-wide">Now</p>
                 {displayOpenPrice && (
                   <span className={`flex items-center gap-0.5 text-[9px] sm:text-xs lg:text-sm font-mono font-bold ${priceUp ? "text-green-400" : priceDown ? "text-red-400" : "text-muted-foreground"}`}>
                     {priceUp ? <TrendingUp className="h-2.5 w-2.5" /> : priceDown ? <TrendingDown className="h-2.5 w-2.5" /> : null}
@@ -419,7 +455,7 @@ function CryptoPrediction({
               </p>
             </div>
             <div className="space-y-1 text-right min-w-0">
-              <p className="text-[9px] sm:text-xs lg:text-sm text-muted-foreground font-mono uppercase tracking-wider">Time left</p>
+              <p className="text-[9px] sm:text-xs lg:text-sm text-muted-foreground font-mono tracking-wide">Time left</p>
               <div className={`flex items-baseline justify-end gap-0.5 sm:gap-1 lg:gap-1.5 font-mono font-bold leading-tight ${displaySecsLeft < 30 ? "text-red-500 animate-pulse" : "text-red-400"}`}>
                 <span className="text-sm sm:text-xl lg:text-2xl">{String(mins).padStart(2, "0")}</span>
                 <span className="text-[10px] sm:text-sm lg:text-base opacity-60">m</span>
@@ -533,6 +569,7 @@ function CryptoPrediction({
           asset={def.asset}
           totalUpSats={displayUpSats}
           totalDownSats={displayDownSats}
+          intervalMins={intervalMins}
         />
       )}
 
@@ -552,6 +589,7 @@ export function Home() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeCrypto, setActiveCrypto] = useState<CryptoKey>("bitcoin");
   const [activeTab, setActiveTab] = useState<ContentTab>("live");
+  const [intervalMins, setIntervalMins] = useState<IntervalMins>(5);
   const [, setBetListVersion] = useState(0);
 
   const def = CRYPTOS.find((c) => c.key === activeCrypto)!;
@@ -571,9 +609,9 @@ export function Home() {
     const asset = searchParams.get("asset");
 
     if (!paymentHash || !/^[0-9a-f]{64}$/.test(paymentHash)) return;
-    if (asset !== "btc" && asset !== "eth" && asset !== "sol") return;
+    if (!asset || !["btc", "eth", "sol", "xrp", "bnb"].includes(asset)) return;
 
-    recoverCryptoBet(asset, paymentHash);
+    recoverCryptoBet(asset as AssetParam, paymentHash);
 
     const next = new URLSearchParams(searchParams);
     next.delete("bet");
@@ -609,6 +647,23 @@ export function Home() {
         })}
       </div>
 
+      {/* Interval filter */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
+        {([5, 15, 30] as IntervalMins[]).map((mins) => (
+          <button
+            key={mins}
+            onClick={() => setIntervalMins(mins)}
+            className={`px-3 py-1.5 rounded-full text-[11px] font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+              intervalMins === mins
+                ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+            }`}
+          >
+            {mins} min
+          </button>
+        ))}
+      </div>
+
       {/* Content tabs */}
       <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40 mb-4">
         {([
@@ -632,6 +687,7 @@ export function Home() {
       {activeTab === "guide" && (
         <CryptoGuide
           def={def}
+          intervalMins={intervalMins}
           onDone={() => { setActiveTab("live"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
         />
       )}
@@ -670,13 +726,14 @@ export function Home() {
       )}
       {activeTab === "live" && (
         <CryptoPrediction
-          key={def.asset}
+          key={`${def.asset}-${intervalMins}`}
           def={def}
+          intervalMins={intervalMins}
           onShowGuide={() => setActiveTab("guide")}
         />
       )}
       {activeTab === "history" && (
-        <History asset={def.asset} />
+        <History asset={def.asset} intervalMins={intervalMins} />
       )}
     </div>
   );

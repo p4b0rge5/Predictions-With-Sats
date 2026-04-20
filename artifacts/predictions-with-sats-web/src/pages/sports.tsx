@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   Trophy, Clock, CheckCircle2, AlertCircle,
@@ -28,22 +29,24 @@ import { getCurrentStakePayout, getPoolMultiple, getProjectedPayout } from "@/li
 // ---------------------------------------------------------------------------
 
 type Direction = "home" | "draw" | "away";
-type SportKey = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby";
+type SportKey = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby" | "hockey" | "basketball";
 type ContentTab = "guide" | "upcoming" | "results" | "myBets";
 type MarketDateOption = {
   value: string;
   label: string;
   sortKey: number;
+  count: number;
 };
 
 interface SportDef {
   key: SportKey;
   label: string;
   icon: string;
-  sportName: string;       // matches SportEvent.sport from API
-  hasDraw: boolean;        // basketball/nfl have no draws
-  cardClass: string;       // upcoming card bg + border
-  resultCardClass: string; // finished card bg + border
+  sportName: string;        // matches SportEvent.sport from API
+  hasDraw: boolean;         // basketball/nfl have no draws
+  cardClass: string;        // upcoming card bg + border
+  resultCardClass: string;  // finished card bg + border
+  eventIdPrefix?: string;   // when set, filter events by id prefix instead of sportName
 }
 
 const SPORTS: SportDef[] = [
@@ -57,15 +60,6 @@ const SPORTS: SportDef[] = [
     resultCardClass: "surface-tint-green-soft",
   },
   {
-    key: "nba",
-    label: "NBA",
-    icon: "🏀",
-    sportName: "Basketball",
-    hasDraw: false,
-    cardClass: "surface-tint-orange",
-    resultCardClass: "surface-tint-orange-soft",
-  },
-  {
     key: "nfl",
     label: "NFL",
     icon: "🏈",
@@ -76,7 +70,7 @@ const SPORTS: SportDef[] = [
   },
   {
     key: "mlb",
-    label: "MLB",
+    label: "Baseball",
     icon: "⚾",
     sportName: "Baseball",
     hasDraw: false,
@@ -101,6 +95,45 @@ const SPORTS: SportDef[] = [
     cardClass: "surface-tint-emerald",
     resultCardClass: "surface-tint-emerald-soft",
   },
+  {
+    key: "hockey",
+    label: "Hockey",
+    icon: "🏒",
+    sportName: "Hockey",
+    hasDraw: false,
+    cardClass: "surface-tint-blue",
+    resultCardClass: "surface-tint-blue",
+  },
+  {
+    key: "basketball",
+    label: "Basketball",
+    icon: "🏀",
+    sportName: "Basketball",
+    hasDraw: false,
+    cardClass: "surface-tint-purple",
+    resultCardClass: "surface-tint-purple-soft",
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Category definitions (groups SportDefs into a two-level hierarchy)
+// ---------------------------------------------------------------------------
+
+interface CategoryDef {
+  key: string;
+  label: string;
+  icon: string;
+  sports: SportKey[];
+  showSubcategories?: boolean;
+}
+
+const CATEGORIES: CategoryDef[] = [
+  { key: "football",          label: "Football",          icon: "⚽", sports: ["football"] },
+  { key: "basketball",        label: "Basketball",        icon: "🏀", sports: ["basketball"] },
+  { key: "mma",               label: "MMA",               icon: "🥊", sports: ["mma"] },
+  { key: "rugby",             label: "Rugby",             icon: "🏉", sports: ["rugby"] },
+  { key: "american-football", label: "American Football", icon: "🏈", sports: ["nfl"],          showSubcategories: true },
+  { key: "hockey",            label: "Hockey",            icon: "🏒", sports: ["hockey"] },
 ];
 
 interface SportEvent {
@@ -168,7 +201,7 @@ const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const MIN_SATS = 546;
 const BTC_SATS = 100_000_000;
 const APPROX_BTC_USD = 95000;
-const REFRESH_INTERVAL_MS = 30_000;
+const REFRESH_INTERVAL_MS = 60_000;
 const EVENT_IMMINENT_MS = 5 * 60 * 1000;
 const EVENT_IMMINENT_BRIDGE_MS = 4 * 60 * 60 * 1000;
 
@@ -235,7 +268,7 @@ function getEventDateOption(isoStr: string): MarketDateOption {
     });
   }
 
-  return { value, label, sortKey: optionDate.getTime() };
+  return { value, label, sortKey: optionDate.getTime(), count: 0 };
 }
 
 const DIRECTION_LABELS: Record<Direction, string> = {
@@ -275,9 +308,10 @@ const LEAGUE_PRIORITY: Partial<Record<SportKey, readonly string[]>> = {
   ],
   nba: ["NBA Playoffs", "NBA"],
   nfl: ["NFL Playoffs", "NFL"],
-  mlb: ["MLB Playoffs", "MLB"],
+  mlb: ["MLB Playoffs", "MLB", "LMB", "KBO", "NPB", "CPBL", "Liga Venezolana", "Liga Colombiana"],
   mma: ["UFC", "PFL", "Bellator", "ONE Championship", "MMA"],
   rugby: ["Six Nations", "Rugby Championship", "Premiership", "Top 14", "United Rugby Championship", "Super Rugby", "Rugby"],
+  basketball: ["NBA Playoffs", "NBA", "EuroLeague", "ACB", "Liga A", "BSN", "NBB", "LNB", "Liga Nacional"],
 };
 
 const FOOTBALL_LEAGUE_LABELS: Record<string, string> = {
@@ -599,8 +633,8 @@ const MLB_GUIDE_STEPS: GuideStep[] = [
     iconBg: "bg-red-400/15 border-red-400/40",
     cardTint: "bg-red-400/5",
     cardBorder: "border-red-400/30",
-    title: "How MLB Predictions Work",
-    body: "Pick an upcoming MLB game and predict the winner: HOME team or AWAY team. Baseball has no draws — extra innings are played until a winner is decided. Pay via Lightning, winners split the entire pool.",
+    title: "How Baseball Predictions Work",
+    body: "Pick an upcoming baseball game and predict the winner: HOME team or AWAY team. Baseball has no draws — extra innings are played until a winner is decided. Pay via Lightning, winners split the entire pool.",
   },
   {
     icon: Wallet,
@@ -636,7 +670,7 @@ const MLB_GUIDE_STEPS: GuideStep[] = [
     cardTint: "bg-red-400/5",
     cardBorder: "border-red-400/30",
     title: "Tips & Rules",
-    body: "• Betting closes 5 minutes before first pitch.\n• If no opposing bets are placed, your stake returns as REFUND minus a 0.5% refund fee.\n• Keep your payment proof — you can verify your bet manually.\n• MLB season runs April through November. Daily games available!\n• Bet early for better value when the pool is thin.",
+    body: "• Betting closes 5 minutes before first pitch.\n• If no opposing bets are placed, your stake returns as REFUND minus a 0.5% refund fee.\n• Keep your payment proof — you can verify your bet manually.\n• Baseball season runs April through November across MLB, LMB, and other leagues.\n• Bet early for better value when the pool is thin.",
   },
 ];
 
@@ -648,7 +682,7 @@ function MLBGuide({ onDone }: { onDone?: () => void } = {}) {
       header={
         <>
           <span className="text-2xl leading-none">⚾</span>
-          <h2 className="text-base font-bold font-mono uppercase tracking-wider">MLB Betting Guide</h2>
+          <h2 className="text-base font-bold font-mono uppercase tracking-wider">Baseball Betting Guide</h2>
         </>
       }
       ctaClass="bg-red-400/10 border-red-400/30 text-red-400 hover:bg-red-400/20"
@@ -788,6 +822,74 @@ function RugbyGuide({ onDone }: { onDone?: () => void } = {}) {
         </>
       }
       ctaClass="bg-emerald-400/10 border-emerald-400/30 text-emerald-400 hover:bg-emerald-400/20"
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Basketball (International) Guide
+// ---------------------------------------------------------------------------
+
+const BASKETBALL_GUIDE_STEPS: GuideStep[] = [
+  {
+    icon: BookOpen,
+    color: "text-purple-400",
+    iconBg: "bg-purple-400/15 border-purple-400/40",
+    cardTint: "bg-purple-400/5",
+    cardBorder: "border-purple-400/30",
+    title: "How Basketball Predictions Work",
+    body: "Pick an upcoming basketball game — Liga A, BSN, EuroLeague and more — and predict the winner: HOME team or AWAY team. Basketball has no draws: overtime is always played until a winner is decided. Pay via Lightning, winners split the pool.",
+  },
+  {
+    icon: Wallet,
+    color: "text-blue-400",
+    iconBg: "bg-blue-400/15 border-blue-400/40",
+    cardTint: "bg-blue-400/5",
+    cardBorder: "border-blue-400/30",
+    title: "Pay with Lightning",
+    body: "Scan the QR code with any Lightning wallet (Phoenix, Wallet of Satoshi, Alby, etc.) or use WebLN if your browser supports it. Minimum bet is $0.50 USD.",
+  },
+  {
+    icon: Coins,
+    color: "text-purple-400",
+    iconBg: "bg-purple-400/15 border-purple-400/40",
+    cardTint: "bg-purple-400/5",
+    cardBorder: "border-purple-400/30",
+    title: "Pool & Payout",
+    body: "All bets on a game flow into one shared pool. After the final buzzer, winners split the total pool proportional to their stake (minus 2% house fee). Claim your sats via the withdrawal QR code — no account needed.",
+  },
+  {
+    icon: Award,
+    color: "text-green-400",
+    iconBg: "bg-green-400/15 border-green-400/40",
+    cardTint: "bg-green-400/5",
+    cardBorder: "border-green-400/30",
+    title: "Automatic Settlement",
+    body: "Our system checks game results every 15 minutes. Once the final score is confirmed, payouts are calculated and withdrawal QR codes are generated automatically. Games including overtime run up to 3.5 hours.",
+  },
+  {
+    icon: ListChecks,
+    color: "text-purple-400",
+    iconBg: "bg-purple-400/15 border-purple-400/40",
+    cardTint: "bg-purple-400/5",
+    cardBorder: "border-purple-400/30",
+    title: "Tips & Rules",
+    body: "• Betting closes 5 minutes before tip-off.\n• Covers international leagues: Argentina Liga A, Puerto Rico BSN, EuroLeague, ACB, and many more.\n• NBA games are listed under the NBA tab.\n• If no opposing bets are placed, your stake returns as REFUND minus a 0.5% refund fee.\n• Bet early for better value when the pool is thin.",
+  },
+];
+
+function BasketballGuide({ onDone }: { onDone?: () => void } = {}) {
+  return (
+    <GuidePager
+      steps={BASKETBALL_GUIDE_STEPS}
+      onDone={onDone}
+      header={
+        <>
+          <span className="text-2xl leading-none">🏀</span>
+          <h2 className="text-base font-bold font-mono uppercase tracking-wider">Basquete Betting Guide</h2>
+        </>
+      }
+      ctaClass="bg-purple-400/10 border-purple-400/30 text-purple-400 hover:bg-purple-400/20"
     />
   );
 }
@@ -1742,11 +1844,67 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
   );
 }
 
+function SeparatedSportsBetList({ hashes, onDismiss }: { hashes: string[]; onDismiss: (hash: string) => void }) {
+  const statusQueries = useQueries({
+    queries: hashes.map((hash) => ({
+      queryKey: [`/api/sports/bets/${hash}`],
+      queryFn: async () => {
+        const r = await fetch(apiUrl(`/api/sports/bets/${hash}`));
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<SportBetRecord>;
+      },
+      staleTime: 20_000,
+    })),
+  });
+
+  const open: string[] = [];
+  const closed: string[] = [];
+  hashes.forEach((hash, i) => {
+    const d = statusQueries[i]?.data;
+    const isOpen =
+      !d?.status ||
+      d.status === "pending" ||
+      d.status === "paid" ||
+      (d.status === "won" && d.withdrawStatus === "unclaimed");
+    if (isOpen) open.push(hash);
+    else closed.push(hash);
+  });
+
+  const showSections = open.length > 0 && closed.length > 0;
+
+  const renderCards = (group: string[]) =>
+    group.map((hash) => (
+      <SportBetStatusCard key={hash} hash={hash} onDismiss={() => onDismiss(hash)} />
+    ));
+
+  return (
+    <div className="card-stack">
+      {showSections ? (
+        <>
+          <div className="space-y-3">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <Clock className="h-3 w-3" /> Open ({open.length})
+            </p>
+            {renderCards(open)}
+          </div>
+          <div className="space-y-3">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <CheckCircle2 className="h-3 w-3" /> Closed ({closed.length})
+            </p>
+            {renderCards(closed)}
+          </div>
+        </>
+      ) : (
+        renderCards(hashes)
+      )}
+    </div>
+  );
+}
+
 export function Sports() {
   const [activeSport, setActiveSport] = useState<SportKey>("football");
   const [activeLeague, setActiveLeague] = useState<string>("all");
   const [activeMarketDate, setActiveMarketDate] = useState<string>("");
-  const [availableSportKeys, setAvailableSportKeys] = useState<SportKey[]>(SPORTS.map((sport) => sport.key));
   const [activeTab, setActiveTab] = useState<ContentTab>("upcoming");
   const [data, setData] = useState<{ upcoming: SportEvent[]; live: SportEvent[]; finished: SportEvent[]; suspended: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1812,29 +1970,6 @@ export function Sports() {
       .finally(() => setLoading(false));
   }, [activeSport]);
 
-  const refreshAvailableSports = useCallback(() => {
-    Promise.allSettled(
-      SPORTS.map(async (sport) => {
-        const response = await fetch(apiUrl(`/api/sports/events?sport=${sport.key}`));
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const payload = await response.json() as Partial<{ upcoming: SportEvent[] }>;
-        return {
-          key: sport.key,
-          hasMarkets: Array.isArray(payload.upcoming) && payload.upcoming.length > 0,
-        };
-      }),
-    )
-      .then((results) => {
-        const visible = results.flatMap((result) =>
-          result.status === "fulfilled" && result.value.hasMarkets ? [result.value.key] : [],
-        );
-        setAvailableSportKeys(visible.length > 0 ? visible : [activeSport]);
-      })
-      .catch(() => {
-        setAvailableSportKeys([activeSport]);
-      });
-  }, [activeSport]);
-
   useEffect(() => {
     fetchData();
     refreshTimerRef.current = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
@@ -1842,16 +1977,12 @@ export function Sports() {
   }, [fetchData]);
 
   useEffect(() => {
-    refreshAvailableSports();
-    const timer = setInterval(() => refreshAvailableSports(), 120_000);
-    return () => clearInterval(timer);
-  }, [refreshAvailableSports]);
-
-  useEffect(() => {
     let cancelled = false;
 
     const loadUserStakes = async () => {
-      const hashes = getSportBetHashesForKey(activeSport);
+      const hashes = activeSport === "basketball"
+        ? [...new Set([...getSportBetHashesForKey("basketball"), ...getSportBetHashesForKey("nba")])]
+        : getSportBetHashesForKey(activeSport);
       if (hashes.length === 0) {
         if (!cancelled) setUserStakeByMarket({});
         return;
@@ -1890,21 +2021,22 @@ export function Sports() {
     };
   }, [activeSport, betListVersion]);
 
-  const visibleSports = SPORTS.filter((sport) => availableSportKeys.includes(sport.key));
-
-  useEffect(() => {
-    if (!visibleSports.some((sport) => sport.key === activeSport) && visibleSports.length > 0) {
-      setActiveSport(visibleSports[0]!.key);
-    }
-  }, [activeSport, visibleSports]);
+  const activeCategoryDef = CATEGORIES.find((c) => c.sports.includes(activeSport)) ?? CATEGORIES[0]!;
+  const visibleCategories = CATEGORIES;
+  const subcategorySports = activeCategoryDef.sports
+    .map((sk) => SPORTS.find((s) => s.key === sk)!)
+    .filter(Boolean);
+  const showSubcategoryChips = (activeCategoryDef.showSubcategories ?? false) && subcategorySports.length > 0;
 
   const activeSportDef = SPORTS.find((s) => s.key === activeSport)!;
-  const sportBetHashes = getSportBetHashesForKey(activeSport);
+  const sportBetHashes = activeSport === "basketball"
+    ? [...new Set([...getSportBetHashesForKey("basketball"), ...getSportBetHashesForKey("nba")])]
+    : getSportBetHashesForKey(activeSport);
   const now = Date.now();
   const visibleMarketEvents = data
     ? data.upcoming.filter(
         (ev) =>
-          ev.sport === activeSportDef.sportName &&
+          (activeSportDef.eventIdPrefix ? ev.id.startsWith(activeSportDef.eventIdPrefix) : ev.sport === activeSportDef.sportName) &&
           ev.status === "upcoming" &&
           new Date(ev.startsAt).getTime() > now,
       )
@@ -1932,8 +2064,11 @@ export function Sports() {
   const marketDateOptionsMap = new Map<string, MarketDateOption>();
   for (const event of leagueScopedMarketEvents) {
     const option = getEventDateOption(event.startsAt);
-    if (!marketDateOptionsMap.has(option.value)) {
-      marketDateOptionsMap.set(option.value, option);
+    const existing = marketDateOptionsMap.get(option.value);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      marketDateOptionsMap.set(option.value, { ...option, count: 1 });
     }
   }
   const availableMarketDates = [...marketDateOptionsMap.values()].sort((a, b) => a.sortKey - b.sortKey);
@@ -1967,27 +2102,51 @@ export function Sports() {
   return (
     <div className="max-w-4xl mx-auto lg:max-w-6xl space-y-0">
 
-      {/* ── Sport selector chips ── */}
+      {/* ── Category chips ── */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
-        {visibleSports.map((sp) => (
-          <button
-            key={sp.key}
-            onClick={() => setActiveSport(sp.key)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
-              activeSport === sp.key
-                ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
-                : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
-            }`}
-          >
-            <span className="text-sm leading-none">{sp.icon}</span>
-            {sp.label}
-          </button>
-        ))}
+        {visibleCategories.map((cat) => {
+          const isActive = activeCategoryDef.key === cat.key;
+          return (
+            <button
+              key={cat.key}
+              onClick={() => {
+                const firstSport = cat.sports[0];
+                if (firstSport) setActiveSport(firstSport);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                isActive
+                  ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                  : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+              }`}
+            >
+              <span className="text-sm leading-none">{cat.icon}</span>
+              {cat.label}
+            </button>
+          );
+        })}
       </div>
 
+      {/* ── Subcategory chips (visible when category has showSubcategories) ── */}
+      {showSubcategoryChips && (
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
+          {subcategorySports.map((sp) => (
+            <button
+              key={sp.key}
+              onClick={() => setActiveSport(sp.key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                activeSport === sp.key
+                  ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                  : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+              }`}
+            >
+              {sp.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {showLeagueFilter && (
-        <div className="mb-4">
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
             {availableLeagues.length > 1 && (
               <button
                 onClick={() => setActiveLeague("all")}
@@ -2013,27 +2172,24 @@ export function Sports() {
                 {league.label}
               </button>
             ))}
-          </div>
         </div>
       )}
 
       {showDateFilter && (
-        <div className="mb-4">
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-            {availableMarketDates.map((option) => (
-              <button
-                key={option.value}
-                onClick={() => setActiveMarketDate(option.value)}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
-                  activeMarketDate === option.value
-                    ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
-                    : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
+          {availableMarketDates.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => setActiveMarketDate(option.value)}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                activeMarketDate === option.value
+                  ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                  : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+              }`}
+            >
+              {option.label} ({option.count})
+            </button>
+          ))}
         </div>
       )}
 
@@ -2060,11 +2216,12 @@ export function Sports() {
       {/* ── Guide ── */}
       {activeTab === "guide" && (() => {
         const props = { onDone: () => { setActiveTab("upcoming"); window.scrollTo({ top: 0, behavior: "smooth" }); } };
-        if (activeSportDef.key === "football") return <FootballGuide {...props} />;
-        if (activeSportDef.key === "nba")      return <NBAGuide {...props} />;
-        if (activeSportDef.key === "mlb")      return <MLBGuide {...props} />;
-        if (activeSportDef.key === "mma")      return <MMAGuide {...props} />;
-        if (activeSportDef.key === "rugby")    return <RugbyGuide {...props} />;
+        if (activeSportDef.key === "football")   return <FootballGuide {...props} />;
+        if (activeSportDef.key === "nba")        return <NBAGuide {...props} />;
+        if (activeSportDef.key === "mlb")        return <MLBGuide {...props} />;
+        if (activeSportDef.key === "mma")        return <MMAGuide {...props} />;
+        if (activeSportDef.key === "rugby")      return <RugbyGuide {...props} />;
+        if (activeSportDef.key === "basketball") return <BasketballGuide {...props} />;
         return <NFLGuide {...props} />;
       })()}
 
@@ -2092,24 +2249,20 @@ export function Sports() {
               </p>
             </div>
           ) : (
-            <div className="card-stack">
-              {sportBetHashes.map((hash) => (
-                <SportBetStatusCard
-                  key={hash}
-                  hash={hash}
-                  onDismiss={() => {
-                    removeSportBetHashForKey(activeSport, hash);
-                    setBetListVersion((current) => current + 1);
-                  }}
-                />
-              ))}
-            </div>
+            <SeparatedSportsBetList
+              hashes={sportBetHashes}
+              onDismiss={(hash) => {
+                removeSportBetHashForKey(activeSport, hash);
+                setBetListVersion((current) => current + 1);
+              }}
+            />
           )}
         </div>
       )}
 
       {/* ── Upcoming Matches ── */}
       {activeTab === "upcoming" && (
+        <>
         <div className="card-stack">
           {loading && !data && (
             <LoadingState
@@ -2132,7 +2285,7 @@ export function Sports() {
             const isSuspended = data.suspended;
             const visible = data.upcoming.filter(
               (ev) =>
-                ev.sport === activeSportDef.sportName &&
+                (activeSportDef.eventIdPrefix ? ev.id.startsWith(activeSportDef.eventIdPrefix) : ev.sport === activeSportDef.sportName) &&
                 ev.status === "upcoming" &&
                 matchesActiveLeague(ev) &&
                 matchesActiveMarketDate(ev) &&
@@ -2148,20 +2301,18 @@ export function Sports() {
                   </p>
                 </div>
               );
-            if (visible.length === 0 && activeSportDef.key === "nfl")
+            if (visible.length === 0)
               return (
                 <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
-                  <span className="text-4xl">🏈</span>
-                  <p className="font-mono text-sm font-semibold">No NFL games available</p>
+                  <span className="text-4xl">{activeSportDef.icon}</span>
+                  <p className="font-mono text-sm font-semibold">No {activeSportDef.label} {activeSportDef.hasDraw ? "matches" : "games"} available right now</p>
                   <p className="font-mono text-xs text-center opacity-60 max-w-xs">
-                    The NFL regular season runs September through January, with playoffs in February.<br/>
-                    Check back when the season starts!
+                    There are no open betting markets for {activeSportDef.label} at the moment.<br/>
+                    Check back soon — new markets open regularly!
                   </p>
                 </div>
               );
-            return visible.length === 0
-              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No upcoming {activeSportDef.hasDraw ? "matches" : "games"}.</p>
-              : visible.map((ev) => (
+            return visible.map((ev) => (
                   <UpcomingCard
                     key={ev.id}
                     ev={ev}
@@ -2172,6 +2323,13 @@ export function Sports() {
                 ));
           })()}
         </div>
+        <button
+          onClick={() => setActiveTab("guide")}
+          className="w-full text-center text-[11px] text-muted-foreground/60 hover:text-muted-foreground font-mono py-1 transition-colors"
+        >
+          New here? Read the guide →
+        </button>
+        </>
       )}
 
       {/* ── Recent Results ── */}
@@ -2207,7 +2365,7 @@ export function Sports() {
               .filter((ev) => {
                 if (seen.has(ev.id)) return false;
                 seen.add(ev.id);
-                return ev.sport === activeSportDef.sportName && matchesActiveLeague(ev);
+                return (activeSportDef.eventIdPrefix ? ev.id.startsWith(activeSportDef.eventIdPrefix) : ev.sport === activeSportDef.sportName) && matchesActiveLeague(ev);
               })
               .sort((left, right) => new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime());
             if (isSuspended)

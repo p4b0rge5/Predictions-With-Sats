@@ -1,5 +1,5 @@
 export const SPORTS_LOOKBACK_DAYS = 1;
-export const SPORTS_FUTURE_DAYS = 7;
+export const SPORTS_FUTURE_DAYS = 2;
 
 export function getSportsDateWindowStrings(nowMs = Date.now()): string[] {
   const base = new Date(nowMs);

@@ -182,7 +182,7 @@ start_services() {
 
   printf 'Services started (pid %s)\n' "$pid"
 
-  start_ollama_webui_tunnel
+#  start_ollama_webui_tunnel
 }
 
 stop_services() {
@@ -254,9 +254,9 @@ status_services() {
     ollama_pid="$(tr -d '[:space:]' <"$OLLAMA_WEBUI_PID_FILE")"
     printf 'Ollama WebUI tunnel running (pid %s)\n' "$ollama_pid"
     printf 'Ollama WebUI log: %s\n' "$OLLAMA_WEBUI_LOG_FILE"
-  else
-    printf 'Ollama WebUI tunnel stopped\n'
-    printf 'Ollama WebUI log: %s\n' "$OLLAMA_WEBUI_LOG_FILE"
+#  else
+#    printf 'Ollama WebUI tunnel stopped\n'
+#    printf 'Ollama WebUI log: %s\n' "$OLLAMA_WEBUI_LOG_FILE"
   fi
 }
 

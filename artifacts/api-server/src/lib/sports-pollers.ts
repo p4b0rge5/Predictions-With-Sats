@@ -14,12 +14,15 @@ import { db, sportBetsTable, sportMarketsTable } from "@workspace/db";
 import { eq, and, lt } from "drizzle-orm";
 import { logger } from "./logger";
 import { markMarketFinished, settleMarket } from "./sports-market";
+import { shouldRunStartupPrewarm, recordStartupPrewarm } from "./sports-request-budget";
 import { getSportsEvents, fetchFixtureById } from "./sports";
 import { getNbaEvents, fetchNbaGameById } from "./nba";
 import { getNflEvents, fetchNflGameById } from "./nfl";
 import { getMlbEvents, fetchMlbGameById } from "./mlb";
 import { getMmaEvents, fetchMmaFightById } from "./mma";
 import { getRugbyEvents, fetchRugbyGameById } from "./rugby";
+import { getHockeyEvents, fetchHockeyGameById } from "./hockey";
+import { getBasketballEvents, fetchBasketballGameById } from "./basketball";
 
 const PAYMENT_POLL_INTERVAL_MS = 5_000;
 // 15-min settlement interval conserves the 100 req/day API-Football free plan budget
@@ -104,19 +107,23 @@ function getExpectedDurationMs(eventId: string): number {
   if (eventId.startsWith("nba_")) return 150 * 60 * 1000; // NBA: ~2.5h with OT
   if (eventId.startsWith("mlb_")) return 270 * 60 * 1000; // MLB: up to 4.5h with extra innings
   if (eventId.startsWith("mma_"))   return 360 * 60 * 1000; // MMA: up to 6h with prelims + main card
-  if (eventId.startsWith("rugby_")) return 150 * 60 * 1000; // Rugby: 80 min + stoppages + potential extra time
-  return 110 * 60 * 1000;                                    // Soccer: ~110 min
+  if (eventId.startsWith("rugby_"))  return 150 * 60 * 1000; // Rugby: 80 min + stoppages + potential extra time
+  if (eventId.startsWith("hockey_"))     return 210 * 60 * 1000; // NHL: ~2.5h + OT/SO buffer
+  if (eventId.startsWith("basketball_")) return 150 * 60 * 1000; // Int'l basketball: ~2.5h with OT
+  return 110 * 60 * 1000;                                         // Soccer: ~110 min
 }
 
 type SportLoaderResult = Awaited<ReturnType<typeof getSportsEvents>>;
-type MarketSport = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby";
+type MarketSport = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby" | "hockey" | "basketball";
 
 function sportFromEventId(eventId: string): MarketSport {
-  if (eventId.startsWith("nba_")) return "nba";
-  if (eventId.startsWith("nfl_")) return "nfl";
-  if (eventId.startsWith("mlb_")) return "mlb";
-  if (eventId.startsWith("mma_")) return "mma";
-  if (eventId.startsWith("rugby_")) return "rugby";
+  if (eventId.startsWith("nba_"))        return "nba";
+  if (eventId.startsWith("nfl_"))        return "nfl";
+  if (eventId.startsWith("mlb_"))        return "mlb";
+  if (eventId.startsWith("mma_"))        return "mma";
+  if (eventId.startsWith("rugby_"))      return "rugby";
+  if (eventId.startsWith("hockey_"))     return "hockey";
+  if (eventId.startsWith("basketball_")) return "basketball";
   return "football";
 }
 
@@ -128,7 +135,9 @@ async function loadSettlementEvents(
   if (sport === "nfl") return getNflEvents(forceRefresh);
   if (sport === "mlb") return getMlbEvents(forceRefresh);
   if (sport === "mma") return getMmaEvents(forceRefresh);
-  if (sport === "rugby") return getRugbyEvents(forceRefresh);
+  if (sport === "rugby")  return getRugbyEvents(forceRefresh);
+  if (sport === "hockey")     return getHockeyEvents(forceRefresh);
+  if (sport === "basketball") return getBasketballEvents(forceRefresh);
   return getSportsEvents(forceRefresh);
 }
 
@@ -177,11 +186,13 @@ async function pollSportSettlement(): Promise<void> {
             { marketId: market.id, eventId: market.eventId },
             "Market past expected duration — doing direct API lookup",
           );
-          const isNba = market.eventId.startsWith("nba_");
-          const isNfl = market.eventId.startsWith("nfl_");
-          const isMlb = market.eventId.startsWith("mlb_");
-          const isMma   = market.eventId.startsWith("mma_");
-          const isRugby = market.eventId.startsWith("rugby_");
+          const isNba        = market.eventId.startsWith("nba_");
+          const isNfl        = market.eventId.startsWith("nfl_");
+          const isMlb        = market.eventId.startsWith("mlb_");
+          const isMma        = market.eventId.startsWith("mma_");
+          const isRugby      = market.eventId.startsWith("rugby_");
+          const isHockey     = market.eventId.startsWith("hockey_");
+          const isBasketball = market.eventId.startsWith("basketball_");
           const fetched = isNfl
             ? await fetchNflGameById(market.eventId)
             : isMlb
@@ -190,9 +201,13 @@ async function pollSportSettlement(): Promise<void> {
                 ? await fetchMmaFightById(market.eventId)
                 : isRugby
                   ? await fetchRugbyGameById(market.eventId)
-                  : isNba
-                    ? await fetchNbaGameById(market.eventId)
-                    : await fetchFixtureById(market.eventId);
+                  : isHockey
+                    ? await fetchHockeyGameById(market.eventId)
+                    : isBasketball
+                      ? await fetchBasketballGameById(market.eventId)
+                      : isNba
+                        ? await fetchNbaGameById(market.eventId)
+                        : await fetchFixtureById(market.eventId);
           if (fetched) event = fetched;
         }
       }
@@ -256,6 +271,30 @@ export function startSportsPollers(): void {
       logger.warn({ err }, "Sport settlement poller error"),
     );
   }, SETTLEMENT_POLL_INTERVAL_MS);
+
+  // Pre-warm all sport caches on startup, guarded by a 1-hour cooldown so that
+  // rapid server restarts (e.g. tunnel URL changes) don't exhaust the daily API budget.
+  shouldRunStartupPrewarm()
+    .then(async (doPrewarm) => {
+      if (!doPrewarm) {
+        logger.info("Sports startup pre-warm skipped — last pre-warm was less than 1 hour ago");
+        return;
+      }
+      await recordStartupPrewarm();
+      for (const [label, loader] of [
+        ["football", getSportsEvents],
+        ["nba",      getNbaEvents],
+        ["nfl",      getNflEvents],
+        ["mlb",      getMlbEvents],
+        ["mma",      getMmaEvents],
+        ["rugby",    getRugbyEvents],
+        ["hockey",      getHockeyEvents],
+        ["basketball",  getBasketballEvents],
+      ] as const) {
+        loader().catch((err) => logger.warn({ err, sport: label }, "Sport startup pre-warm error"));
+      }
+    })
+    .catch((err) => logger.warn({ err }, "Sports startup pre-warm check failed"));
 
   // Run settlement immediately on startup
   pollSportSettlement().catch((err) =>

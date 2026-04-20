@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueries } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   AlertCircle,
@@ -34,8 +34,9 @@ import { ErrorState, LoadingState } from "@/components/query-state";
 import { getPoolMultiple, getProjectedPayout } from "@/lib/payout-preview";
 
 type ContentTab = "guide" | "markets" | "myBets" | "results";
-type MarketPeriodFilter = "today" | "tomorrow";
+type MarketPeriodFilter = "today" | "tomorrow" | "later";
 type InputMode = "sats" | "usd";
+type CategoryFilter = "all" | MarketType;
 
 interface WeatherOutcome {
   key: string;
@@ -44,6 +45,8 @@ interface WeatherOutcome {
   poolSats: number;
   isWinner: boolean | null;
 }
+
+type MarketType = "temperature" | "precipitation";
 
 interface WeatherMarket {
   id: number;
@@ -64,6 +67,7 @@ interface WeatherMarket {
   resolvedValue: string | null;
   provider: string;
   outcomes: WeatherOutcome[];
+  marketType?: MarketType;
 }
 
 interface WeatherBetResult {
@@ -101,8 +105,12 @@ interface WeatherBetRecord {
   } | null;
 }
 
+function getMarketTypeFromQuestion(question: string | null | undefined): MarketType {
+  return /precipitation/i.test(question ?? "") ? "precipitation" : "temperature";
+}
+
 function getBetMarketQuestion(market: NonNullable<WeatherBetRecord["market"]>) {
-  return `Highest temperature in ${market.city}`;
+  return market.question ?? `Weather market · ${market.city}`;
 }
 
 declare global {
@@ -181,10 +189,12 @@ function getResolvedLabel(market: WeatherMarket) {
 }
 
 function getMarketQuestion(market: WeatherMarket) {
-  return `Highest temperature in ${market.city}`;
+  return market.question ?? `Weather market · ${market.city}`;
 }
 
 function getMarketSubhead(market: WeatherMarket) {
+  const type = market.marketType ?? getMarketTypeFromQuestion(market.question);
+  if (type === "precipitation") return "Pick the precipitation range for this period.";
   return `Pick the final temperature range for ${formatDate(market.date)}.`;
 }
 
@@ -227,16 +237,7 @@ async function fetchWeatherMarkets(): Promise<WeatherMarket[]> {
   return res.json() as Promise<WeatherMarket[]>;
 }
 
-const GUIDE_STEPS = [
-  {
-    icon: BookOpen,
-    color: "text-cyan-400",
-    iconBg: "bg-cyan-400/15 border-cyan-400/40",
-    cardTint: "bg-cyan-400/5",
-    cardBorder: "border-cyan-400/30",
-    title: "How It Works",
-    body: "Each market asks for the highest temperature in a city on a specific date. You pick one outcome and place your bet in sats through Lightning.",
-  },
+const WEATHER_GUIDE_SHARED_STEPS = [
   {
     icon: ListChecks,
     color: "text-amber-400",
@@ -253,7 +254,7 @@ const GUIDE_STEPS = [
     cardTint: "bg-emerald-400/5",
     cardBorder: "border-emerald-400/30",
     title: "Bet With Lightning",
-    body: "Choosing an outcome still generates a Lightning invoice in the existing flow. Paid bets are tracked locally and remain visible in My Bets.",
+    body: "Choose an outcome and a Lightning invoice is generated. Pay from any Lightning wallet — the bet is tracked locally and stays visible in My Bets.",
   },
   {
     icon: Gift,
@@ -262,14 +263,58 @@ const GUIDE_STEPS = [
     cardTint: "bg-fuchsia-400/5",
     cardBorder: "border-fuchsia-400/30",
     title: "Payouts",
-    body: "Each outcome pool is still tracked in sats. When the external market resolves, local winners split the total pool proportionally, minus the existing fee. If no opposing outcome receives bets, your stake returns as REFUND minus a 0.5% refund fee.",
+    body: "Each outcome pool is tracked in sats. When the market resolves, local winners split the total pool proportionally, minus the platform fee. If no opposing outcome receives bets, your stake returns as REFUND minus a 0.5% refund fee.",
   },
 ];
 
-function WeatherGuide({ onDone }: { onDone?: () => void }) {
+const TEMPERATURE_GUIDE_STEPS = [
+  {
+    icon: BookOpen,
+    color: "text-cyan-400",
+    iconBg: "bg-cyan-400/15 border-cyan-400/40",
+    cardTint: "bg-cyan-400/5",
+    cardBorder: "border-cyan-400/30",
+    title: "How Temperature Markets Work",
+    body: "Each market asks for the maximum temperature in a city on a specific date. Pick the temperature range you think it will land in and place your bet in sats via Lightning.",
+  },
+  ...WEATHER_GUIDE_SHARED_STEPS,
+];
+
+const PRECIPITATION_GUIDE_STEPS = [
+  {
+    icon: BookOpen,
+    color: "text-sky-400",
+    iconBg: "bg-sky-400/15 border-sky-400/40",
+    cardTint: "bg-sky-400/5",
+    cardBorder: "border-sky-400/30",
+    title: "How Precipitation Markets Work",
+    body: "Each market asks for the total precipitation (rain, snow or equivalent) in a city for a specific date or period. Pick the accumulation range you think it will land in and place your bet in sats via Lightning.",
+  },
+  ...WEATHER_GUIDE_SHARED_STEPS,
+];
+
+const ALL_WEATHER_GUIDE_STEPS = [
+  {
+    icon: BookOpen,
+    color: "text-cyan-400",
+    iconBg: "bg-cyan-400/15 border-cyan-400/40",
+    cardTint: "bg-cyan-400/5",
+    cardBorder: "border-cyan-400/30",
+    title: "How Weather Markets Work",
+    body: "Markets cover weather variables such as maximum temperature or total precipitation for a city on a specific date. Pick the range you think the measurement will land in and place your bet in sats via Lightning.",
+  },
+  ...WEATHER_GUIDE_SHARED_STEPS,
+];
+
+function WeatherGuide({ onDone, categoryFilter }: { onDone?: () => void; categoryFilter?: CategoryFilter }) {
+  const steps =
+    categoryFilter === "temperature" ? TEMPERATURE_GUIDE_STEPS :
+    categoryFilter === "precipitation" ? PRECIPITATION_GUIDE_STEPS :
+    ALL_WEATHER_GUIDE_STEPS;
+
   return (
     <GuidePager
-      steps={GUIDE_STEPS}
+      steps={steps}
       onDone={onDone}
       header={
         <>
@@ -1080,8 +1125,81 @@ export function WeatherBetStatusCard({ hash, onDismiss }: { hash: string; onDism
   );
 }
 
+function getAvailableCategories(markets: WeatherMarket[]): CategoryFilter[] {
+  const cats = new Set<MarketType>();
+  for (const m of markets) {
+    cats.add(m.marketType ?? getMarketTypeFromQuestion(m.question));
+  }
+  if (cats.size <= 1) return ["all"];
+  return ["all", ...Array.from(cats)];
+}
+
+const CATEGORY_LABELS: Record<CategoryFilter, string> = {
+  all: "All",
+  temperature: "Temperature",
+  precipitation: "Precipitation",
+};
+
+function SeparatedWeatherBetList({ hashes, onDismiss }: { hashes: string[]; onDismiss: (hash: string) => void }) {
+  const statusQueries = useQueries({
+    queries: hashes.map((hash) => ({
+      queryKey: [`/api/weather/bets/${hash}`],
+      queryFn: async () => {
+        const r = await fetch(`${API_BASE}/api/weather/bets/${hash}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<WeatherBetRecord>;
+      },
+      staleTime: 20_000,
+    })),
+  });
+
+  const open: string[] = [];
+  const closed: string[] = [];
+  hashes.forEach((hash, i) => {
+    const d = statusQueries[i]?.data;
+    const isOpen =
+      !d?.status ||
+      d.status === "pending" ||
+      d.status === "paid" ||
+      ((d.status === "won" || d.status === "refunded") && d.withdrawStatus === "unclaimed");
+    if (isOpen) open.push(hash);
+    else closed.push(hash);
+  });
+
+  const showSections = open.length > 0 && closed.length > 0;
+
+  const renderCards = (group: string[]) =>
+    group.map((hash) => (
+      <WeatherBetStatusCard key={hash} hash={hash} onDismiss={() => onDismiss(hash)} />
+    ));
+
+  return (
+    <div className="card-stack">
+      {showSections ? (
+        <>
+          <div className="space-y-3">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <Clock className="h-3 w-3" /> Open ({open.length})
+            </p>
+            {renderCards(open)}
+          </div>
+          <div className="space-y-3">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <CheckCircle2 className="h-3 w-3" /> Closed ({closed.length})
+            </p>
+            {renderCards(closed)}
+          </div>
+        </>
+      ) : (
+        renderCards(hashes)
+      )}
+    </div>
+  );
+}
+
 export function Weather() {
   const [activeTab, setActiveTab] = useState<ContentTab>("markets");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [cityFilter, setCityFilter] = useState("all");
   const [marketPeriodFilter, setMarketPeriodFilter] = useState<MarketPeriodFilter>("today");
   const [betListVersion, setBetListVersion] = useState(0);
@@ -1099,8 +1217,12 @@ export function Weather() {
 
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-  const openMarkets = (markets ?? []).filter((market) => market.status === "open");
-  const settledMarkets = (markets ?? []).filter((market) => market.status === "settled");
+  const allMarkets = markets ?? [];
+  const availableCategories = getAvailableCategories(allMarkets);
+  const filterByCategory = (items: WeatherMarket[]) =>
+    categoryFilter === "all" ? items : items.filter((m) => (m.marketType ?? getMarketTypeFromQuestion(m.question)) === categoryFilter);
+  const openMarkets = filterByCategory(allMarkets.filter((market) => market.status === "open"));
+  const settledMarkets = filterByCategory(allMarkets.filter((market) => market.status === "settled"));
   const pendingResultMarkets = openMarkets.filter((market) => market.date < today);
   const bettableOpenMarkets = openMarkets.filter((market) => market.date >= today);
   const resultMarkets = [...pendingResultMarkets, ...settledMarkets].sort(
@@ -1108,30 +1230,37 @@ export function Weather() {
       new Date(right.settledAt ?? `${right.date}T23:59:59Z`).getTime() -
       new Date(left.settledAt ?? `${left.date}T23:59:59Z`).getTime(),
   );
+  const filterByCity = (items: WeatherMarket[]) => cityFilter === "all" ? items : items.filter((market) => market.city === cityFilter);
   const todayOpen = bettableOpenMarkets.filter((market) => market.date === today);
   const tomorrowOpen = bettableOpenMarkets.filter((market) => market.date === tomorrow);
   const laterOpen = bettableOpenMarkets.filter((market) => market.date > tomorrow);
+  const filteredLaterOpen = filterByCity(laterOpen);
   const citySourceMarkets = activeTab === "results"
     ? resultMarkets
     : (bettableOpenMarkets.length > 0 ? bettableOpenMarkets : resultMarkets);
   const cityOptions = getOrderedCityOptions(citySourceMarkets);
-  const filterByCity = (items: WeatherMarket[]) => cityFilter === "all" ? items : items.filter((market) => market.city === cityFilter);
   const filteredResultMarkets = filterByCity(resultMarkets);
   const filteredTodayOpen = filterByCity(todayOpen);
   const filteredTomorrowOpen = filterByCity(tomorrowOpen);
   const marketSections = [
     { key: "today" as const, label: "Today", items: filteredTodayOpen, accentClass: "text-cyan-400" },
     { key: "tomorrow" as const, label: "Tomorrow", items: filteredTomorrowOpen, accentClass: "text-muted-foreground" },
+    { key: "later" as const, label: "Later", items: filteredLaterOpen, accentClass: "text-muted-foreground" },
   ];
   const visibleMarketSections = marketSections.filter((section) => section.key === marketPeriodFilter);
   const activeOpenMarkets = visibleMarketSections.flatMap((section) => section.items);
   const periodOptions = [
     { key: "today" as const, label: "Today", count: filteredTodayOpen.length },
     { key: "tomorrow" as const, label: "Tomorrow", count: filteredTomorrowOpen.length },
+    { key: "later" as const, label: "Later", count: filteredLaterOpen.length },
   ];
   const visiblePeriodOptions = periodOptions.filter((option) => option.count > 0);
   const weatherBetHashes = getWeatherBetHashes();
   void betListVersion;
+
+  useEffect(() => {
+    setCityFilter("all");
+  }, [categoryFilter]);
 
   useEffect(() => {
     if (!cityOptions.includes(cityFilter)) {
@@ -1147,6 +1276,26 @@ export function Weather() {
 
   return (
     <div className="max-w-4xl mx-auto lg:max-w-6xl space-y-0">
+      {availableCategories.length > 1 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
+          {availableCategories.map((cat) => {
+            const active = categoryFilter === cat;
+            return (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                  active
+                    ? "bg-cyan-400/20 text-cyan-300 border-cyan-400/50"
+                    : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+                }`}
+              >
+                {CATEGORY_LABELS[cat]}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
         {cityOptions.map((city) => {
           const active = cityFilter === city;
@@ -1176,7 +1325,7 @@ export function Weather() {
               key={option.key}
               type="button"
               onClick={() => setMarketPeriodFilter(option.key)}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-mono font-semibold uppercase tracking-wider transition-colors ${
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-mono font-semibold tracking-wide transition-colors ${
                 active
                   ? "border-cyan-400/50 bg-cyan-400/15 text-cyan-300"
                   : "border-border/40 bg-transparent text-muted-foreground hover:border-border hover:text-foreground"
@@ -1208,7 +1357,7 @@ export function Weather() {
       </div>
 
       {activeTab === "guide" && (
-        <WeatherGuide onDone={() => { setActiveTab("markets"); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+        <WeatherGuide categoryFilter={categoryFilter} onDone={() => { setActiveTab("markets"); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       )}
 
       {activeTab === "myBets" && (
@@ -1232,23 +1381,19 @@ export function Weather() {
               </p>
             </div>
           ) : (
-            <div className="card-stack">
-              {weatherBetHashes.map((hash) => (
-                <WeatherBetStatusCard
-                  key={hash}
-                  hash={hash}
-                  onDismiss={() => {
-                    removeWeatherBetHash(hash);
-                    setBetListVersion((current) => current + 1);
-                  }}
-                />
-              ))}
-            </div>
+            <SeparatedWeatherBetList
+              hashes={weatherBetHashes}
+              onDismiss={(hash) => {
+                removeWeatherBetHash(hash);
+                setBetListVersion((current) => current + 1);
+              }}
+            />
           )}
         </div>
       )}
 
       {activeTab === "markets" && (
+        <>
         <div className="card-stack">
           {error ? (
             <ErrorState
@@ -1304,6 +1449,13 @@ export function Weather() {
             </>
           )}
         </div>
+        <button
+          onClick={() => setActiveTab("guide")}
+          className="w-full text-center text-[11px] text-muted-foreground/60 hover:text-muted-foreground font-mono py-1 transition-colors"
+        >
+          New here? Read the guide →
+        </button>
+        </>
       )}
 
       {activeTab === "results" && (

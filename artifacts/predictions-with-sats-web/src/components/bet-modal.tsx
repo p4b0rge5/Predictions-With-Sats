@@ -17,9 +17,10 @@ interface BetModalProps {
   direction: "up" | "down";
   btcPriceUsd: number;
   windowId: number;
-  asset: "btc" | "eth" | "sol";
+  asset: "btc" | "eth" | "sol" | "xrp" | "bnb";
   totalUpSats: number;
   totalDownSats: number;
+  intervalMins: 5 | 15 | 30;
 }
 
 declare global {
@@ -67,6 +68,7 @@ export function BetModal({
   asset,
   totalUpSats,
   totalDownSats,
+  intervalMins,
 }: BetModalProps) {
   const [inputMode, setInputMode]   = useState<InputMode>("usd");
   const [rawAmount, setRawAmount]   = useState<string>("0.5");
@@ -145,7 +147,7 @@ export function BetModal({
       return;
     }
     createBet.mutate(
-      { data: { amountUsd: usdAmount, direction, asset } },
+      { data: { amountUsd: usdAmount, direction, asset, intervalMinutes: intervalMins } },
       {
         onSuccess: (data) => {
           setPaymentHash(data.paymentHash);

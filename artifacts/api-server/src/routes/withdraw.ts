@@ -79,7 +79,8 @@ router.get("/withdraw/:token", async (req, res): Promise<void> => {
     .where(eq(marketWindowsTable.id, bet.windowId))
     .limit(1);
 
-  const isRefund = win?.outcome === "no_liquidity";
+  const isDraw = win?.outcome === "draw";
+  const isRefund = win?.outcome === "no_liquidity" || isDraw;
   const asset = (win?.asset ?? "btc").toUpperCase();
   const dirLabel = bet.direction === "up" ? "UP" : "DOWN";
   const payoutSats = getEffectiveCryptoPayoutSats({
@@ -87,7 +88,9 @@ router.get("/withdraw/:token", async (req, res): Promise<void> => {
     amountSats: bet.amountSats,
     windowOutcome: win?.outcome,
   });
-  const description = isRefund
+  const description = isDraw
+    ? `PWSats draw refund ${asset} window ${bet.windowId}`
+    : isRefund
     ? `PWSats refund ${asset} window ${bet.windowId}`
     : `PWSats win ${asset} ${dirLabel} 5 min prediction`;
 

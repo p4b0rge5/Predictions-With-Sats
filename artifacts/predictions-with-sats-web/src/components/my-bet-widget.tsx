@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useGetBetStatus, getGetBetStatusQueryKey } from "@workspace/api-client-react";
+import { useGetBetStatus, getGetBetStatusQueryKey, getGetBetStatusQueryOptions } from "@workspace/api-client-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import {
   ArrowUp, ArrowDown, Zap, Share2, ChevronDown, ChevronUp, Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQueries } from "@tanstack/react-query";
 
 const STORAGE_KEY = "predictions_with_sats_hashes_v1";
 const LEGACY_STORAGE_KEY = "lightning_bet_hashes_v2";
@@ -25,6 +25,8 @@ const ASSET_STORAGE_KEYS = {
   btc: "predictions_with_sats_btc_hashes_v1",
   eth: "predictions_with_sats_eth_hashes_v1",
   sol: "predictions_with_sats_sol_hashes_v1",
+  xrp: "predictions_with_sats_xrp_hashes_v1",
+  bnb: "predictions_with_sats_bnb_hashes_v1",
 } as const;
 
 // ── Generic storage helper ──────────────────────────────────────────────────
@@ -33,6 +35,8 @@ const LEGACY_ASSET_STORAGE_KEYS = {
   btc: "lightning_bet_btc_hashes_v1",
   eth: "lightning_bet_eth_hashes_v1",
   sol: "lightning_bet_sol_hashes_v1",
+  xrp: "lightning_bet_xrp_hashes_v1",
+  bnb: "lightning_bet_bnb_hashes_v1",
 } as const;
 
 function readStoredHashes(key: string): string[] {
@@ -342,7 +346,8 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
   const dirColor = isUp ? "text-green-500" : "text-red-500";
   const dirCardClass = isUp ? "surface-tint-green" : "surface-tint-red";
   const dirPillClass = isUp ? "bg-green-500/20 border-green-500/50" : "bg-red-500/20 border-red-500/50";
-  const isRefund = bet.windowOutcome === "no_liquidity";
+  const isDraw = bet.windowOutcome === "draw";
+  const isRefund = bet.windowOutcome === "no_liquidity" || isDraw;
 
   const statusInfo = (() => {
     if (bet.status === "pending")
@@ -439,7 +444,12 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
             <Trophy className="h-3.5 w-3.5" />
             {isRefund ? "Refund ready — scan to claim" : "You won! Scan to claim"}
           </div>
-          {isRefund && (
+          {isDraw && (
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              The market ended in a draw — your stake is being returned minus the 0.5% refund fee.
+            </p>
+          )}
+          {isRefund && !isDraw && (
             <p className="text-[10px] text-muted-foreground leading-relaxed">
               No bets were placed on the opposing side — your stake is being returned minus the 0.5% refund fee.
             </p>
@@ -548,17 +558,58 @@ interface MyBetsListProps {
 }
 
 export function MyBetsList({ hashes, onDismiss }: MyBetsListProps) {
+  const queries = useQueries({
+    queries: hashes.map((hash) => getGetBetStatusQueryOptions(hash)),
+  });
+
   if (hashes.length === 0) return null;
+
+  const open: string[] = [];
+  const closed: string[] = [];
+  hashes.forEach((hash, i) => {
+    const d = queries[i]?.data;
+    const isOpen =
+      !d?.status ||
+      d.status === "pending" ||
+      d.status === "paid" ||
+      ((d.status === "won" || d.status === "refunded") && d.withdrawStatus === "unclaimed");
+    if (isOpen) open.push(hash);
+    else closed.push(hash);
+  });
+
+  const showSections = open.length > 0 && closed.length > 0;
+
+  const renderCards = (group: string[]) =>
+    group.map((hash) => (
+      <MyBetWidget key={hash} paymentHash={hash} onDismiss={() => onDismiss(hash)} />
+    ));
 
   return (
     <div className="card-stack">
-      <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-        <Clock className="h-3 w-3" />
-        My Bets ({hashes.length})
-      </p>
-      {hashes.map((hash) => (
-        <MyBetWidget key={hash} paymentHash={hash} onDismiss={() => onDismiss(hash)} />
-      ))}
+      {showSections ? (
+        <>
+          <div className="space-y-3">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <Clock className="h-3 w-3" /> Open ({open.length})
+            </p>
+            {renderCards(open)}
+          </div>
+          <div className="space-y-3">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <CheckCircle2 className="h-3 w-3" /> Closed ({closed.length})
+            </p>
+            {renderCards(closed)}
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+            <Clock className="h-3 w-3" />
+            My Bets ({hashes.length})
+          </p>
+          {renderCards(open.length > 0 ? open : closed)}
+        </>
+      )}
     </div>
   );
 }

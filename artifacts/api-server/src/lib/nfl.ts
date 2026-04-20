@@ -255,9 +255,12 @@ export async function getNflEvents(forceRefresh = false): Promise<{
 
     if (apiErrored && allGames.length === 0) {
       nflCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
-      nflCache.suspended = true;
-      logger.warn("American Football API error — serving stale cache, retrying in 15 min");
-      return { upcoming: nflCache.upcoming, live: nflCache.live, finished: nflCache.finished, suspended: true };
+      const hasStale = nflCache.upcoming.length > 0 || nflCache.live.length > 0 || nflCache.finished.length > 0;
+      nflCache.suspended = !hasStale;
+      logger.warn({ hasStale }, hasStale
+        ? "American Football API error — serving stale cache without suspension"
+        : "American Football API error — no stale data available, suspending");
+      return { upcoming: nflCache.upcoming, live: nflCache.live, finished: nflCache.finished, suspended: nflCache.suspended };
     }
 
     const now    = Date.now();
@@ -295,12 +298,13 @@ export async function getNflEvents(forceRefresh = false): Promise<{
 
     return { upcoming: nflCache.upcoming, live: nflCache.live, finished: nflCache.finished, suspended: false };
   })();
+  refreshPromise.catch(() => {}).finally(() => { refreshPromise = null; });
 
-  try {
-    return await refreshPromise;
-  } finally {
-    refreshPromise = null;
+  if (!canForce && nflCache.fetchedAt > 0) {
+    return { upcoming: nflCache.upcoming, live: nflCache.live, finished: nflCache.finished, suspended: nflCache.suspended };
   }
+
+  return refreshPromise;
 }
 
 // ---------------------------------------------------------------------------

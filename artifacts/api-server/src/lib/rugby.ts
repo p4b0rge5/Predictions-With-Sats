@@ -229,9 +229,12 @@ export async function getRugbyEvents(forceRefresh = false): Promise<{
 
     if (apiErrored && allGames.length === 0) {
       rugbyCache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
-      rugbyCache.suspended = true;
-      logger.warn("Rugby API error — serving stale cache, retrying in 15 min");
-      return { upcoming: rugbyCache.upcoming, live: rugbyCache.live, finished: rugbyCache.finished, suspended: true };
+      const hasStale = rugbyCache.upcoming.length > 0 || rugbyCache.live.length > 0 || rugbyCache.finished.length > 0;
+      rugbyCache.suspended = !hasStale;
+      logger.warn({ hasStale }, hasStale
+        ? "Rugby API error — serving stale cache without suspension"
+        : "Rugby API error — no stale data available, suspending");
+      return { upcoming: rugbyCache.upcoming, live: rugbyCache.live, finished: rugbyCache.finished, suspended: rugbyCache.suspended };
     }
 
     const now    = Date.now();
@@ -269,12 +272,13 @@ export async function getRugbyEvents(forceRefresh = false): Promise<{
 
     return { upcoming: rugbyCache.upcoming, live: rugbyCache.live, finished: rugbyCache.finished, suspended: false };
   })();
+  refreshPromise.catch(() => {}).finally(() => { refreshPromise = null; });
 
-  try {
-    return await refreshPromise;
-  } finally {
-    refreshPromise = null;
+  if (!canForce && rugbyCache.fetchedAt > 0) {
+    return { upcoming: rugbyCache.upcoming, live: rugbyCache.live, finished: rugbyCache.finished, suspended: rugbyCache.suspended };
   }
+
+  return refreshPromise;
 }
 
 // ---------------------------------------------------------------------------

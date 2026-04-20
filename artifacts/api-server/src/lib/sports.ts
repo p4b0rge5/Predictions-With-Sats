@@ -261,10 +261,13 @@ export async function getSportsEvents(forceRefresh = false): Promise<{
     }
 
     if (apiErrored && allFixtures.length === 0) {
-      cache.fetchedAt  = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
-      cache.suspended  = true;
-      logger.warn("API-Football error — serving stale cache, retrying in 15 min");
-      return { upcoming: cache.upcoming, live: cache.live, finished: cache.finished, suspended: true };
+      cache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
+      const hasStale = cache.upcoming.length > 0 || cache.live.length > 0 || cache.finished.length > 0;
+      cache.suspended = !hasStale;
+      logger.warn({ hasStale }, hasStale
+        ? "API-Football error — serving stale cache without suspension"
+        : "API-Football error — no stale data available, suspending");
+      return { upcoming: cache.upcoming, live: cache.live, finished: cache.finished, suspended: cache.suspended };
     }
 
     const filtered = allFixtures.filter((f) => LEAGUE_IDS.has(f.league.id));
@@ -303,12 +306,13 @@ export async function getSportsEvents(forceRefresh = false): Promise<{
 
     return { upcoming: cache.upcoming, live: cache.live, finished: cache.finished, suspended: false };
   })();
+  refreshPromise.catch(() => {}).finally(() => { refreshPromise = null; });
 
-  try {
-    return await refreshPromise;
-  } finally {
-    refreshPromise = null;
+  if (!canForce && cache.fetchedAt > 0) {
+    return { upcoming: cache.upcoming, live: cache.live, finished: cache.finished, suspended: cache.suspended };
   }
+
+  return refreshPromise;
 }
 
 // ---------------------------------------------------------------------------

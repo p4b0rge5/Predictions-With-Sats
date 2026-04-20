@@ -54,26 +54,32 @@ router.get("/weather/markets", async (_req, res): Promise<void> => {
     const markets = await listWeatherMarkets();
 
     res.json(
-      markets.map((m) => ({
-        id: m.id,
-        city: m.city,
-        country: m.country,
-        emoji: "🌡️",
-        date: m.date,
-        threshold: Number.parseFloat(m.threshold),
-        question: m.question ?? `Weather market · ${m.city}`,
-        subtitle: m.subtitle ?? null,
-        sourceUrl: m.sourceUrl ?? null,
-        status: m.status,
-        outcome: m.winningOutcome ?? m.outcome,
-        actualTemp: m.actualTemp !== null ? parseFloat(m.actualTemp) : null,
-        totalYesSats: m.totalYesSats,
-        totalNoSats: m.totalNoSats,
-        settledAt: m.settledAt?.toISOString() ?? null,
-        resolvedValue: m.resolvedValue ?? null,
-        provider: m.provider,
-        outcomes: Array.isArray(m.outcomes) ? m.outcomes : [],
-      })),
+      markets.map((m) => {
+        const question = m.question ?? `Weather market · ${m.city}`;
+        const marketType = /\bprecipitation\b/i.test(question) ? "precipitation" : "temperature";
+        const emoji = marketType === "precipitation" ? "🌧️" : "🌡️";
+        return {
+          id: m.id,
+          city: m.city,
+          country: m.country,
+          emoji,
+          date: m.date,
+          threshold: Number.parseFloat(m.threshold),
+          question,
+          subtitle: m.subtitle ?? null,
+          sourceUrl: m.sourceUrl ?? null,
+          status: m.status,
+          outcome: m.winningOutcome ?? m.outcome,
+          actualTemp: m.actualTemp !== null ? parseFloat(m.actualTemp) : null,
+          totalYesSats: m.totalYesSats,
+          totalNoSats: m.totalNoSats,
+          settledAt: m.settledAt?.toISOString() ?? null,
+          resolvedValue: m.resolvedValue ?? null,
+          provider: m.provider,
+          outcomes: Array.isArray(m.outcomes) ? m.outcomes : [],
+          marketType,
+        };
+      }),
     );
   } catch (err) {
     logger.error({ err }, "GET /api/weather/markets error");

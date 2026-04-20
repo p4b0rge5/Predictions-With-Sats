@@ -20,6 +20,8 @@ import { getNflEvents } from "../lib/nfl";
 import { getMlbEvents } from "../lib/mlb";
 import { getMmaEvents } from "../lib/mma";
 import { getRugbyEvents } from "../lib/rugby";
+import { getHockeyEvents } from "../lib/hockey";
+import { getBasketballEvents } from "../lib/basketball";
 import { findOrCreateMarket, addToPool, markMarketFinished } from "../lib/sports-market";
 import { createInvoice } from "../lib/alby";
 import { coinosPayInvoice } from "../lib/coinos";
@@ -36,6 +38,14 @@ const MIN_AMOUNT_SATS = 250;
 const PAYOUT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
+// Response-level cache for GET /api/sports/events
+// Avoids redundant DB queries + market enrichment on every client poll.
+// ---------------------------------------------------------------------------
+
+const EVENTS_CACHE_TTL_MS = 60_000;
+const eventsCache = new Map<string, { payload: unknown; at: number }>();
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -45,7 +55,7 @@ function encodeLnurlSports(url: string): string {
 }
 
 type SportEventsResult = Awaited<ReturnType<typeof getSportsEvents>>;
-type SportQueryKey = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby";
+type SportQueryKey = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby" | "hockey" | "basketball";
 
 const EMPTY_SPORT_EVENTS: SportEventsResult = {
   upcoming: [],
@@ -70,11 +80,13 @@ async function settleSportEvents(
 }
 
 function sportLabelFromEventId(eventId: string): SportQueryKey {
-  if (eventId.startsWith("nba_")) return "nba";
-  if (eventId.startsWith("nfl_")) return "nfl";
-  if (eventId.startsWith("mlb_")) return "mlb";
-  if (eventId.startsWith("mma_")) return "mma";
-  if (eventId.startsWith("rugby_")) return "rugby";
+  if (eventId.startsWith("nba_"))        return "nba";
+  if (eventId.startsWith("nfl_"))        return "nfl";
+  if (eventId.startsWith("mlb_"))        return "mlb";
+  if (eventId.startsWith("mma_"))        return "mma";
+  if (eventId.startsWith("rugby_"))      return "rugby";
+  if (eventId.startsWith("hockey_"))     return "hockey";
+  if (eventId.startsWith("basketball_")) return "basketball";
   return "football";
 }
 
@@ -85,7 +97,9 @@ function parseSportQuery(value: unknown): SportQueryKey | null {
     value === "nfl" ||
     value === "mlb" ||
     value === "mma" ||
-    value === "rugby"
+    value === "rugby" ||
+    value === "hockey" ||
+    value === "basketball"
   ) {
     return value;
   }
@@ -96,11 +110,27 @@ async function loadSportEvents(
   req: LoggedRequest,
   sport: SportQueryKey,
 ): Promise<SportEventsResult> {
-  if (sport === "nba") return settleSportEvents(req, sport, () => getNbaEvents());
-  if (sport === "nfl") return settleSportEvents(req, sport, () => getNflEvents());
-  if (sport === "mlb") return settleSportEvents(req, sport, () => getMlbEvents());
-  if (sport === "mma") return settleSportEvents(req, sport, () => getMmaEvents());
-  if (sport === "rugby") return settleSportEvents(req, sport, () => getRugbyEvents());
+  if (sport === "basketball") {
+    // Basketball tab is the umbrella: international leagues + NBA as subcategory
+    const [bball, nba] = await Promise.all([
+      settleSportEvents(req, "basketball", () => getBasketballEvents()),
+      settleSportEvents(req, "nba",        () => getNbaEvents()),
+    ]);
+    return {
+      upcoming: [...bball.upcoming, ...nba.upcoming].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+      live:     [...bball.live,     ...nba.live],
+      finished: [...bball.finished, ...nba.finished]
+        .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
+        .slice(0, 20),
+      suspended: bball.suspended && nba.suspended,
+    };
+  }
+  if (sport === "nba")    return settleSportEvents(req, sport, () => getNbaEvents());
+  if (sport === "nfl")    return settleSportEvents(req, sport, () => getNflEvents());
+  if (sport === "mlb")    return settleSportEvents(req, sport, () => getMlbEvents());
+  if (sport === "mma")    return settleSportEvents(req, sport, () => getMmaEvents());
+  if (sport === "rugby")  return settleSportEvents(req, sport, () => getRugbyEvents());
+  if (sport === "hockey") return settleSportEvents(req, sport, () => getHockeyEvents());
   return settleSportEvents(req, sport, () => getSportsEvents());
 }
 
@@ -113,13 +143,17 @@ function getSelectedSuspendedFlag(
     mlb: SportEventsResult;
     mma: SportEventsResult;
     rugby: SportEventsResult;
+    hockey: SportEventsResult;
+    basketball: SportEventsResult;
   },
 ): boolean {
-  if (sport === "nba") return sportEvents.nba.suspended;
-  if (sport === "nfl") return sportEvents.nfl.suspended;
-  if (sport === "mlb") return sportEvents.mlb.suspended;
-  if (sport === "mma") return sportEvents.mma.suspended;
-  if (sport === "rugby") return sportEvents.rugby.suspended;
+  if (sport === "nba")        return sportEvents.nba.suspended;
+  if (sport === "nfl")        return sportEvents.nfl.suspended;
+  if (sport === "mlb")        return sportEvents.mlb.suspended;
+  if (sport === "mma")        return sportEvents.mma.suspended;
+  if (sport === "rugby")      return sportEvents.rugby.suspended;
+  if (sport === "hockey")     return sportEvents.hockey.suspended;
+  if (sport === "basketball") return sportEvents.basketball.suspended;
   return sportEvents.soccer.suspended;
 }
 
@@ -144,29 +178,43 @@ router.get("/sports/events", async (req, res): Promise<void> => {
       return;
     }
 
-    let soccer = EMPTY_SPORT_EVENTS;
-    let nba = EMPTY_SPORT_EVENTS;
-    let nfl = EMPTY_SPORT_EVENTS;
-    let mlb = EMPTY_SPORT_EVENTS;
-    let mma = EMPTY_SPORT_EVENTS;
-    let rugby = EMPTY_SPORT_EVENTS;
+    const cacheKey = requestedSport ?? "all";
+    const cached = eventsCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < EVENTS_CACHE_TTL_MS) {
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=30");
+      res.json(cached.payload);
+      return;
+    }
+
+    let soccer     = EMPTY_SPORT_EVENTS;
+    let nba        = EMPTY_SPORT_EVENTS;
+    let nfl        = EMPTY_SPORT_EVENTS;
+    let mlb        = EMPTY_SPORT_EVENTS;
+    let mma        = EMPTY_SPORT_EVENTS;
+    let rugby      = EMPTY_SPORT_EVENTS;
+    let hockey     = EMPTY_SPORT_EVENTS;
+    let basketball = EMPTY_SPORT_EVENTS;
 
     if (requestedSport) {
       const selected = await loadSportEvents(req, requestedSport);
-      if (requestedSport === "football") soccer = selected;
-      if (requestedSport === "nba") nba = selected;
-      if (requestedSport === "nfl") nfl = selected;
-      if (requestedSport === "mlb") mlb = selected;
-      if (requestedSport === "mma") mma = selected;
-      if (requestedSport === "rugby") rugby = selected;
+      if (requestedSport === "football")   soccer     = selected;
+      if (requestedSport === "nba")        nba        = selected;
+      if (requestedSport === "nfl")        nfl        = selected;
+      if (requestedSport === "mlb")        mlb        = selected;
+      if (requestedSport === "mma")        mma        = selected;
+      if (requestedSport === "rugby")      rugby      = selected;
+      if (requestedSport === "hockey")     hockey     = selected;
+      if (requestedSport === "basketball") basketball = selected;
     } else {
-      [soccer, nba, nfl, mlb, mma, rugby] = await Promise.all([
-        settleSportEvents(req, "football", () => getSportsEvents()),
-        settleSportEvents(req, "nba", () => getNbaEvents()),
-        settleSportEvents(req, "nfl", () => getNflEvents()),
-        settleSportEvents(req, "mlb", () => getMlbEvents()),
-        settleSportEvents(req, "mma", () => getMmaEvents()),
-        settleSportEvents(req, "rugby", () => getRugbyEvents()),
+      [soccer, nba, nfl, mlb, mma, rugby, hockey, basketball] = await Promise.all([
+        settleSportEvents(req, "football",   () => getSportsEvents()),
+        settleSportEvents(req, "nba",        () => getNbaEvents()),
+        settleSportEvents(req, "nfl",        () => getNflEvents()),
+        settleSportEvents(req, "mlb",        () => getMlbEvents()),
+        settleSportEvents(req, "mma",        () => getMmaEvents()),
+        settleSportEvents(req, "rugby",      () => getRugbyEvents()),
+        settleSportEvents(req, "hockey",     () => getHockeyEvents()),
+        settleSportEvents(req, "basketball", () => getBasketballEvents()),
       ]);
     }
 
@@ -178,7 +226,7 @@ router.get("/sports/events", async (req, res): Promise<void> => {
       allMarkets = [];
     }
 
-    const allFinishedEvents = [...soccer.finished, ...nba.finished, ...nfl.finished, ...mlb.finished, ...mma.finished, ...rugby.finished];
+    const allFinishedEvents = [...soccer.finished, ...nba.finished, ...nfl.finished, ...mlb.finished, ...mma.finished, ...rugby.finished, ...hockey.finished, ...basketball.finished];
     const finishedEventIds = new Set(allFinishedEvents.map((event) => event.id));
     const finishedDetectedAt = new Date();
 
@@ -223,19 +271,23 @@ router.get("/sports/events", async (req, res): Promise<void> => {
     };
 
     const enriched = {
-      upcoming:      [...soccer.upcoming, ...nba.upcoming, ...nfl.upcoming, ...mlb.upcoming, ...mma.upcoming, ...rugby.upcoming].map(enrich),
-      live:          [...soccer.live, ...nba.live, ...nfl.live, ...mlb.live, ...mma.live, ...rugby.live].map(enrich),
-      finished:      [...soccer.finished, ...nba.finished, ...nfl.finished, ...mlb.finished, ...mma.finished, ...rugby.finished].map(enrich),
-      suspended:     requestedSport
-        ? getSelectedSuspendedFlag(requestedSport, { soccer, nba, nfl, mlb, mma, rugby })
+      upcoming:           [...soccer.upcoming, ...nba.upcoming, ...nfl.upcoming, ...mlb.upcoming, ...mma.upcoming, ...rugby.upcoming, ...hockey.upcoming, ...basketball.upcoming].map(enrich),
+      live:               [...soccer.live,     ...nba.live,     ...nfl.live,     ...mlb.live,     ...mma.live,     ...rugby.live,     ...hockey.live,     ...basketball.live].map(enrich),
+      finished:           [...soccer.finished, ...nba.finished, ...nfl.finished, ...mlb.finished, ...mma.finished, ...rugby.finished, ...hockey.finished, ...basketball.finished].map(enrich),
+      suspended:          requestedSport
+        ? getSelectedSuspendedFlag(requestedSport, { soccer, nba, nfl, mlb, mma, rugby, hockey, basketball })
         : soccer.suspended,
-      nbaSuspended:  nba.suspended,
-      nflSuspended:  nfl.suspended,
-      mlbSuspended:  mlb.suspended,
-      mmaSuspended:  mma.suspended,
-      rugbySuspended: rugby.suspended,
+      nbaSuspended:        nba.suspended,
+      nflSuspended:        nfl.suspended,
+      mlbSuspended:        mlb.suspended,
+      mmaSuspended:        mma.suspended,
+      rugbySuspended:      rugby.suspended,
+      hockeySuspended:     hockey.suspended,
+      basketballSuspended: basketball.suspended,
     };
 
+    eventsCache.set(cacheKey, { payload: enriched, at: Date.now() });
+    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=30");
     res.json(enriched);
   } catch (err) {
     req.log.error({ err }, "Failed to fetch sports events");

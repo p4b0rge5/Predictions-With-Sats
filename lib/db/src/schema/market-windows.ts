@@ -12,6 +12,7 @@ import { z } from "zod/v4";
 export const marketWindowsTable = pgTable("market_windows", {
   id: serial("id").primaryKey(),
   asset: text("asset").notNull().default("btc"),
+  intervalMinutes: integer("interval_minutes").notNull().default(5),
   status: text("status").notNull().default("open"),
   openPrice: numeric("open_price", { precision: 18, scale: 2 }),
   closePrice: numeric("close_price", { precision: 18, scale: 2 }),

@@ -8,6 +8,8 @@ const MAX_CLOSED_PAGES = 4;
 const RECENT_PAST_DAYS = 7;
 const FUTURE_DAYS = 7;
 
+export type MarketType = "temperature" | "precipitation";
+
 export interface ExternalWeatherOutcome {
   key: string;
   label: string;
@@ -33,6 +35,7 @@ export interface ExternalWeatherMarket {
   sourceUrl: string | null;
   settledAt: Date | null;
   outcomes: ExternalWeatherOutcome[];
+  marketType: MarketType;
 }
 
 interface PolymarketTokenLike {
@@ -78,6 +81,7 @@ interface GroupableWeatherMarket {
   relevanceVolume24hr: number | null;
   relevanceLiquidity: number | null;
   relevanceVolume: number | null;
+  marketType: MarketType;
 }
 
 function asString(value: unknown): string | null {
@@ -193,14 +197,39 @@ function getYesInfo(raw: PolymarketMarketLike): { yesPrice: number | null; resol
   };
 }
 
-function parseCityAndDate(question: string, raw: PolymarketMarketLike): { city: string; date: string | null; outcomeLabel: string | null } {
-  const pattern = /(?:will\s+the\s+)?(?:(?:highest|max(?:imum)?)\s+temperature)\s+in\s+(.+?)\s+be\s+(.+?)\s+on\s+(.+?)(?:\?|$)/i;
-  const match = question.match(pattern);
-  if (match) {
+function parseMonthToDate(monthText: string, raw: PolymarketMarketLike): string | null {
+  const reference =
+    asString(raw.endDate) ??
+    asString(raw.end_date_iso) ??
+    asString(raw.gameStartTime) ??
+    null;
+  const year = reference ? new Date(reference).getUTCFullYear() : new Date().getUTCFullYear();
+  const firstDay = new Date(`${monthText} 1, ${year}`);
+  if (Number.isNaN(firstDay.getTime())) return null;
+  const lastDay = new Date(Date.UTC(firstDay.getUTCFullYear(), firstDay.getUTCMonth() + 1, 0));
+  return lastDay.toISOString().slice(0, 10);
+}
+
+function parseCityAndDate(question: string, raw: PolymarketMarketLike): { city: string; date: string | null; outcomeLabel: string | null; marketType: MarketType } {
+  const tempPattern = /(?:will\s+the\s+)?(?:(?:highest|max(?:imum)?)\s+temperature)\s+in\s+(.+?)\s+be\s+(.+?)\s+on\s+(.+?)(?:\?|$)/i;
+  const tempMatch = question.match(tempPattern);
+  if (tempMatch) {
     return {
-      city: match[1].trim(),
-      outcomeLabel: match[2].trim(),
-      date: parseQuestionDate(match[3].trim(), raw),
+      city: tempMatch[1].trim(),
+      outcomeLabel: tempMatch[2].trim(),
+      date: parseQuestionDate(tempMatch[3].trim(), raw),
+      marketType: "temperature",
+    };
+  }
+
+  const precipPattern = /Will\s+(.+?)\s+have\s+(.+?)\s+(?:of\s+)?precipitation\s+in\s+(.+?)(?:\?|$)/i;
+  const precipMatch = question.match(precipPattern);
+  if (precipMatch) {
+    return {
+      city: precipMatch[1].trim(),
+      outcomeLabel: precipMatch[2].trim(),
+      date: parseMonthToDate(precipMatch[3].trim(), raw),
+      marketType: "precipitation",
     };
   }
 
@@ -214,16 +243,21 @@ function parseCityAndDate(question: string, raw: PolymarketMarketLike): { city: 
     city: question.replace(/\?$/, "").trim(),
     outcomeLabel: null,
     date: fallbackDate ? toDateString(fallbackDate) : null,
+    marketType: /\bprecipitation\b/i.test(question) ? "precipitation" : "temperature",
   };
 }
 
 function inferThreshold(label: string): number | null {
-  const match = label.match(/(\d+(?:\.\d+)?)\s*°\s*([CF])?/i);
-  return match ? Number(match[1]) : null;
+  const tempMatch = label.match(/(\d+(?:\.\d+)?)\s*°\s*([CF])?/i);
+  if (tempMatch) return Number(tempMatch[1]);
+  const numMatch = label.match(/(\d+(?:\.\d+)?)/);
+  return numMatch ? Number(numMatch[1]) : null;
 }
 
 function isSupportedWeatherQuestion(question: string): boolean {
-  return /(?:(?:highest|max(?:imum)?)\s+temperature)/i.test(question) && /\son\s/i.test(question);
+  if (/(?:(?:highest|max(?:imum)?)\s+temperature)/i.test(question) && /\son\s/i.test(question)) return true;
+  if (/\bprecipitation\b/i.test(question)) return true;
+  return false;
 }
 
 function toAbsolutePolymarketUrl(slug: string | null): string | null {
@@ -282,12 +316,14 @@ async function getWeatherTagId(): Promise<string | null> {
   }
 }
 
-function withinDateWindow(date: string | null): boolean {
+function withinDateWindow(date: string | null, marketType: MarketType = "temperature"): boolean {
   if (!date) return false;
 
   const now = new Date();
-  const min = new Date(now.getTime() - RECENT_PAST_DAYS * 86_400_000).toISOString().slice(0, 10);
-  const max = new Date(now.getTime() + FUTURE_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const pastDays = marketType === "precipitation" ? 45 : RECENT_PAST_DAYS;
+  const futureDays = marketType === "precipitation" ? 90 : FUTURE_DAYS;
+  const min = new Date(now.getTime() - pastDays * 86_400_000).toISOString().slice(0, 10);
+  const max = new Date(now.getTime() + futureDays * 86_400_000).toISOString().slice(0, 10);
   return date >= min && date <= max;
 }
 
@@ -299,8 +335,8 @@ function normalizeIndividualMarket(raw: PolymarketMarketLike, sourceRank: number
   const yesInfo = getYesInfo(raw);
   if (!yesInfo) return null;
 
-  const { city, date, outcomeLabel } = parseCityAndDate(question, raw);
-  if (!withinDateWindow(date) || !outcomeLabel) return null;
+  const { city, date, outcomeLabel, marketType } = parseCityAndDate(question, raw);
+  if (!withinDateWindow(date, marketType) || !outcomeLabel) return null;
 
   const settledAt = yesInfo.resolvedTruth !== null
     ? new Date(
@@ -327,6 +363,7 @@ function normalizeIndividualMarket(raw: PolymarketMarketLike, sourceRank: number
     relevanceVolume24hr: asNumber(raw.volume24hr),
     relevanceLiquidity: asNumber(raw.liquidity),
     relevanceVolume: asNumber(raw.volume),
+    marketType,
   };
 }
 
@@ -335,14 +372,19 @@ function compareOutcomeOrder(a: GroupableWeatherMarket, b: GroupableWeatherMarke
   const thresholdB = b.threshold ?? Number.POSITIVE_INFINITY;
   if (thresholdA !== thresholdB) return thresholdA - thresholdB;
 
-  const belowA = /below/i.test(a.outcomeLabel) ? -1 : /higher/i.test(a.outcomeLabel) ? 1 : 0;
-  const belowB = /below/i.test(b.outcomeLabel) ? -1 : /higher/i.test(b.outcomeLabel) ? 1 : 0;
+  const belowA = /below|less\s+than/i.test(a.outcomeLabel) ? -1 : /higher|more\s+than/i.test(a.outcomeLabel) ? 1 : 0;
+  const belowB = /below|less\s+than/i.test(b.outcomeLabel) ? -1 : /higher|more\s+than/i.test(b.outcomeLabel) ? 1 : 0;
   if (belowA !== belowB) return belowA - belowB;
 
   return a.outcomeLabel.localeCompare(b.outcomeLabel);
 }
 
-function buildGroupedQuestion(city: string, date: string): string {
+function buildGroupedQuestion(city: string, date: string, marketType: MarketType): string {
+  if (marketType === "precipitation") {
+    const d = new Date(`${date}T12:00:00Z`);
+    const month = d.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+    return `What will the precipitation in ${city} be in ${month}?`;
+  }
   return `What will the highest temperature in ${city} be on ${date}?`;
 }
 
@@ -384,7 +426,10 @@ function compareGroupedMarketRelevance(a: GroupableWeatherMarket[], b: Groupable
 function toGroupedMarket(items: GroupableWeatherMarket[], relevanceRank: number): ExternalWeatherMarket {
   const sorted = [...items].sort(compareOutcomeOrder);
   const first = sorted[0];
-  const groupId = `group:${slugify(first.city)}:${first.date}`;
+  const marketType = first.marketType;
+  const groupId = marketType === "precipitation"
+    ? `group:${slugify(first.city)}:${first.date.slice(0, 7)}:precipitation`
+    : `group:${slugify(first.city)}:${first.date}`;
   const outcomes = sorted.map((item, index) => ({
     key: slugify(item.outcomeLabel),
     label: item.outcomeLabel,
@@ -401,7 +446,7 @@ function toGroupedMarket(items: GroupableWeatherMarket[], relevanceRank: number)
 
   return {
     externalMarketId: groupId,
-    question: buildGroupedQuestion(first.city, first.date),
+    question: buildGroupedQuestion(first.city, first.date, marketType),
     subtitle: first.subtitle,
     city: first.city,
     country: "",
@@ -414,6 +459,7 @@ function toGroupedMarket(items: GroupableWeatherMarket[], relevanceRank: number)
     sourceUrl: first.sourceUrl,
     settledAt,
     outcomes,
+    marketType,
   };
 }
 
@@ -429,7 +475,9 @@ export async function fetchPolymarketWeatherMarkets(): Promise<ExternalWeatherMa
       sourceRank += 1;
       if (!market || seenSourceMarketIds.has(market.sourceMarketId)) continue;
       seenSourceMarketIds.add(market.sourceMarketId);
-      const key = `${market.city}::${market.date}`;
+      const key = market.marketType === "precipitation"
+        ? `${market.city}::${market.date.slice(0, 7)}::precipitation`
+        : `${market.city}::${market.date}`;
       const list = grouped.get(key) ?? [];
       list.push(market);
       grouped.set(key, list);

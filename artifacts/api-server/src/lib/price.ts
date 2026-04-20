@@ -1,7 +1,7 @@
 import { db, priceSnapshotsTable } from "@workspace/db";
 import { logger } from "./logger";
 
-export type CryptoAsset = "btc" | "eth" | "sol";
+export type CryptoAsset = "btc" | "eth" | "sol" | "xrp" | "bnb";
 
 export interface SourceResult {
   name: string;
@@ -102,6 +102,74 @@ async function fetchSolCoinGecko(): Promise<number> {
   return data.solana.usd;
 }
 
+// ── XRP sources ─────────────────────────────────────────────────────────────
+
+async function fetchXrpCoinbase(): Promise<number> {
+  const res = await fetch("https://api.coinbase.com/v2/prices/XRP-USD/spot");
+  if (!res.ok) throw new Error(`Coinbase HTTP ${res.status}`);
+  const data = (await res.json()) as { data: { amount: string } };
+  return parseFloat(data.data.amount);
+}
+
+async function fetchXrpKraken(): Promise<number> {
+  const res = await fetch("https://api.kraken.com/0/public/Ticker?pair=XRPUSD");
+  if (!res.ok) throw new Error(`Kraken HTTP ${res.status}`);
+  const data = (await res.json()) as { result: Record<string, { c: string[] }> };
+  const key = Object.keys(data.result)[0];
+  return parseFloat(data.result[key].c[0]);
+}
+
+async function fetchXrpBitfinex(): Promise<number> {
+  const res = await fetch("https://api-pub.bitfinex.com/v2/ticker/tXRPUSD");
+  if (!res.ok) throw new Error(`Bitfinex HTTP ${res.status}`);
+  const data = (await res.json()) as number[];
+  return data[6];
+}
+
+async function fetchXrpCoinGecko(): Promise<number> {
+  const res = await fetch(
+    "https://api.coingecko.com/api/v3/simple/price?ids=ripple&vs_currencies=usd",
+    { headers: { Accept: "application/json" } },
+  );
+  if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status}`);
+  const data = (await res.json()) as { ripple: { usd: number } };
+  return data.ripple.usd;
+}
+
+// ── BNB sources ─────────────────────────────────────────────────────────────
+
+async function fetchBnbCoinbase(): Promise<number> {
+  const res = await fetch("https://api.coinbase.com/v2/prices/BNB-USD/spot");
+  if (!res.ok) throw new Error(`Coinbase HTTP ${res.status}`);
+  const data = (await res.json()) as { data: { amount: string } };
+  return parseFloat(data.data.amount);
+}
+
+async function fetchBnbKraken(): Promise<number> {
+  const res = await fetch("https://api.kraken.com/0/public/Ticker?pair=BNBUSD");
+  if (!res.ok) throw new Error(`Kraken HTTP ${res.status}`);
+  const data = (await res.json()) as { result: Record<string, { c: string[] }> };
+  const key = Object.keys(data.result)[0];
+  return parseFloat(data.result[key].c[0]);
+}
+
+async function fetchBnbBitfinex(): Promise<number> {
+  const res = await fetch("https://api-pub.bitfinex.com/v2/ticker/tBNBUSD");
+  if (!res.ok) throw new Error(`Bitfinex HTTP ${res.status}`);
+  const data = (await res.json()) as number[];
+  return data[6];
+}
+
+async function fetchBnbCoinGecko(): Promise<number> {
+  const res = await fetch(
+    "https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd",
+    { headers: { Accept: "application/json" } },
+  );
+  if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status}`);
+  const data = (await res.json()) as { binancecoin: { usd: number } };
+  return data.binancecoin.usd;
+}
+
 // ── Source registry ──────────────────────────────────────────────────────────
 
 type NamedFetch = { name: string; fn: () => Promise<number> };
@@ -124,6 +192,18 @@ const SOURCES: Record<CryptoAsset, NamedFetch[]> = {
     { name: "coinbase", fn: fetchSolCoinbase },
     { name: "coingecko", fn: fetchSolCoinGecko },
   ],
+  xrp: [
+    { name: "coinbase",  fn: fetchXrpCoinbase },
+    { name: "kraken",    fn: fetchXrpKraken },
+    { name: "bitfinex",  fn: fetchXrpBitfinex },
+    { name: "coingecko", fn: fetchXrpCoinGecko },
+  ],
+  bnb: [
+    { name: "coinbase",  fn: fetchBnbCoinbase },
+    { name: "kraken",    fn: fetchBnbKraken },
+    { name: "bitfinex",  fn: fetchBnbBitfinex },
+    { name: "coingecko", fn: fetchBnbCoinGecko },
+  ],
 };
 
 function median(values: number[]): number {
@@ -140,6 +220,8 @@ const cache: Record<CryptoAsset, { price: number | null; at: number }> = {
   btc: { price: null, at: 0 },
   eth: { price: null, at: 0 },
   sol: { price: null, at: 0 },
+  xrp: { price: null, at: 0 },
+  bnb: { price: null, at: 0 },
 };
 
 const CACHE_TTL_MS = 10_000;

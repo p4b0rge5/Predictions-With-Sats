@@ -2,13 +2,20 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+const RUNTIME_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../.runtime",
+);
+
 export type SportsProvider =
   | "football"
   | "nba"
   | "nfl"
   | "mlb"
   | "mma"
-  | "rugby";
+  | "rugby"
+  | "hockey"
+  | "basketball";
 
 interface BudgetState {
   day: string;
@@ -16,10 +23,9 @@ interface BudgetState {
 }
 
 const MAX_REQUESTS_PER_DAY = 100;
-const stateFilePath = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../.runtime/sports-request-budget.json",
-);
+const stateFilePath = path.resolve(RUNTIME_DIR, "sports-request-budget.json");
+const prewarmFilePath = path.resolve(RUNTIME_DIR, "sports-prewarm.json");
+const PREWARM_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour — matches the sport cache TTL
 
 let inMemoryState: BudgetState | null = null;
 let lock: Promise<void> = Promise.resolve();
@@ -114,4 +120,20 @@ export async function getSportsRequestBudget(
   const state = await loadState();
   const used = state.usage[provider] ?? 0;
   return { used, remaining: Math.max(0, MAX_REQUESTS_PER_DAY - used) };
+}
+
+export async function shouldRunStartupPrewarm(): Promise<boolean> {
+  try {
+    const raw = await readFile(prewarmFilePath, "utf8");
+    const { at } = JSON.parse(raw) as { at: number };
+    if (typeof at !== "number") return true;
+    return Date.now() - at >= PREWARM_COOLDOWN_MS;
+  } catch {
+    return true;
+  }
+}
+
+export async function recordStartupPrewarm(): Promise<void> {
+  await mkdir(RUNTIME_DIR, { recursive: true });
+  await writeFile(prewarmFilePath, JSON.stringify({ at: Date.now() }), "utf8");
 }

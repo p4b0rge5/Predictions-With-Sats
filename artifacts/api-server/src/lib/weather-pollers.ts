@@ -8,7 +8,7 @@
 import { db, weatherBetsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
-import { runWeatherSettlementCycle, addToWeatherPool } from "./weather";
+import { runWeatherSettlementCycle, addToWeatherPool, getOrSyncWeatherMarkets } from "./weather";
 
 const PAYMENT_POLL_INTERVAL_MS = 5_000;
 const SETTLEMENT_POLL_INTERVAL_MS = 60 * 60 * 1000; // 1h
@@ -98,7 +98,10 @@ export function startWeatherPollers(): void {
     );
   }, SETTLEMENT_POLL_INTERVAL_MS);
 
-  // Run settlement on startup
+  // Pre-warm market data and run settlement on startup
+  getOrSyncWeatherMarkets().catch((err) =>
+    logger.warn({ err }, "Weather market startup sync error"),
+  );
   runWeatherSettlementCycle().catch((err) =>
     logger.warn({ err }, "Weather settlement startup error"),
   );

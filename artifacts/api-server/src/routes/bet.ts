@@ -27,10 +27,10 @@ router.post("/bet", async (req, res): Promise<void> => {
     return;
   }
 
-  const { amountUsd, direction, asset } = parsed.data;
+  const { amountUsd, direction, asset, intervalMinutes = 5 } = parsed.data;
 
   const [win, btcPriceUsd] = await Promise.all([
-    getActiveWindow(asset),
+    getActiveWindow(asset, intervalMinutes),
     getCachedBtcPrice(),
   ]);
 
@@ -39,7 +39,7 @@ router.post("/bet", async (req, res): Promise<void> => {
     return;
   }
 
-  const closesAt = getWindowClosesAt(win.openedAt);
+  const closesAt = getWindowClosesAt(win.openedAt, intervalMinutes);
   const msUntilClose = closesAt.getTime() - Date.now();
 
   if (msUntilClose < WINDOW_CLOSE_BUFFER_MS) {

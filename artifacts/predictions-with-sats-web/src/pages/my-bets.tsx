@@ -34,7 +34,7 @@ import { SportBetStatusCard } from "@/pages/sports";
 import { SportsPolyBetStatusCard } from "@/pages/sports-poly";
 import { WeatherBetStatusCard } from "@/pages/weather";
 
-type CryptoAsset = "btc" | "eth" | "sol";
+type CryptoAsset = "btc" | "eth" | "sol" | "xrp" | "bnb";
 type SportKey = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby";
 type BetSource = "crypto" | "sports" | "sportsPoly" | "weather";
 
@@ -65,6 +65,8 @@ const CRYPTO_ASSETS: { asset: CryptoAsset; label: string }[] = [
   { asset: "btc", label: "Bitcoin" },
   { asset: "eth", label: "Ethereum" },
   { asset: "sol", label: "Solana" },
+  { asset: "xrp", label: "XRP" },
+  { asset: "bnb", label: "BNB" },
 ];
 
 const SPORT_KEYS: { key: SportKey; label: string }[] = [
