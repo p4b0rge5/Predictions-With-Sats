@@ -3,24 +3,23 @@
 # Predictions With Sats — Instalação Limpa (sem intervenção)
 # =============================================================================
 # Uso:
-#    bash scripts/install-clean.sh
+#   bash scripts/install-clean.sh
 #
 # Pré-requisitos:
-#    - Ubuntu 22.04+ ou Debian 12+
-#    - Executar como root (ou via sudo)
-#    - O arquivo .env já configurado na raiz do repositório
-#    - Acesso à internet para download de pacotes
+#   - Ubuntu 22.04+ ou Debian 12+
+#   - Executar como root (ou via sudo)
+#   - O arquivo .env já configurado na raiz do repositório
+#   - Acesso à internet para download de pacotes
 #
 # O script faz:
-#    1. Instala pacotes do sistema (Node.js 24, pnpm, PostgreSQL, nginx, Tor)
-#    2. Configura Git para usar rede Tor (Anonimato)
-#    3. Instala dependências do workspace (pnpm install)
-#    4. Compila a API e o frontend
-#    5. Cria o usuário/banco PostgreSQL a partir do DATABASE_URL no .env
-#    6. Aplica as migrações do banco (drizzle push)
-#    7. Configura nginx como reverse proxy
-#    8. Corrige permissão do /root para o nginx (www-data) acessar os arquivos
-#    9. Cria e inicia o serviço systemd pwsats-api
+#   1. Instala pacotes do sistema (Node.js 24, pnpm, PostgreSQL, nginx)
+#   2. Instala dependências do workspace (pnpm install)
+#   3. Compila a API e o frontend
+#   4. Cria o usuário/banco PostgreSQL a partir do DATABASE_URL no .env
+#   5. Aplica as migrações do banco (drizzle push)
+#   6. Configura nginx como reverse proxy
+#   7. Corrige permissão do /root para o nginx (www-data) acessar os arquivos
+#   8. Cria e inicia o serviço systemd pwsats-api
 # =============================================================================
 
 set -euo pipefail
@@ -85,29 +84,8 @@ install_apt_packages() {
     build-essential ca-certificates curl git gnupg lsb-release \
     nginx openssl pkg-config \
     postgresql postgresql-client postgresql-contrib \
-    python3 tor # Adicionado Tor para anonimato no Git
-  
-  systemctl enable tor
-  systemctl start tor
-  ok "Pacotes do sistema instalados e serviço Tor iniciado."
-}
-
-# --- Configuração Git via Tor ------------------------------------------------
-
-setup_git_tor_proxy() {
-  log "Configurando anonimato para Git (Proxy via Tor)"
-  # Aguarda o Tor subir para evitar erros de conexão inicial
-  sleep 2
-  
-  # Configura o proxy global para usar SOCKS5h (h força DNS remoto via Tor)
-  git config --global http.proxy 'socks5h://127.0.0.1:9050'
-  
-  info "Verificando conectividade anônima com GitHub..."
-  if curl --socks5-hostname 127.0.0.1:9050 -s https://github.com > /dev/null; then
-    ok "Conectividade Git-over-Tor confirmada."
-  else
-    info "Aviso: Tor configurado, mas o teste de conexão falhou (pode ser latência)."
-  fi
+    python3
+  ok "Pacotes do sistema instalados."
 }
 
 # --- Node.js -----------------------------------------------------------------
@@ -164,7 +142,7 @@ build_project() {
   cd "${REPO_ROOT}"
 
   info "Libs compartilhadas (api-zod, api-client-react)..."
-  pnpm --filter @workspace/api-zod          run build 2>/dev/null || true
+  pnpm --filter @workspace/api-zod         run build 2>/dev/null || true
   pnpm --filter @workspace/api-client-react run build 2>/dev/null || true
 
   info "API (esbuild → dist/index.mjs)..."
@@ -303,7 +281,7 @@ setup_systemd() {
   cat > "${service_file}" <<UNITEOF
 [Unit]
 Description=Predictions With Sats — API Server
-After=network.target postgresql.service tor.service
+After=network.target postgresql.service
 Wants=network.target
 
 [Service]
@@ -382,12 +360,11 @@ print_summary() {
   cat <<SUMMARY
 
 ╔══════════════════════════════════════════════════════════════════╗
-║      Predictions With Sats — Instalação Concluída (Anon)        ║
+║      Predictions With Sats — Instalação Concluída              ║
 ╚══════════════════════════════════════════════════════════════════╝
 
   Node.js:   $(node --version)
   pnpm:      $(pnpm --version)
-  Git Proxy: socks5h://127.0.0.1:9050 (Via Tor)
   Serviço:   ${SERVICE_NAME}
   Repo:      ${REPO_ROOT}
 
@@ -400,11 +377,11 @@ print_summary() {
 ──────────────────────────────────────────────────────────────────
   COMANDOS ÚTEIS:
 ──────────────────────────────────────────────────────────────────
-  Status:      systemctl status ${SERVICE_NAME}
-  Logs:        journalctl -u ${SERVICE_NAME} -f
-  Parar:       systemctl stop ${SERVICE_NAME}
-  Reiniciar:   systemctl restart ${SERVICE_NAME}
-  Rebuild:     bash ${REPO_ROOT}/scripts/build-deploy.sh
+  Status:     systemctl status ${SERVICE_NAME}
+  Logs:       journalctl -u ${SERVICE_NAME} -f
+  Parar:      systemctl stop ${SERVICE_NAME}
+  Reiniciar:  systemctl restart ${SERVICE_NAME}
+  Rebuild:    bash ${REPO_ROOT}/scripts/build-deploy.sh
 
 ──────────────────────────────────────────────────────────────────
 SUMMARY
@@ -416,7 +393,6 @@ require_root
 require_env_file
 check_os
 install_apt_packages
-setup_git_tor_proxy
 install_nodejs
 install_pnpm
 install_dependencies
