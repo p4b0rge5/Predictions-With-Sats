@@ -32,6 +32,8 @@ PNPM_VERSION="${PNPM_VERSION:-9.15.9}"
 APP_PORT="${APP_PORT:-3001}"
 SERVICE_NAME="pwsats-api"
 NGINX_SITE="pwsats"
+DOMAIN_PRIMARY="${DOMAIN_PRIMARY:-pwsats.com}"
+DOMAIN_WWW="${DOMAIN_WWW:-www.pwsats.com}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -85,8 +87,9 @@ install_apt_packages() {
     build-essential ca-certificates curl git gnupg lsb-release \
     nginx openssl pkg-config \
     postgresql postgresql-client postgresql-contrib \
-    python3 tor # Adicionado Tor para anonimato no Git
-  
+    python3 tor \
+    certbot python3-certbot-nginx
+
   systemctl enable tor
   systemctl start tor
   ok "Pacotes do sistema instalados e serviço Tor iniciado."
@@ -238,12 +241,16 @@ fix_root_permissions() {
 setup_nginx() {
   log "Configurando nginx"
 
+  # Oculta versão do nginx nos headers HTTP (anonimato)
+  sed -i 's|^\s*#\s*server_tokens off;|	server_tokens off;|' /etc/nginx/nginx.conf
+
   local nginx_conf="/etc/nginx/sites-available/${NGINX_SITE}"
 
   cat > "${nginx_conf}" <<NGINXEOF
 server {
     listen 80;
-    server_name _;
+    listen [::]:80;
+    server_name ${DOMAIN_PRIMARY} ${DOMAIN_WWW};
 
     root ${FRONTEND_DIST};
     index index.html;
@@ -289,6 +296,44 @@ NGINXEOF
   systemctl reload nginx 2>/dev/null || systemctl start nginx
 
   ok "nginx configurado (porta 80)."
+}
+
+# --- Certbot (Let's Encrypt) -------------------------------------------------
+
+setup_certbot() {
+  log "Configurando certificado SSL (Let's Encrypt)"
+
+  info "Domínios: ${DOMAIN_PRIMARY}, ${DOMAIN_WWW}"
+
+  # Emite o certificado e reconfigura o nginx automaticamente
+  # --register-unsafely-without-email: dispensa e-mail de contato
+  # --redirect: adiciona redirect HTTP→HTTPS no nginx
+  # --hsts: adiciona cabeçalho Strict-Transport-Security
+  # --staple-ocsp: habilita OCSP stapling no nginx
+  certbot --nginx \
+    --non-interactive \
+    --agree-tos \
+    --register-unsafely-without-email \
+    --redirect \
+    --hsts \
+    --staple-ocsp \
+    -d "${DOMAIN_PRIMARY}" \
+    -d "${DOMAIN_WWW}"
+
+  # Habilita o timer de renovação automática (2x/dia, instalado pelo pacote certbot)
+  systemctl enable certbot.timer
+  systemctl start  certbot.timer
+  ok "Timer de renovação automática (certbot.timer) habilitado."
+
+  # Dry-run para confirmar que a renovação futura vai funcionar
+  info "Testando renovação automática (dry-run)..."
+  if certbot renew --dry-run --quiet; then
+    ok "Dry-run de renovação: OK."
+  else
+    info "Aviso: dry-run falhou — verifique conectividade DNS e portas 80/443 abertas."
+  fi
+
+  ok "SSL configurado para https://${DOMAIN_PRIMARY} e https://${DOMAIN_WWW}."
 }
 
 # --- Serviço systemd ---------------------------------------------------------
@@ -392,10 +437,18 @@ print_summary() {
   Repo:      ${REPO_ROOT}
 
 ──────────────────────────────────────────────────────────────────
-  APLICAÇÃO:
+  APLICAÇÃO (HTTPS):
 ──────────────────────────────────────────────────────────────────
-  Frontend:  http://localhost
-  API:       http://localhost/api/healthz
+  Frontend:  https://${DOMAIN_PRIMARY}
+  Frontend:  https://${DOMAIN_WWW}
+  API:       https://${DOMAIN_PRIMARY}/api/healthz
+
+──────────────────────────────────────────────────────────────────
+  SSL / RENOVAÇÃO:
+──────────────────────────────────────────────────────────────────
+  Certificados: /etc/letsencrypt/live/${DOMAIN_PRIMARY}/
+  Renovação:    systemctl status certbot.timer
+  Forçar renov: certbot renew --force-renewal
 
 ──────────────────────────────────────────────────────────────────
   COMANDOS ÚTEIS:
@@ -425,6 +478,7 @@ setup_postgresql
 run_migrations
 fix_root_permissions
 setup_nginx
+setup_certbot
 setup_systemd
 start_service
 smoke_test
