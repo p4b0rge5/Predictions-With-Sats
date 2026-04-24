@@ -12,23 +12,15 @@
 #    - Acesso à internet para download de pacotes
 #
 # O script faz:
-#    1.  Instala pacotes do sistema (Node.js 24, pnpm, PostgreSQL, nginx, Tor)
-#    2.  Configura Git para usar rede Tor (Anonimato)
-#    3.  Instala dependências do workspace (pnpm install)
-#    4.  Compila a API e o frontend
-#    5.  Cria o usuário/banco PostgreSQL a partir do DATABASE_URL no .env
-#    6.  Aplica as migrações do banco (drizzle push)
-#    7.  Configura nginx HTTP provisório (para desafio ACME)
-#    8.  Emite certificado SSL via Certbot
-#    9.  Aplica configuração nginx definitiva (HTTPS dual-stack IPv4+IPv6)
-#    10. Registra domínios no Aleph Cloud via SDK (habilita acesso IPv4)
-#    11. Corrige permissão do /root para o nginx (www-data) acessar os arquivos
-#    12. Cria e inicia o serviço systemd pwsats-api
-#
-# Variáveis obrigatórias no .env:
-#    DATABASE_URL          — conexão PostgreSQL
-#    ALEPH_PK              — chave privada Ethereum (hex, sem 0x) da carteira Aleph
-#    ALEPH_VM_HASH         — item_hash da instância Aleph desta VM
+#    1. Instala pacotes do sistema (Node.js 24, pnpm, PostgreSQL, nginx, Tor)
+#    2. Configura Git para usar rede Tor (Anonimato)
+#    3. Instala dependências do workspace (pnpm install)
+#    4. Compila a API e o frontend
+#    5. Cria o usuário/banco PostgreSQL a partir do DATABASE_URL no .env
+#    6. Aplica as migrações do banco (drizzle push)
+#    7. Configura nginx como reverse proxy
+#    8. Corrige permissão do /root para o nginx (www-data) acessar os arquivos
+#    9. Cria e inicia o serviço systemd pwsats-api
 # =============================================================================
 
 set -euo pipefail
@@ -40,20 +32,12 @@ PNPM_VERSION="${PNPM_VERSION:-9.15.9}"
 APP_PORT="${APP_PORT:-3001}"
 SERVICE_NAME="pwsats-api"
 NGINX_SITE="pwsats"
-DOMAIN_PRIMARY="${DOMAIN_PRIMARY:-pwsats.com}"
-DOMAIN_WWW="${DOMAIN_WWW:-www.pwsats.com}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 FRONTEND_DIST="${REPO_ROOT}/artifacts/predictions-with-sats-web/dist/public"
 API_DIST="${REPO_ROOT}/artifacts/api-server/dist/index.mjs"
-
-# Detecta o IPv6 público da VM automaticamente (muda a cada nova instância Aleph)
-IPV6_ADDR="$(ip -6 addr show scope global 2>/dev/null \
-  | grep -oP '(?<=inet6 )[0-9a-f:]+(?=/)' \
-  | grep -v '^::1' \
-  | head -1 || true)"
 
 # --- Helpers -----------------------------------------------------------------
 
@@ -101,9 +85,8 @@ install_apt_packages() {
     build-essential ca-certificates curl git gnupg lsb-release \
     nginx openssl pkg-config \
     postgresql postgresql-client postgresql-contrib \
-    python3 python3-venv tor \
-    certbot python3-certbot-nginx
-
+    python3 tor # Adicionado Tor para anonimato no Git
+  
   systemctl enable tor
   systemctl start tor
   ok "Pacotes do sistema instalados e serviço Tor iniciado."
@@ -253,98 +236,14 @@ fix_root_permissions() {
 # --- Nginx -------------------------------------------------------------------
 
 setup_nginx() {
-  log "Configurando nginx (HTTP provisório para emissão do certificado)"
-
-  # Oculta versão do nginx nos headers HTTP (anonimato)
-  sed -i 's|^\s*#\s*server_tokens off;|	server_tokens off;|' /etc/nginx/nginx.conf
+  log "Configurando nginx"
 
   local nginx_conf="/etc/nginx/sites-available/${NGINX_SITE}"
 
-  # Config temporária HTTP-only: necessária para o desafio ACME do Certbot.
-  # A função setup_nginx_final() sobrescreve isso com a config HTTPS definitiva
-  # após a emissão do certificado.
   cat > "${nginx_conf}" <<NGINXEOF
 server {
     listen 80;
-    listen [::]:80;
-    server_name ${DOMAIN_PRIMARY} ${DOMAIN_WWW};
-
-    root ${FRONTEND_DIST};
-    index index.html;
-
-    location / {
-        try_files \$uri \$uri/ /index.html;
-    }
-}
-NGINXEOF
-
-  ln -sf "${nginx_conf}" "/etc/nginx/sites-enabled/${NGINX_SITE}"
-  rm -f /etc/nginx/sites-enabled/default
-
-  nginx -t
-  systemctl enable nginx
-  systemctl reload nginx 2>/dev/null || systemctl start nginx
-
-  ok "nginx HTTP provisório ativo (porta 80)."
-}
-
-# --- Nginx final (HTTPS + dual-stack) ----------------------------------------
-
-setup_nginx_final() {
-  log "Aplicando configuração nginx definitiva (IPv4 + IPv6 + HTTPS)"
-
-  # Pré-requisito: certificado já emitido pelo Certbot
-  local cert="/etc/letsencrypt/live/${DOMAIN_PRIMARY}/fullchain.pem"
-  if [[ ! -f "${cert}" ]]; then
-    err "Certificado não encontrado em ${cert}. Execute setup_certbot primeiro."
-    exit 1
-  fi
-
-  local nginx_conf="/etc/nginx/sites-available/${NGINX_SITE}"
-
-  # Arquitetura Aleph.im:
-  #   - IPv6 chega diretamente na porta 443 da VM (HAProxy do CRN roteia por SNI).
-  #   - IPv4 passa pelo HAProxy do CRN via roteamento de domínio (registrado via SDK Aleph).
-  #   - Ambos os protocolos são atendidos pelos blocos listen abaixo sem configuração extra.
-  #
-  # Registros DNS necessários no provedor:
-  #   A    @   → IPv4 público do CRN Aleph (descubra com: curl -4 -s https://ipinfo.io/ip)
-  #   A    www → mesmo IPv4
-  #   AAAA @   → ${IPV6_ADDR:-<detectado automaticamente>}
-  #   AAAA www → ${IPV6_ADDR:-<detectado automaticamente>}
-  #
-  # Nota OCSP: certificados emitidos pela cadeia Let's Encrypt E8 não incluem
-  # URL de OCSP Stapling; ssl_stapling é desabilitado para evitar avisos no log.
-
-  cat > "${nginx_conf}" <<NGINXEOF
-# =============================================================================
-# Predictions With Sats — nginx reverse proxy
-# Suporte dual-stack: IPv4 (NAT Aleph) + IPv6 (direto)
-# =============================================================================
-
-# --- HTTP → HTTPS redirect (IPv4 + IPv6) ------------------------------------
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${DOMAIN_PRIMARY} ${DOMAIN_WWW};
-    return 301 https://\$host\$request_uri;
-}
-
-# --- HTTPS (IPv4 + IPv6) -----------------------------------------------------
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl ipv6only=on;
-    server_name ${DOMAIN_PRIMARY} ${DOMAIN_WWW};
-
-    ssl_certificate     /etc/letsencrypt/live/${DOMAIN_PRIMARY}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_PRIMARY}/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-    # Certificados Let's Encrypt E8 não incluem URL OCSP
-    ssl_stapling off;
+    server_name _;
 
     root ${FRONTEND_DIST};
     index index.html;
@@ -353,6 +252,7 @@ server {
     proxy_connect_timeout 10s;
     proxy_send_timeout    60s;
 
+    # Proxy da API
     location /api/ {
         proxy_pass http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
@@ -367,10 +267,12 @@ server {
         proxy_request_buffering off;
     }
 
+    # SPA: redireciona rotas para index.html
     location / {
         try_files \$uri \$uri/ /index.html;
     }
 
+    # Cache de assets estáticos
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|map)\$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
@@ -379,80 +281,14 @@ server {
 }
 NGINXEOF
 
+  ln -sf "${nginx_conf}" "/etc/nginx/sites-enabled/${NGINX_SITE}"
+  rm -f /etc/nginx/sites-enabled/default
+
   nginx -t
-  systemctl reload nginx
-  ok "nginx definitivo ativo (porta 80 redirect + porta 443 HTTPS dual-stack)."
-}
+  systemctl enable nginx
+  systemctl reload nginx 2>/dev/null || systemctl start nginx
 
-# --- Certbot (Let's Encrypt) -------------------------------------------------
-
-setup_certbot() {
-  log "Emitindo certificado SSL (Let's Encrypt)"
-
-  info "Domínios: ${DOMAIN_PRIMARY}, ${DOMAIN_WWW}"
-
-  # --certonly: apenas emite o certificado; NÃO modifica o nginx.
-  # A config nginx definitiva com HTTPS é aplicada por setup_nginx_final().
-  # --nginx: usa o plugin nginx para o desafio ACME (porta 80 deve estar ativa).
-  certbot certonly \
-    --nginx \
-    --non-interactive \
-    --agree-tos \
-    --register-unsafely-without-email \
-    -d "${DOMAIN_PRIMARY}" \
-    -d "${DOMAIN_WWW}"
-
-  systemctl enable certbot.timer
-  systemctl start  certbot.timer
-  ok "Timer de renovação automática (certbot.timer) habilitado."
-
-  info "Testando renovação automática (dry-run)..."
-  if certbot renew --dry-run --quiet; then
-    ok "Dry-run de renovação: OK."
-  else
-    info "Aviso: dry-run falhou — verifique conectividade DNS e portas 80/443 abertas."
-  fi
-
-  ok "Certificado emitido para ${DOMAIN_PRIMARY} e ${DOMAIN_WWW}."
-}
-
-# --- Aleph Cloud: registro de domínio IPv4 -----------------------------------
-
-setup_aleph_ipv4() {
-  log "Registrando domínios no Aleph Cloud (habilita acesso IPv4)"
-
-  # Lê credenciais do .env
-  local aleph_pk aleph_vm_hash
-  aleph_pk="$(grep -E '^ALEPH_PK=' "${REPO_ROOT}/.env" | head -1 | cut -d'=' -f2- | tr -d '"' || true)"
-  aleph_vm_hash="$(grep -E '^ALEPH_VM_HASH=' "${REPO_ROOT}/.env" | head -1 | cut -d'=' -f2- | tr -d '"' || true)"
-
-  if [[ -z "${aleph_pk}" || -z "${aleph_vm_hash}" ]]; then
-    info "ALEPH_PK ou ALEPH_VM_HASH ausentes no .env — pulando registro Aleph."
-    info "Para habilitar IPv4 em uma próxima instalação, adicione ao .env:"
-    info "  ALEPH_PK=<chave_privada_ethereum_hex_sem_0x>"
-    info "  ALEPH_VM_HASH=<item_hash_da_instancia_aleph>"
-    return
-  fi
-
-  # Garante o venv Python para o SDK Aleph
-  local venv_dir="/opt/aleph-venv"
-  if [[ ! -d "${venv_dir}" ]]; then
-    python3 -m venv "${venv_dir}"
-  fi
-  if ! "${venv_dir}/bin/pip" show aleph-sdk-python &>/dev/null 2>&1; then
-    info "Instalando aleph-sdk-python..."
-    "${venv_dir}/bin/pip" install -q aleph-sdk-python
-  fi
-
-  info "Publicando Aggregates (port-forwarding + domains)..."
-  PK="${aleph_pk}" \
-  VM_HASH="${aleph_vm_hash}" \
-  DOMAIN_PRIMARY="${DOMAIN_PRIMARY}" \
-  DOMAIN_WWW="${DOMAIN_WWW}" \
-    "${venv_dir}/bin/python3" "${SCRIPT_DIR}/aleph-register-domain.py"
-
-  ok "Domínios ${DOMAIN_PRIMARY} e ${DOMAIN_WWW} registrados no Aleph Cloud."
-  info "O HAProxy do CRN leva ~2 min para atualizar o roteamento."
+  ok "nginx configurado (porta 80)."
 }
 
 # --- Serviço systemd ---------------------------------------------------------
@@ -543,9 +379,6 @@ smoke_test() {
 # --- Resumo ------------------------------------------------------------------
 
 print_summary() {
-  local ipv4_crn
-  ipv4_crn="$(curl -4 -s --max-time 5 https://ipinfo.io/ip 2>/dev/null || echo '<indisponível>')"
-
   cat <<SUMMARY
 
 ╔══════════════════════════════════════════════════════════════════╗
@@ -559,30 +392,10 @@ print_summary() {
   Repo:      ${REPO_ROOT}
 
 ──────────────────────────────────────────────────────────────────
-  REDE (Aleph Cloud):
+  APLICAÇÃO:
 ──────────────────────────────────────────────────────────────────
-  IPv6 da VM:  ${IPV6_ADDR:-<não detectado>}
-  IPv4 do CRN: ${ipv4_crn}
-
-  Registros DNS necessários na Njalla:
-    AAAA  @    →  ${IPV6_ADDR:-<ipv6 da VM>}
-    AAAA  www  →  ${IPV6_ADDR:-<ipv6 da VM>}
-    A     @    →  ${ipv4_crn}
-    A     www  →  ${ipv4_crn}
-
-──────────────────────────────────────────────────────────────────
-  APLICAÇÃO (HTTPS):
-──────────────────────────────────────────────────────────────────
-  Frontend:  https://${DOMAIN_PRIMARY}
-  Frontend:  https://${DOMAIN_WWW}
-  API:       https://${DOMAIN_PRIMARY}/api/healthz
-
-──────────────────────────────────────────────────────────────────
-  SSL / RENOVAÇÃO:
-──────────────────────────────────────────────────────────────────
-  Certificados: /etc/letsencrypt/live/${DOMAIN_PRIMARY}/
-  Renovação:    systemctl status certbot.timer
-  Forçar renov: certbot renew --force-renewal
+  Frontend:  http://localhost
+  API:       http://localhost/api/healthz
 
 ──────────────────────────────────────────────────────────────────
   COMANDOS ÚTEIS:
@@ -612,9 +425,6 @@ setup_postgresql
 run_migrations
 fix_root_permissions
 setup_nginx
-setup_certbot
-setup_nginx_final
-setup_aleph_ipv4
 setup_systemd
 start_service
 smoke_test
