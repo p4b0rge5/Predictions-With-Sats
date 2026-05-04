@@ -69,15 +69,22 @@ ssh root@37.114.37.140 -p 24003
 # Ou via Tor/onion se configurado
 ```
 
-### 2. Clonar o repositório e configurar o `.env`
+### 2. Clonar o repositório
 
 ```bash
 cd /root
 git clone <URL-DO-REPOSITORIO> Predictions-With-Sats
 cd Predictions-With-Sats
-cp .env.example .env
-nano .env  # preencher todos os campos obrigatórios
 ```
+
+O `.env` já vem versionado no repositório. Se precisar customizar:
+
+```bash
+nano .env  # ajuste portas, tokens, etc.
+```
+
+> **Importante:** `.env` e `db/dump.sql` estão versionados no repositório (não estão no .gitignore).
+> O dump do banco é gerado automaticamente a cada commit via git hook.
 
 ### 3. Instalar e fazer o build
 
@@ -89,7 +96,35 @@ sudo bash scripts/install-production.sh
 
 Os scripts já incluem `listen [::]:80;` no nginx (corrigido neste commit).
 
-### 4. Verificar o IPv6 da VM
+### 4. Restaurar o banco de dados
+
+O dump completo do banco (`db/dump.sql`) é versionado no repositório e atualizado
+automaticamente a cada commit. Para restaurar:
+
+```bash
+PGPASSWORD=p4borge55 psql -h localhost -U pwsats -d pwsats_db < db/dump.sql
+```
+
+Ou criar o schema do zero com Drizzle:
+
+```bash
+cd artifacts/api-server
+DATABASE_URL=postgresql://pwsats:p4borge55@localhost:5432/pwsats_db npx drizzle-kit push
+```
+
+Depois restaure os dados a partir do dump para manter bets, usuários e config.
+
+### 5. Configurar git hook de auto-push (opcional)
+
+```bash
+# O hook já vem no repositório. Ativar:
+cp hooks/post-commit .git/hooks/post-commit
+chmod +x .git/hooks/post-commit
+```
+
+Com o hook ativo, cada commit gera um dump do banco, inclui no commit e faz push automático.
+
+### 6. Verificar o IPv6 da VM
 
 ```bash
 ip addr show ens3 | grep "inet6.*global"
@@ -99,7 +134,7 @@ ip addr show ens3 | grep "inet6.*global"
 
 Anote o endereço IPv6 — será usado no DNS.
 
-### 5. Confirmar que o nginx está ouvindo em IPv6
+### 7. Confirmar que o nginx está ouvindo em IPv6
 
 ```bash
 ss -tlnp | grep ':80'
@@ -115,7 +150,7 @@ curl -6 http://[SEU-IPV6]/ | head -5
 # Deve retornar o HTML da aplicação
 ```
 
-### 6. Configurar o DNS
+### 8. Configurar o DNS
 
 No painel do seu provedor DNS, adicione **dois registros**:
 
@@ -129,7 +164,7 @@ No painel do seu provedor DNS, adicione **dois registros**:
 > Clientes modernos preferem IPv6 (algoritmo Happy Eyeballs), então a maioria dos
 > navegadores usará o registro `AAAA` automaticamente.
 
-### 7. Aguardar propagação do DNS e testar
+### 9. Aguardar propagação do DNS e testar
 
 ```bash
 # Verificar se o DNS AAAA propagou:

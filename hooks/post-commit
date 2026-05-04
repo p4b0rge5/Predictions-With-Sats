@@ -1,0 +1,18 @@
+#!/bin/bash
+# Auto: dump database, amend commit, push to remote
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT" || exit
+
+# Generate fresh DB dump
+mkdir -p db
+PGPASSWORD=p4borge55 pg_dump -h localhost -U pwsats -d pwsats_db > db/dump.sql 2>/dev/null || true
+
+# Stage and amend if dump changed
+git add db/dump.sql
+if ! git diff --cached --quiet db/dump.sql 2>/dev/null; then
+    git commit --amend --no-verify --no-edit -a 2>/dev/null || true
+fi
+
+# Push with force-with-lease
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git push --force-with-lease origin "$BRANCH" 2>/var/log/pwsats-push.log
