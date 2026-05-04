@@ -176,7 +176,7 @@ export function BetModal({
 
   const submitPreimage = async (preimage: string) => {
     if (!paymentHash) return;
-    const res = await fetch(`/api/bet/${paymentHash}/verify-preimage`, {
+    const res = await fetch(`${API_BASE}/api/bet/${paymentHash}/verify-preimage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ preimage }),

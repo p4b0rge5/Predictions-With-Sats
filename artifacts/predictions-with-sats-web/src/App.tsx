@@ -13,8 +13,15 @@ import { Weather } from "@/pages/weather";
 import { GlobalMyBets } from "@/pages/my-bets";
 import NotFound from "@/pages/not-found";
 import { ThemeProvider } from "@/contexts/theme-context";
+import { setBaseUrl } from "@workspace/api-client-react";
 
 const queryClient = new QueryClient();
+
+// Configure the API client to route through the same origin prefix.
+// The Caddy proxy passes /pwsats/api/* → localhost:3001/api/*
+// so the frontend at /pwsats/ can reach the API at /pwsats/api/...
+const apiBase = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+if (apiBase) setBaseUrl(apiBase);
 
 function App() {
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");

@@ -42,8 +42,6 @@ testem.log
 Thumbs.db
 
 # local environment files
-.env
-.env.*
 !.env.example
 
 .cursor/rules/nx-rules.mdc

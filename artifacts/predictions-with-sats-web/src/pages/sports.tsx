@@ -1631,7 +1631,7 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
     setLnPaying(true); setLnError(null);
     try {
       const res = await fetch(
-        `${window.location.origin}/api/sports/withdraw/${bet.withdrawToken}/pay-to-address`,
+        `${API_BASE}/api/sports/withdraw/${bet.withdrawToken}/pay-to-address`,
         { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ address: lnAddress.trim().toLowerCase() }) },
       );

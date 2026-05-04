@@ -34,15 +34,17 @@ export function getPublicBaseUrl(req: RequestLike): string {
   const proto = firstHeaderValue(req.headers["x-forwarded-proto"]) ??
     (req.secure ? "https" : "http");
 
+  const apiBasePath = process.env["API_BASE_PATH"] ?? "/";
+
   if (host && !isLocalHost(host)) {
-    return `${proto}://${host}`;
+    return `${proto}://${host}${apiBasePath}`;
   }
 
   const configuredPublicBase = normalizeBaseUrl(process.env["PUBLIC_BASE_URL"]);
-  if (configuredPublicBase) return configuredPublicBase;
+  if (configuredPublicBase) return `${configuredPublicBase}${apiBasePath}`;
 
   const webhookBase = normalizeBaseUrl(process.env["WEBHOOK_URL"]);
-  if (webhookBase) return webhookBase;
+  if (webhookBase) return `${webhookBase}${apiBasePath}`;
 
-  return `${proto}://${host}`;
+  return `${proto}://${host}${apiBasePath}`;
 }

@@ -10,6 +10,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQueries } from "@tanstack/react-query";
 
+const API_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 const STORAGE_KEY = "predictions_with_sats_hashes_v1";
 const LEGACY_STORAGE_KEY = "lightning_bet_hashes_v2";
 const SPORTS_STORAGE_KEY = "predictions_with_sats_sports_hashes_v1";
@@ -298,7 +299,7 @@ export function MyBetWidget({ paymentHash, onDismiss }: MyBetWidgetProps) {
     setLnError(null);
     try {
       const res = await fetch(
-        `${window.location.origin}/api/withdraw/${bet.withdrawToken}/pay-to-address`,
+        `${API_BASE}/api/withdraw/${bet.withdrawToken}/pay-to-address`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
