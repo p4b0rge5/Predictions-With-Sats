@@ -1,340 +1,447 @@
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
-  BadgeDollarSign,
-  Bitcoin,
+  Bolt,
   CloudSun,
-  Globe,
-  LockKeyhole,
-  Radar,
-  ShieldCheck,
-  Sparkles,
-  TimerReset,
   Trophy,
+  TrendingUpDown,
   Wallet,
   Zap,
+  CheckCircle2,
+  ShieldCheck,
+  TimerReset,
+  LockKeyhole,
+  DollarSign,
+  Gamepad2,
+  Thermometer,
+  Bitcoin,
+  Star,
+  Minus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const FEATURE_CARDS = [
+/* ------------------------------------------------------------------ */
+/*  Sections data                                                      */
+/* ------------------------------------------------------------------ */
+
+const SPORTS = [
+  { name: "Football (Soccer)", draw: true, detail: "European elite leagues" },
+  { name: "NBA", draw: false, detail: "Regular season + playoffs" },
+  { name: "NFL", draw: false, detail: "Off-season guard (Apr–Jul)" },
+  { name: "MLB", draw: false, detail: "Off-season guard (Dec–Feb)" },
+  { name: "MMA / UFC", draw: false, detail: "UFC, Bellator, ONE, PFL" },
+  { name: "Rugby", draw: true, detail: "Six Nations, Premiership, Super Rugby…" },
+  { name: "Hockey", draw: false, detail: "NHL + international leagues" },
+  { name: "Basketball", draw: false, detail: "International leagues (non-NBA)" },
+];
+
+const HOW_STEPS = [
   {
-    icon: Bitcoin,
-    title: "Bitcoin-native rails",
-    body: "Bet, settle and withdraw in sats over Lightning. No platform balance, no fiat custody, no token wrapper.",
-    tint: "surface-tint-orange",
+    n: "01",
+    title: "Pick a market",
+    desc: "Crypto UP/DOWN, a sport result or a weather outcome — whatever catches your eye.",
+  },
+  {
+    n: "02",
+    title: "Enter your stake",
+    desc: "Minimum $0.50 USD. The pool bar shows how many sats are on each side — a minority pick means higher payout.",
+  },
+  {
+    n: "03",
+    title: "Pay with Lightning",
+    desc: "Scan the QR with any Lightning wallet (Phoenix, Alby, Zeus, Wallet of Satoshi) or use WebLN.",
+  },
+  {
+    n: "04",
+    title: "Get settled",
+    desc: "When the event resolves, winners split the pool (minus a 2 % house fee). Payouts arrive via LNURL-Withdraw — straight to your wallet.",
+  },
+  {
+    n: "05",
+    title: "Find your bet later",
+    desc: "All bets saved in your browser under My Bets. Lost your tab? Import with your payment hash or preimage.",
+  },
+];
+
+const FEATURES = [
+  {
+    icon: Bolt,
+    title: "Lightning-fast payments",
+    desc: "Every bet is a Lightning invoice. No fiat, no platform balance, no token wrapper — just sats on and off.",
   },
   {
     icon: LockKeyhole,
-    title: "No account required",
-    body: "The app works with invoices, payment hashes and browser-local bet recovery instead of traditional sign-up flows.",
-    tint: "surface-tint-indigo",
+    title: "No account needed",
+    desc: "No sign-up, no email, no password. Pay, bet, withdraw. Your proof of payment is your identity.",
   },
-  {
-    icon: Globe,
-    title: "Open wallet interoperability",
-    body: "Compatible with standard Lightning wallets, WebLN flows and LNURL-Withdraw for payout collection.",
-    tint: "surface-tint-emerald",
-  },
-  {
-    icon: Radar,
-    title: "Live market surface",
-    body: "Crypto, sports and weather markets run in one interface with visible pools, odds pressure and immediate status tracking.",
-    tint: "surface-tint-cyan",
-  },
-];
-
-const MARKET_PANELS = [
-  {
-    kicker: "Crypto",
-    title: "Fast 5-minute BTC, ETH and SOL windows",
-    body: "Short-cycle prediction markets with visible pool imbalance and quick feedback loops for operators who want a tighter cadence.",
-    tint: "surface-tint-orange",
-  },
-  {
-    kicker: "Sports",
-    title: "Match outcomes settled in sats",
-    body: "Home, away and draw markets with per-outcome liquidity, local bet tracking and Lightning-native settlement paths.",
-    tint: "surface-tint-yellow",
-  },
-  {
-    kicker: "Weather",
-    title: "Real-world event markets beyond price action",
-    body: "Temperature-range markets expand the app beyond pure trading narratives and show the same sat-based mechanism on different data.",
-    tint: "surface-tint-cyan",
-  },
-];
-
-const PRINCIPLES = [
   {
     icon: ShieldCheck,
-    title: "Leans on decentralized money",
-    body: "The strongest decentralization property here is the money rail itself: Bitcoin and Lightning are open networks, wallet-agnostic and globally accessible.",
+    title: "Transparent pools",
+    desc: "See exactly how much sats are on each outcome. Odds adjust in real time as the pool shifts.",
   },
   {
     icon: Wallet,
-    title: "Less platform dependence",
-    body: "Users do not need to preload or leave a custodial site balance parked inside the app just to participate and withdraw.",
-  },
-  {
-    icon: Sparkles,
-    title: "Portable proofs",
-    body: "Payment hash and preimage flows make bet recovery portable across sessions and devices when the user keeps their proof of payment.",
+    title: "Wallet in, wallet out",
+    desc: "Your sats never sit in a custodial account. Payouts go directly back to your Lightning wallet via LNURL-Withdraw.",
   },
   {
     icon: TimerReset,
-    title: "Operationally simple",
-    body: "Small invoice-driven interactions reduce onboarding friction and let someone go from landing page to first market in seconds.",
+    title: "Minutes-long rounds",
+    desc: "Crypto windows open every 5, 15 or 30 minutes. Place a bet, wait a few minutes, get settled.",
+  },
+  {
+    icon: Trophy,
+    title: "Winners split the pool",
+    desc: "No house rake on the losing side. All losing sats go to the winners, minus a flat 2 % fee.",
   },
 ];
 
-const STEPS = [
-  "Choose a market and select an outcome.",
-  "Pay the Lightning invoice with any compatible wallet.",
-  "Track the bet in-browser or recover it later by hash or preimage.",
-  "If you win, pull payout back to your wallet over Lightning.",
-];
+/* ------------------------------------------------------------------ */
+/*  Component                                                          */
+/* ------------------------------------------------------------------ */
 
 export function Landing() {
   return (
-    <div className="mx-auto max-w-6xl space-y-8 sm:space-y-12">
-      <section className="relative overflow-hidden rounded-[2rem] border border-border/60 bg-background/80 px-5 py-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur sm:px-8 sm:py-10 lg:px-12 lg:py-14">
+    <div className="mx-auto max-w-6xl space-y-16 sm:space-y-20">
+
+      {/* ═══ HERO ═══ */}
+      <section className="relative overflow-hidden rounded-[2rem] border border-border/60 bg-background/80 px-5 py-10 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur sm:px-10 sm:py-14 lg:px-16 lg:py-20">
+        {/* blurs */}
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -left-12 top-0 h-56 w-56 rounded-full bg-orange-500/15 blur-3xl" />
-          <div className="absolute right-0 top-10 h-64 w-64 rounded-full bg-cyan-500/15 blur-3xl" />
-          <div className="absolute bottom-0 left-1/3 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
+          <div className="absolute -left-16 top-0 h-64 w-64 rounded-full bg-orange-500/15 blur-3xl" />
+          <div className="absolute -right-8 top-12 h-56 w-56 rounded-full bg-cyan-500/12 blur-3xl" />
+          <div className="absolute bottom-0 left-1/2 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
         </div>
 
-        <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-center">
-          <div className="space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-orange-400/30 bg-orange-400/10 px-3 py-1 text-[11px] font-mono uppercase tracking-[0.24em] text-orange-300">
-              <Zap className="h-3.5 w-3.5" />
-              Prediction markets settled in sats
-            </div>
-
-            <div className="space-y-4">
-              <h1 className="max-w-4xl font-mono text-4xl font-bold uppercase leading-none tracking-tight sm:text-5xl lg:text-6xl">
-                Use Lightning to operate prediction markets without platform money.
-              </h1>
-              <p className="max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-                Predictions With SATS combines crypto, sports and weather markets with Bitcoin Lightning invoices,
-                wallet-driven payouts and browser-local bet recovery. It is a cleaner operating model for people who
-                want market exposure on open money rails instead of closed in-app balances.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button asChild size="lg" className="h-12 rounded-none bg-yellow-400 px-6 font-mono text-xs uppercase tracking-[0.2em] text-black hover:bg-yellow-300">
-                <Link to="/app">
-                  Open The App
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-              <Button asChild size="lg" variant="outline" className="h-12 rounded-none border-border/60 bg-background/70 px-6 font-mono text-xs uppercase tracking-[0.2em]">
-                <Link to="/my-bets">Recover My Bets</Link>
-              </Button>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
-                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Payment rail</p>
-                <p className="mt-2 text-lg font-semibold">Bitcoin Lightning</p>
-              </div>
-              <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
-                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Core posture</p>
-                <p className="mt-2 text-lg font-semibold">No account, no custody balance</p>
-              </div>
-              <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
-                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Markets</p>
-                <p className="mt-2 text-lg font-semibold">Crypto, sports, weather</p>
-              </div>
-            </div>
+        <div className="relative max-w-3xl space-y-6">
+          <div className="inline-flex items-center gap-2 rounded-full border border-orange-400/30 bg-orange-400/10 px-3 py-1 text-[11px] font-mono uppercase tracking-[0.24em] text-orange-300">
+            <Zap className="h-3.5 w-3.5" />
+            Bet in sats — settle in seconds
           </div>
 
-          <div className="relative">
-            <div className="rounded-[1.5rem] border border-border/60 bg-zinc-950 px-5 py-5 text-zinc-50 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
-              <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                <div>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400">Operator view</p>
-                  <p className="mt-1 font-mono text-lg font-bold uppercase tracking-[0.08em]">Lightning-first flow</p>
-                </div>
-                <div className="rounded-full border border-yellow-400/30 bg-yellow-400/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-yellow-300">
-                  Live
-                </div>
-              </div>
+          <h1 className="font-mono text-4xl font-bold uppercase leading-tight tracking-tight sm:text-5xl lg:text-6xl">
+            Bet on crypto, sports & weather — paid with Bitcoin Lightning
+          </h1>
 
-              <div className="space-y-4 pt-4">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-400">Lightning invoice</span>
-                    <span className="font-mono text-[11px] text-emerald-300">Wallet agnostic</span>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full w-[72%] rounded-full bg-gradient-to-r from-yellow-400 via-orange-400 to-emerald-400" />
-                  </div>
-                  <p className="mt-3 text-sm text-zinc-300">
-                    Pay from Phoenix, Alby, Zeus, Wallet of Satoshi or any compatible Lightning wallet.
-                  </p>
-                </div>
+          <p className="text-base leading-7 text-muted-foreground sm:text-lg">
+            Predictions With Sats is a prediction market where you bet with real Bitcoin (sats) over the Lightning Network.
+            No accounts, no sign-ups. Pick an outcome, pay with any Lightning wallet, and collect winnings straight back to your wallet.
+          </p>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">Recovery</p>
-                    <p className="mt-2 text-lg font-semibold">Hash / preimage based</p>
-                    <p className="mt-2 text-xs leading-5 text-zinc-400">
-                      Keep proof of payment and you can re-import bets without a traditional user account.
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">Payout path</p>
-                    <p className="mt-2 text-lg font-semibold">LNURL withdraw</p>
-                    <p className="mt-2 text-xs leading-5 text-zinc-400">
-                      Winning bets resolve back to the wallet layer instead of a trapped site balance.
-                    </p>
-                  </div>
-                </div>
+          <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+            <Button
+              asChild
+              size="lg"
+              className="h-12 rounded-none bg-yellow-400 px-8 font-mono text-xs uppercase tracking-[0.2em] text-black hover:bg-yellow-300"
+            >
+              <Link to="/app">
+                Open Crypto Markets
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="h-12 rounded-none border-border/60 bg-background/70 px-8 font-mono text-xs uppercase tracking-[0.2em]"
+            >
+              <Link to="/sports">Browse Sports</Link>
+            </Button>
+          </div>
 
-                <div className="rounded-2xl border border-white/10 bg-gradient-to-r from-white/5 to-white/[0.02] p-4">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">What makes it different</p>
-                  <p className="mt-2 text-sm leading-6 text-zinc-300">
-                    The app logic is a web product, but the money layer is open and composable. That makes the user’s
-                    relationship to funds and payout rails materially less platform-dependent than a closed wallet stack.
-                  </p>
-                </div>
-              </div>
-            </div>
+          {/* quick stats */}
+          <div className="grid gap-3 pt-4 sm:grid-cols-3">
+            <StatCard label="Payment" value="Bitcoin Lightning" />
+            <StatCard label="Account?" value="None required" />
+            <StatCard label="House fee" value="2 % flat" />
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {FEATURE_CARDS.map((feature) => (
-          <div key={feature.title} className={`rounded-[1.5rem] border p-5 ${feature.tint}`}>
-            <feature.icon className="h-5 w-5 text-foreground" />
-            <h2 className="mt-4 font-mono text-sm font-bold uppercase tracking-[0.14em]">{feature.title}</h2>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">{feature.body}</p>
-          </div>
-        ))}
-      </section>
+      {/* ═══ THREE MARKET CATEGORIES ═══ */}
+      <section className="space-y-6">
+        <SectionHeader kicker="What can you bet on?" title="Three market classes, one interface" />
 
-      <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
-        <div className="rounded-[1.75rem] border border-border/50 bg-background/70 p-6 sm:p-8">
-          <div className="max-w-xl">
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Why this architecture matters</p>
-            <h2 className="mt-3 font-mono text-2xl font-bold uppercase tracking-tight sm:text-3xl">
-              It pushes the prediction experience closer to open internet money.
-            </h2>
-            <p className="mt-4 text-sm leading-6 text-muted-foreground sm:text-base">
-              The app is not pretending to be pure protocol software. What it does offer is a meaningful shift in how
-              the user interacts with money: wallet in, wallet out, sats-native accounting, no mandatory account layer
-              and portable payment proofs. That is a real product advantage.
-            </p>
-          </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {/* Crypto */}
+          <MarketCard
+            icon={TrendingUpDown}
+            tint="surface-tint-orange"
+            kicker="Crypto"
+            title="UP or DOWN in minutes"
+            lines={[
+              "BTC, ETH, SOL, XRP, BNB",
+              "5 min, 15 min, 30 min windows",
+              "New window opens on every clock mark",
+              "Winners split the pool when price closes",
+            ]}
+            ctaLabel="Open Crypto"
+            ctaHref="/app"
+          />
 
-          <div className="mt-8 grid gap-4">
-            {PRINCIPLES.map((item) => (
-              <div key={item.title} className="rounded-2xl border border-border/50 bg-background/70 p-4">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-xl border border-border/50 bg-muted/40 p-2">
-                    <item.icon className="h-4 w-4" />
-                  </div>
-                  <h3 className="font-mono text-sm font-bold uppercase tracking-[0.14em]">{item.title}</h3>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">{item.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+          {/* Sports */}
+          <MarketCard
+            icon={Gamepad2}
+            tint="surface-tint-yellow"
+            kicker="Sports"
+            title="8 sports, real matches"
+            lines={[
+              "Football, NBA, NFL, MLB, MMA, Rugby, Hockey, Basketball",
+              "Home win, away win, or draw",
+              "Live status tracking with auto-settlement",
+              "Expanded coverage with external market data",
+            ]}
+            ctaLabel="View Sports"
+            ctaHref="/sports"
+          />
 
-        <div className="rounded-[1.75rem] border border-border/50 bg-background/70 p-6 sm:p-8">
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Operating loop</p>
-          <h2 className="mt-3 font-mono text-2xl font-bold uppercase tracking-tight sm:text-3xl">
-            From market selection to payout in four moves.
-          </h2>
-          <div className="mt-6 space-y-4">
-            {STEPS.map((step, index) => (
-              <div key={step} className="flex gap-4 rounded-2xl border border-border/50 bg-background/70 p-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-yellow-400/30 bg-yellow-400/10 font-mono text-sm font-bold text-yellow-300">
-                  0{index + 1}
-                </div>
-                <p className="pt-1 text-sm leading-6 text-muted-foreground">{step}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-300">Wallet-first payout model</p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The important user-facing idea is simple: the platform does not ask you to adopt its own money. It uses sats.
-            </p>
-          </div>
+          {/* Weather */}
+          <MarketCard
+            icon={Thermometer}
+            tint="surface-tint-cyan"
+            kicker="Weather"
+            title="Temperature & precipitation"
+            lines={[
+              "Bet on real-world forecast outcomes",
+              "Daily temperature thresholds",
+              "Automated settlement at midnight local time",
+              "Synced from live weather data sources",
+            ]}
+            ctaLabel="See Weather"
+            ctaHref="/weather"
+          />
         </div>
       </section>
 
-      <section className="space-y-4">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Market surface</p>
-          <h2 className="mt-3 font-mono text-2xl font-bold uppercase tracking-tight sm:text-3xl">
-            One app, multiple market classes, same sat-denominated UX.
-          </h2>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          {MARKET_PANELS.map((panel) => (
-            <div key={panel.title} className={`rounded-[1.5rem] border p-5 ${panel.tint}`}>
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">{panel.kicker}</p>
-              <h3 className="mt-3 font-mono text-lg font-bold uppercase tracking-[0.08em]">{panel.title}</h3>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">{panel.body}</p>
+      {/* ═══ HOW IT WORKS ═══ */}
+      <section className="space-y-6">
+        <SectionHeader kicker="Getting started" title="From zero to settled in five steps" />
+
+        <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-5">
+          {HOW_STEPS.map((s, i) => (
+            <div key={s.n} className="relative rounded-2xl border border-border/50 bg-background/70 p-5">
+              <span className="font-mono text-3xl font-bold text-yellow-400/30">{s.n}</span>
+              <h3 className="mt-2 font-mono text-sm font-bold uppercase tracking-wide">{s.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{s.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="rounded-[2rem] border border-border/60 bg-gradient-to-br from-yellow-400/12 via-background/90 to-cyan-400/10 p-6 sm:p-8 lg:p-10">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-          <div className="max-w-3xl">
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Start operating</p>
-            <h2 className="mt-3 font-mono text-3xl font-bold uppercase tracking-tight sm:text-4xl">
-              Open the app and start placing markets in sats.
-            </h2>
-            <p className="mt-4 text-sm leading-6 text-muted-foreground sm:text-base">
-              Go straight into crypto windows, sports outcomes, weather markets and global bet recovery. The operational
-              path is already live in the same interface.
-            </p>
-          </div>
+      {/* ═══ SPORTS DEEP-DIVE ═══ */}
+      <section className="rounded-[2rem] border border-border/50 bg-background/70 p-6 sm:p-8 lg:p-10 space-y-6">
+        <SectionHeader kicker="Sports betting" title="8 sports with draw or no-draw markets" />
 
-          <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
-            <Button asChild size="lg" className="h-12 rounded-none bg-yellow-400 px-6 font-mono text-xs uppercase tracking-[0.2em] text-black hover:bg-yellow-300">
-              <Link to="/app">Launch App</Link>
-            </Button>
-            <Button asChild size="lg" variant="outline" className="h-12 rounded-none border-border/60 bg-background/70 px-6 font-mono text-xs uppercase tracking-[0.2em]">
-              <Link to="/sports">View Sports Markets</Link>
-            </Button>
-          </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {SPORTS.map((s) => (
+            <div
+              key={s.name}
+              className="rounded-xl border border-border/50 bg-background/70 p-4 space-y-1"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-sm font-bold">{s.name}</span>
+                {s.draw ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-400/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-green-300">
+                    <CheckCircle2 className="h-2.5 w-2.5" /> Draw
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-red-400/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-red-300">
+                    <Minus className="h-2.5 w-2.5" /> No draw
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">{s.detail}</p>
+            </div>
+          ))}
         </div>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
-            <div className="flex items-center gap-2">
-              <BadgeDollarSign className="h-4 w-4 text-yellow-400" />
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Sats-native</p>
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">The unit of account is sats, not points or internal credits.</p>
-          </div>
-          <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
-            <div className="flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-yellow-400" />
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Outcome diversity</p>
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">Short-term price action sits beside sports and weather resolution events.</p>
-          </div>
-          <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
-            <div className="flex items-center gap-2">
-              <CloudSun className="h-4 w-4 text-cyan-400" />
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Single interface</p>
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">One browser app for discovery, operation, recovery and payout collection.</p>
-          </div>
+        <div className="flex justify-center pt-2">
+          <Button
+            asChild
+            size="lg"
+            className="h-12 rounded-none bg-yellow-400 px-8 font-mono text-xs uppercase tracking-[0.2em] text-black hover:bg-yellow-300"
+          >
+            <Link to="/sports">
+              Browse All Sports Markets
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
         </div>
       </section>
+
+      {/* ═══ FEATURES ═══ */}
+      <section className="space-y-6">
+        <SectionHeader kicker="Why Predictions With Sats?" title="Built for people who prefer Bitcoin" />
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {FEATURES.map((f) => (
+            <div
+              key={f.title}
+              className="rounded-2xl border border-border/50 bg-background/70 p-5 space-y-3"
+            >
+              <f.icon className="h-5 w-5 text-yellow-400" />
+              <h3 className="font-mono text-sm font-bold uppercase tracking-wide">{f.title}</h3>
+              <p className="text-sm leading-6 text-muted-foreground">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ═══ PAYMENT FLOW ═══ */}
+      <section className="rounded-[2rem] border border-border/50 bg-gradient-to-br from-yellow-400/8 via-background/90 to-cyan-400/8 p-6 sm:p-8 lg:p-10 space-y-6">
+        <SectionHeader kicker="Payments" title="Every interaction uses real Bitcoin" />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Deposit */}
+          <div className="rounded-2xl border border-border/50 bg-background/70 p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-yellow-400" />
+              <h3 className="font-mono text-sm font-bold uppercase">Placing a bet</h3>
+            </div>
+            <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+              <li>Choose an outcome and enter your stake</li>
+              <li>A Lightning invoice (Bolt11) is generated instantly</li>
+              <li>Scan the QR code with any Lightning wallet or use WebLN</li>
+              <li>Your bet is confirmed and locked — no deposit required</li>
+            </ol>
+          </div>
+
+          {/* Withdrawal */}
+          <div className="rounded-2xl border border-border/50 bg-background/70 p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-emerald-400" />
+              <h3 className="font-mono text-sm font-bold uppercase">Collecting winnings</h3>
+            </div>
+            <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+              <li>When you win, a withdraw link appears on your bet card</li>
+              <li>Open the link to get an LNURL-Withdraw request</li>
+              <li>Your Lightning wallet prompts you to confirm the payout address</li>
+              <li>Sats arrive in your wallet — no platform balance, no waiting</li>
+            </ol>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-yellow-400/20 bg-yellow-400/10 p-4 text-center">
+          <Bitcoin className="mx-auto h-6 w-6 text-yellow-400" />
+          <p className="mt-2 font-mono text-sm font-bold text-yellow-300">
+            Compatible with Phoenix, Alby, Zeus, Wallet of Satoshi and any Lightning wallet
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            No registration, no platform wallet, no custodial account
+          </p>
+        </div>
+      </section>
+
+      {/* ═══ CTA ═══ */}
+      <section className="rounded-[2rem] border border-border/60 bg-background/80 p-6 sm:p-8 lg:p-12 text-center space-y-6">
+        <Star className="mx-auto h-8 w-8 text-yellow-400" />
+        <h2 className="font-mono text-2xl font-bold uppercase tracking-tight sm:text-3xl">
+          Ready to bet in sats?
+        </h2>
+        <p className="mx-auto max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
+          Crypto windows are open right now. Sports markets update live. Weather bets settle daily.
+          No account needed — just your Lightning wallet.
+        </p>
+        <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-center">
+          <Button
+            asChild
+            size="lg"
+            className="h-12 rounded-none bg-yellow-400 px-8 font-mono text-xs uppercase tracking-[0.2em] text-black hover:bg-yellow-300"
+          >
+            <Link to="/app">
+              Open Crypto Markets
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+          <Button
+            asChild
+            size="lg"
+            variant="outline"
+            className="h-12 rounded-none border-border/60 bg-background/70 px-8 font-mono text-xs uppercase tracking-[0.2em]"
+          >
+            <Link to="/sports">Sports Markets</Link>
+          </Button>
+          <Button
+            asChild
+            size="lg"
+            variant="outline"
+            className="h-12 rounded-none border-border/60 bg-background/70 px-8 font-mono text-xs uppercase tracking-[0.2em]"
+          >
+            <Link to="/weather">Weather Markets</Link>
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sub-components                                                     */
+/* ------------------------------------------------------------------ */
+
+function SectionHeader({ kicker, title }: { kicker: string; title: string }) {
+  return (
+    <div>
+      <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{kicker}</p>
+      <h2 className="mt-2 font-mono text-2xl font-bold uppercase tracking-tight sm:text-3xl">{title}</h2>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border/50 bg-background/70 p-4">
+      <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function MarketCard({
+  icon: Icon,
+  tint,
+  kicker,
+  title,
+  lines,
+  ctaLabel,
+  ctaHref,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  tint: string;
+  kicker: string;
+  title: string;
+  lines: string[];
+  ctaLabel: string;
+  ctaHref: string;
+}) {
+  return (
+    <div className={`rounded-[1.5rem] border p-5 ${tint} flex flex-col`}>
+      <div className="flex items-center gap-2">
+        <Icon className="h-5 w-5 text-foreground" />
+        <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">{kicker}</p>
+      </div>
+      <h3 className="mt-2 font-mono text-lg font-bold uppercase tracking-wide">{title}</h3>
+      <ul className="mt-3 space-y-1.5">
+        {lines.map((l) => (
+          <li key={l} className="flex items-start gap-2 text-sm text-muted-foreground">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-yellow-400" />
+            {l}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-auto pt-4">
+        <Button
+          asChild
+          size="sm"
+          variant="outline"
+          className="rounded-none border-border/50 font-mono text-[11px] uppercase tracking-wider"
+        >
+          <Link to={ctaHref}>
+            {ctaLabel}
+            <ArrowRight className="ml-1 h-3 w-3" />
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 }
