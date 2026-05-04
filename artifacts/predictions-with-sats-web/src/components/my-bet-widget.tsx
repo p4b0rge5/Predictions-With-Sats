@@ -200,7 +200,7 @@ export function removeStoredBetHashEverywhere(paymentHash: string) {
   }
 
   deleteHash(SPORTS_STORAGE_KEY, paymentHash, [LEGACY_SPORTS_STORAGE_KEY]);
-  for (const sportKey of ["football", "nba", "nfl", "mlb", "mma", "rugby"]) {
+  for (const sportKey of ["football", "nba", "nfl", "mlb", "mma", "rugby", "hockey", "basketball"]) {
     deleteHash(sportStorageKey(sportKey), paymentHash, [legacySportStorageKey(sportKey)]);
   }
 

@@ -391,11 +391,13 @@ function WeatherBetModal({
   outcome,
   outcomeIndex,
   onClose,
+  onRefetch,
 }: {
   market: WeatherMarket;
   outcome: WeatherOutcome;
   outcomeIndex: number;
   onClose: () => void;
+  onRefetch?: () => void;
 }) {
   const { toast } = useToast();
   const [inputMode, setInputMode] = useState<InputMode>("usd");
@@ -431,6 +433,7 @@ function WeatherBetModal({
         if (["paid", "won", "lost", "refunded"].includes(data.status)) {
           setBetPaid(true);
           if (pollRef.current) clearInterval(pollRef.current);
+          if (data.status === "paid") { onRefetch?.(); }
         }
       } catch {
         // Ignore intermittent polling errors.
@@ -504,6 +507,7 @@ function WeatherBetModal({
       await window.webln.enable();
       await window.webln.sendPayment(invoice.paymentRequest);
       setBetPaid(true);
+      onRefetch?.();
       toast({ title: "Payment sent!", description: "Your weather bet is confirmed." });
     } catch {
       toast({ title: "WebLN failed", description: "Please scan the QR code instead.", variant: "destructive" });
@@ -522,6 +526,7 @@ function WeatherBetModal({
       });
       if (!res.ok) throw new Error("Verification failed");
       setBetPaid(true);
+      onRefetch?.();
       toast({ title: "Payment verified!", description: "Your weather bet is confirmed." });
     } catch {
       toast({ title: "Verification failed", description: "Invalid preimage or payment not found.", variant: "destructive" });
@@ -746,12 +751,25 @@ function useCountdown(deadlineIso: string) {
 function MarketCard({
   market,
   onBetCreated,
+  onRefetch,
 }: {
   market: WeatherMarket;
   onBetCreated?: () => void;
+  onRefetch?: () => void;
 }) {
   const [selectedOutcome, setSelectedOutcome] = useState<{ outcome: WeatherOutcome; index: number } | null>(null);
   const [showAllOutcomes, setShowAllOutcomes] = useState(false);
+
+  // Sync selectedOutcome with fresh market data when market prop changes (e.g., after refetch)
+  useEffect(() => {
+    setSelectedOutcome((current) => {
+      if (!current) return current;
+      const outcomes = getSafeOutcomeList(market.outcomes);
+      const fresh = outcomes[current.index];
+      return fresh ? { outcome: fresh, index: current.index } : current;
+    });
+  }, [market]);
+
   const today = new Date().toISOString().slice(0, 10);
   const deadline = `${market.date}T23:59:59Z`;
   const countdown = useCountdown(deadline);
@@ -874,6 +892,7 @@ function MarketCard({
           market={market}
           outcome={selectedOutcome.outcome}
           outcomeIndex={selectedOutcome.index}
+          onRefetch={onRefetch}
           onClose={() => {
             setSelectedOutcome(null);
             onBetCreated?.();
@@ -1212,7 +1231,7 @@ export function Weather() {
   } = useQuery<WeatherMarket[]>({
     queryKey: ["/api/weather/markets"],
     queryFn: fetchWeatherMarkets,
-    refetchInterval: 60_000,
+    refetchInterval: 3_000,
   });
 
   const today = new Date().toISOString().slice(0, 10);
@@ -1440,7 +1459,7 @@ export function Weather() {
                   <div key={section.key}>
                     <div className="card-stack">
                       {section.items.map((market) => (
-                        <MarketCard key={market.id} market={market} onBetCreated={() => setBetListVersion((current) => current + 1)} />
+                        <MarketCard key={market.id} market={market} onBetCreated={() => setBetListVersion((current) => current + 1)} onRefetch={refetch} />
                       ))}
                     </div>
                   </div>

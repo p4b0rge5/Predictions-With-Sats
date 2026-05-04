@@ -35,7 +35,7 @@ import { SportsPolyBetStatusCard } from "@/pages/sports-poly";
 import { WeatherBetStatusCard } from "@/pages/weather";
 
 type CryptoAsset = "btc" | "eth" | "sol" | "xrp" | "bnb";
-type SportKey = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby";
+type SportKey = "football" | "nba" | "nfl" | "mlb" | "mma" | "rugby" | "hockey" | "basketball";
 type BetSource = "crypto" | "sports" | "sportsPoly" | "weather";
 
 type StoredBetRef =
@@ -76,6 +76,8 @@ const SPORT_KEYS: { key: SportKey; label: string }[] = [
   { key: "mlb", label: "MLB" },
   { key: "mma", label: "MMA" },
   { key: "rugby", label: "Rugby" },
+  { key: "hockey", label: "Hockey" },
+  { key: "basketball", label: "Basketball" },
 ];
 
 function dedupeByHash<T extends { hash: string }>(items: T[]): T[] {

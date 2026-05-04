@@ -201,7 +201,7 @@ const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const MIN_SATS = 546;
 const BTC_SATS = 100_000_000;
 const APPROX_BTC_USD = 95000;
-const REFRESH_INTERVAL_MS = 60_000;
+const REFRESH_INTERVAL_MS = 3_000;
 const EVENT_IMMINENT_MS = 5 * 60 * 1000;
 const EVENT_IMMINENT_BRIDGE_MS = 4 * 60 * 60 * 1000;
 
@@ -909,6 +909,7 @@ interface SportBetModalProps {
   direction: Direction | null;
   sportKey: string;
   onClose: () => void;
+  onRefetch?: () => void;
 }
 
 type InputMode = "sats" | "usd";
@@ -930,7 +931,7 @@ function AmountToggle({ mode, onChange }: { mode: InputMode; onChange: (m: Input
   );
 }
 
-function SportBetModal({ event, direction, sportKey, onClose }: SportBetModalProps) {
+function SportBetModal({ event, direction, sportKey, onClose, onRefetch }: SportBetModalProps) {
   const { toast } = useToast();
   const [inputMode, setInputMode] = useState<InputMode>("usd");
   const [rawAmount, setRawAmount] = useState("0.5");
@@ -967,6 +968,7 @@ function SportBetModal({ event, direction, sportKey, onClose }: SportBetModalPro
         if (data.status !== "pending") {
           clearInterval(pollRef.current!);
           if (data.status === "paid" || data.status === "won") saveSportBetHashForKey(sportKey, paymentHash);
+          if (data.status === "paid") { onRefetch?.(); }
         }
       } catch { /* ignore */ }
     }, 3000);
@@ -1937,6 +1939,14 @@ export function Sports() {
         };
 
         setData(nextData);
+
+        // Refresh the open bet modal with updated event data (pools, etc.)
+        setBetModal((current) => {
+          if (!current) return current;
+          const freshEvent = [...nextData.upcoming, ...nextData.live].find((e) => e.id === current.event.id);
+          return freshEvent ? { ...current, event: freshEvent } : current;
+        });
+
         setBridgedImminentEvents((current) => {
           const next = { ...current };
           const fetchedAt = Date.now();
@@ -2389,6 +2399,7 @@ export function Sports() {
         event={betModal?.event ?? null}
         direction={betModal?.direction ?? null}
         sportKey={activeSport}
+        onRefetch={() => fetchData(false)}
         onClose={() => {
           setBetModal(null);
           setBetListVersion((current) => current + 1);
