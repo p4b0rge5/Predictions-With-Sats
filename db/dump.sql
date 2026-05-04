@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict f6TH6A6MpIjyEtdIXCfkOvGjc3pAsLFSWVSnkgR71fgMfeCU8y9OWP0czkmacEE
+\restrict Spd0C1nqVnWNyDblSLfdKEDXJmzKA4IKFk4IihH57fmCMbPUCS9dfPnwqXj71KQ
 
 -- Dumped from database version 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1)
 -- Dumped by pg_dump version 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1)
@@ -2347,26 +2347,56 @@ COPY public.market_windows (id, asset, interval_minutes, status, open_price, clo
 1744	sol	30	settled	84.49	84.36	down	0	0	2026-05-04 19:30:00+00	2026-05-04 20:00:00.028+00	2026-05-04 20:00:30.298+00
 1742	bnb	30	settled	625.10	624.90	down	0	0	2026-05-04 19:30:00+00	2026-05-04 20:00:00.026+00	2026-05-04 20:00:30.3+00
 1777	btc	30	open	79989.10	\N	\N	0	0	2026-05-04 20:00:00+00	\N	\N
-1784	xrp	5	closed	1.40	\N	\N	0	0	2026-05-04 20:00:00+00	2026-05-04 20:05:00.016+00	\N
+1786	bnb	15	settled	624.90	625.24	up	0	0	2026-05-04 20:00:00+00	2026-05-04 20:15:00.029+00	2026-05-04 20:15:40.277+00
 1771	btc	5	settled	79970.20	79986.40	up	0	0	2026-05-04 19:55:00+00	2026-05-04 20:00:00.02+00	2026-05-04 20:00:40.083+00
 1731	btc	30	settled	79918.10	79989.52	up	0	0	2026-05-04 19:30:00+00	2026-05-04 20:00:00.016+00	2026-05-04 20:00:30.285+00
 1773	eth	5	settled	2354.37	2354.38	up	0	0	2026-05-04 19:55:00+00	2026-05-04 20:00:00.017+00	2026-05-04 20:00:30.284+00
 1772	sol	5	settled	84.37	84.36	down	0	0	2026-05-04 19:55:00+00	2026-05-04 20:00:00.017+00	2026-05-04 20:00:30.289+00
 1764	xrp	15	settled	1.40	1.40	draw	0	0	2026-05-04 19:45:00+00	2026-05-04 20:00:00.021+00	2026-05-04 20:00:30.29+00
-1779	xrp	15	open	1.40	\N	\N	0	0	2026-05-04 20:00:00+00	\N	\N
 1780	xrp	30	open	1.40	\N	\N	0	0	2026-05-04 20:00:00+00	\N	\N
 1781	eth	30	open	2354.21	\N	\N	0	0	2026-05-04 20:00:00+00	\N	\N
-1782	eth	15	open	2354.21	\N	\N	0	0	2026-05-04 20:00:00+00	\N	\N
 1783	sol	30	open	84.36	\N	\N	0	0	2026-05-04 20:00:00+00	\N	\N
-1786	bnb	15	open	624.90	\N	\N	0	0	2026-05-04 20:00:00+00	\N	\N
 1787	bnb	30	open	624.90	\N	\N	0	0	2026-05-04 20:00:00+00	\N	\N
+1784	xrp	5	settled	1.40	1.40	draw	0	0	2026-05-04 20:00:00+00	2026-05-04 20:05:00.016+00	2026-05-04 20:05:30.21+00
+1782	eth	15	settled	2354.21	2355.50	up	0	0	2026-05-04 20:00:00+00	2026-05-04 20:15:00.019+00	2026-05-04 20:15:40.261+00
+1779	xrp	15	settled	1.40	1.40	draw	0	0	2026-05-04 20:00:00+00	2026-05-04 20:15:00.026+00	2026-05-04 20:15:40.262+00
 1760	btc	15	settled	79960.01	79986.40	up	0	0	2026-05-04 19:45:00+00	2026-05-04 20:00:00.02+00	2026-05-04 20:00:40.093+00
-1789	btc	15	open	79986.40	\N	\N	0	0	2026-05-04 20:00:00+00	\N	\N
-1790	sol	15	open	84.36	\N	\N	0	0	2026-05-04 20:00:00+00	\N	\N
-1776	eth	5	closed	2354.21	\N	\N	0	0	2026-05-04 20:00:00+00	2026-05-04 20:05:00.015+00	\N
-1788	btc	5	closed	79986.40	\N	\N	0	0	2026-05-04 20:00:00+00	2026-05-04 20:05:00.017+00	\N
-1778	sol	5	closed	84.36	\N	\N	0	0	2026-05-04 20:00:00+00	2026-05-04 20:05:00.02+00	\N
-1785	bnb	5	closed	624.90	\N	\N	0	0	2026-05-04 20:00:00+00	2026-05-04 20:05:00.021+00	\N
+1776	eth	5	settled	2354.21	2354.24	up	0	0	2026-05-04 20:00:00+00	2026-05-04 20:05:00.015+00	2026-05-04 20:05:30.124+00
+1788	btc	5	settled	79986.40	79973.05	down	0	0	2026-05-04 20:00:00+00	2026-05-04 20:05:00.017+00	2026-05-04 20:05:30.128+00
+1778	sol	5	settled	84.36	84.31	down	0	0	2026-05-04 20:00:00+00	2026-05-04 20:05:00.02+00	2026-05-04 20:05:30.138+00
+1785	bnb	5	settled	624.90	624.58	down	0	0	2026-05-04 20:00:00+00	2026-05-04 20:05:00.021+00	2026-05-04 20:05:30.173+00
+1814	xrp	5	settled	1.39	1.39	draw	0	0	2026-05-04 20:20:00+00	2026-05-04 20:25:00.032+00	2026-05-04 20:25:40.181+00
+1820	xrp	5	open	1.39	\N	\N	0	0	2026-05-04 20:25:00+00	\N	\N
+1791	btc	5	settled	79987.10	80015.80	up	0	0	2026-05-04 20:05:00+00	2026-05-04 20:10:00.019+00	2026-05-04 20:10:40.131+00
+1793	sol	5	settled	84.31	84.29	down	0	0	2026-05-04 20:05:00+00	2026-05-04 20:10:00.022+00	2026-05-04 20:10:40.133+00
+1792	eth	5	settled	2354.38	2354.63	up	0	0	2026-05-04 20:05:00+00	2026-05-04 20:10:00.02+00	2026-05-04 20:10:40.138+00
+1795	xrp	5	settled	1.40	1.40	draw	0	0	2026-05-04 20:05:00+00	2026-05-04 20:10:00.024+00	2026-05-04 20:10:40.138+00
+1794	bnb	5	settled	624.58	624.90	up	0	0	2026-05-04 20:05:00+00	2026-05-04 20:10:00.022+00	2026-05-04 20:10:40.217+00
+1796	sol	5	settled	84.28	84.31	up	0	0	2026-05-04 20:10:00+00	2026-05-04 20:15:00.022+00	2026-05-04 20:15:40.255+00
+1789	btc	15	settled	79986.40	80133.21	up	0	0	2026-05-04 20:00:00+00	2026-05-04 20:15:00.021+00	2026-05-04 20:15:40.255+00
+1790	sol	15	settled	84.36	84.32	down	0	0	2026-05-04 20:00:00+00	2026-05-04 20:15:00.024+00	2026-05-04 20:15:40.269+00
+1800	bnb	5	settled	624.91	625.24	up	0	0	2026-05-04 20:10:00+00	2026-05-04 20:15:00.028+00	2026-05-04 20:15:40.271+00
+1798	eth	5	settled	2354.55	2355.80	up	0	0	2026-05-04 20:10:00+00	2026-05-04 20:15:00.023+00	2026-05-04 20:15:40.272+00
+1801	btc	15	open	80133.21	\N	\N	0	0	2026-05-04 20:15:00+00	\N	\N
+1799	btc	5	settled	80029.60	80133.21	up	0	0	2026-05-04 20:10:00+00	2026-05-04 20:15:00.019+00	2026-05-04 20:15:40.283+00
+1797	xrp	5	settled	1.40	1.40	draw	0	0	2026-05-04 20:10:00+00	2026-05-04 20:15:00.025+00	2026-05-04 20:15:40.282+00
+1803	eth	15	open	2355.80	\N	\N	0	0	2026-05-04 20:15:00+00	\N	\N
+1804	sol	15	open	84.32	\N	\N	0	0	2026-05-04 20:15:00+00	\N	\N
+1805	xrp	15	open	1.40	\N	\N	0	0	2026-05-04 20:15:00+00	\N	\N
+1810	bnb	15	open	625.24	\N	\N	0	0	2026-05-04 20:15:00+00	\N	\N
+1806	btc	5	settled	80133.21	79958.92	down	0	0	2026-05-04 20:15:00+00	2026-05-04 20:20:00.017+00	2026-05-04 20:20:40.118+00
+1802	sol	5	settled	84.32	84.17	down	0	0	2026-05-04 20:15:00+00	2026-05-04 20:20:00.018+00	2026-05-04 20:20:40.12+00
+1808	eth	5	settled	2355.80	2351.02	down	0	0	2026-05-04 20:15:00+00	2026-05-04 20:20:00.02+00	2026-05-04 20:20:40.128+00
+1807	xrp	5	settled	1.40	1.39	down	0	0	2026-05-04 20:15:00+00	2026-05-04 20:20:00.022+00	2026-05-04 20:20:40.143+00
+1809	bnb	5	settled	625.24	624.40	down	0	0	2026-05-04 20:15:00+00	2026-05-04 20:20:00.023+00	2026-05-04 20:20:40.213+00
+1812	btc	5	settled	79952.65	80005.19	up	0	0	2026-05-04 20:20:00+00	2026-05-04 20:25:00.018+00	2026-05-04 20:25:30.11+00
+1811	sol	5	settled	84.16	84.22	up	0	0	2026-05-04 20:20:00+00	2026-05-04 20:25:00.02+00	2026-05-04 20:25:30.122+00
+1816	btc	5	open	80030.38	\N	\N	0	0	2026-05-04 20:25:00+00	\N	\N
+1817	sol	5	open	84.23	\N	\N	0	0	2026-05-04 20:25:00+00	\N	\N
+1813	eth	5	settled	2350.97	2352.22	up	0	0	2026-05-04 20:20:00+00	2026-05-04 20:25:00.019+00	2026-05-04 20:25:30.2+00
+1818	eth	5	open	2352.26	\N	\N	0	0	2026-05-04 20:25:00+00	\N	\N
+1815	bnb	5	settled	624.36	623.78	down	0	0	2026-05-04 20:20:00+00	2026-05-04 20:25:00.029+00	2026-05-04 20:25:30.224+00
+1819	bnb	5	open	623.78	\N	\N	0	0	2026-05-04 20:25:00+00	\N	\N
 \.
 
 
@@ -11444,6 +11474,19 @@ COPY public.price_snapshots (id, window_id, source, price_usd, is_close, created
 10279	1779	bitfinex	1.40	f	2026-05-04 20:00:30.345382+00
 10291	1786	coinbase	624.91	f	2026-05-04 20:00:30.356523+00
 10292	1786	kraken	624.89	f	2026-05-04 20:00:30.356523+00
+10387	1790	kraken	84.32	t	2026-05-04 20:15:40.242601+00
+10388	1790	coinbase	84.31	t	2026-05-04 20:15:40.242601+00
+10452	1813	coinbase	2350.97	f	2026-05-04 20:20:40.148422+00
+10453	1813	kraken	2351.07	f	2026-05-04 20:20:40.148422+00
+10454	1813	bitfinex	2350.50	f	2026-05-04 20:20:40.148422+00
+10455	1814	coinbase	1.39	f	2026-05-04 20:20:40.165419+00
+10456	1814	kraken	1.39	f	2026-05-04 20:20:40.165419+00
+10457	1814	bitfinex	1.39	f	2026-05-04 20:20:40.165419+00
+10458	1809	coinbase	624.40	t	2026-05-04 20:20:40.210822+00
+10459	1809	kraken	624.32	t	2026-05-04 20:20:40.210822+00
+10460	1809	coingecko	625.27	t	2026-05-04 20:20:40.210822+00
+10461	1815	coinbase	624.40	f	2026-05-04 20:20:40.257529+00
+10462	1815	kraken	624.32	f	2026-05-04 20:20:40.257529+00
 8841	1519	coinbase	627.04	t	2026-05-04 17:15:40.194561+00
 8842	1519	kraken	627.00	t	2026-05-04 17:15:40.194561+00
 8843	1512	coinbase	2364.34	t	2026-05-04 17:15:40.21265+00
@@ -11523,6 +11566,20 @@ COPY public.price_snapshots (id, window_id, source, price_usd, is_close, created
 10274	1777	coinbase	79989.95	f	2026-05-04 20:00:30.343332+00
 10275	1777	kraken	79989.10	f	2026-05-04 20:00:30.343332+00
 10276	1777	bitfinex	79947.00	f	2026-05-04 20:00:30.343332+00
+10350	1793	kraken	84.29	t	2026-05-04 20:10:40.124759+00
+10351	1793	coinbase	84.28	t	2026-05-04 20:10:40.124759+00
+10352	1793	coingecko	84.29	t	2026-05-04 20:10:40.124759+00
+10357	1795	coinbase	1.40	t	2026-05-04 20:10:40.136047+00
+10358	1795	kraken	1.40	t	2026-05-04 20:10:40.136047+00
+10359	1795	bitfinex	1.40	t	2026-05-04 20:10:40.136047+00
+10360	1795	coingecko	1.40	t	2026-05-04 20:10:40.136047+00
+10361	1796	kraken	84.29	f	2026-05-04 20:10:40.157678+00
+10362	1796	coinbase	84.28	f	2026-05-04 20:10:40.157678+00
+10393	1798	coinbase	2355.80	t	2026-05-04 20:15:40.247577+00
+10394	1798	kraken	2356.13	t	2026-05-04 20:15:40.247577+00
+10395	1798	bitfinex	2355.20	t	2026-05-04 20:15:40.247577+00
+10409	1802	kraken	84.32	f	2026-05-04 20:15:40.295068+00
+10410	1802	coinbase	84.31	f	2026-05-04 20:15:40.295068+00
 8913	1541	coinbase	80516.45	t	2026-05-04 17:25:40.108425+00
 8914	1541	kraken	80500.00	t	2026-05-04 17:25:40.108425+00
 8915	1541	bitfinex	80490.00	t	2026-05-04 17:25:40.108425+00
@@ -11619,6 +11676,32 @@ COPY public.price_snapshots (id, window_id, source, price_usd, is_close, created
 10271	1776	bitfinex	2353.80	f	2026-05-04 20:00:30.338004+00
 10293	1785	coinbase	624.91	f	2026-05-04 20:00:30.357189+00
 10294	1785	kraken	624.89	f	2026-05-04 20:00:30.357189+00
+10330	1792	coinbase	2354.38	f	2026-05-04 20:05:30.147437+00
+10331	1792	kraken	2354.00	f	2026-05-04 20:05:30.147437+00
+10332	1792	bitfinex	2354.40	f	2026-05-04 20:05:30.147437+00
+10333	1793	kraken	84.31	f	2026-05-04 20:05:30.155367+00
+10334	1793	coinbase	84.31	f	2026-05-04 20:05:30.155367+00
+10335	1785	coinbase	624.72	t	2026-05-04 20:05:30.172102+00
+10336	1785	kraken	624.45	t	2026-05-04 20:05:30.172102+00
+10337	1784	coinbase	1.40	t	2026-05-04 20:05:30.20876+00
+10338	1784	kraken	1.40	t	2026-05-04 20:05:30.20876+00
+10339	1784	bitfinex	1.39	t	2026-05-04 20:05:30.20876+00
+10340	1784	coingecko	1.40	t	2026-05-04 20:05:30.20876+00
+10341	1794	coinbase	624.72	f	2026-05-04 20:05:30.217198+00
+10342	1794	kraken	624.45	f	2026-05-04 20:05:30.217198+00
+10343	1795	coinbase	1.40	f	2026-05-04 20:05:30.22778+00
+10344	1795	kraken	1.40	f	2026-05-04 20:05:30.22778+00
+10345	1795	bitfinex	1.39	f	2026-05-04 20:05:30.22778+00
+10398	1786	coinbase	625.13	t	2026-05-04 20:15:40.253168+00
+10399	1786	kraken	625.35	t	2026-05-04 20:15:40.253168+00
+10406	1801	coinbase	80133.21	f	2026-05-04 20:15:40.290908+00
+10407	1801	kraken	80133.80	f	2026-05-04 20:15:40.290908+00
+10408	1801	bitfinex	80080.00	f	2026-05-04 20:15:40.290908+00
+10414	1804	kraken	84.32	f	2026-05-04 20:15:40.303231+00
+10415	1804	coinbase	84.31	f	2026-05-04 20:15:40.303231+00
+10419	1806	coinbase	80133.21	f	2026-05-04 20:15:40.313584+00
+10420	1806	kraken	80133.80	f	2026-05-04 20:15:40.313584+00
+10421	1806	bitfinex	80080.00	f	2026-05-04 20:15:40.313584+00
 8926	1542	coinbase	1.41	t	2026-05-04 17:25:40.226041+00
 8927	1542	kraken	1.41	t	2026-05-04 17:25:40.226041+00
 8928	1542	bitfinex	1.41	t	2026-05-04 17:25:40.226041+00
@@ -11634,6 +11717,19 @@ COPY public.price_snapshots (id, window_id, source, price_usd, is_close, created
 10242	1772	kraken	84.36	t	2026-05-04 20:00:30.232901+00
 10243	1772	coinbase	84.36	t	2026-05-04 20:00:30.232901+00
 10244	1772	coingecko	84.41	t	2026-05-04 20:00:30.232901+00
+10366	1797	coinbase	1.40	f	2026-05-04 20:10:40.160435+00
+10367	1797	kraken	1.40	f	2026-05-04 20:10:40.160435+00
+10368	1797	bitfinex	1.40	f	2026-05-04 20:10:40.160435+00
+10369	1799	coinbase	80037.88	f	2026-05-04 20:10:40.171836+00
+10370	1799	kraken	80029.60	f	2026-05-04 20:10:40.171836+00
+10371	1799	bitfinex	79990.00	f	2026-05-04 20:10:40.171836+00
+10372	1794	coinbase	624.90	t	2026-05-04 20:10:40.216223+00
+10373	1794	kraken	624.91	t	2026-05-04 20:10:40.216223+00
+10374	1794	coingecko	624.76	t	2026-05-04 20:10:40.216223+00
+10375	1800	coinbase	624.90	f	2026-05-04 20:10:40.268186+00
+10376	1800	kraken	624.91	f	2026-05-04 20:10:40.268186+00
+10396	1800	coinbase	625.13	t	2026-05-04 20:15:40.251605+00
+10397	1800	kraken	625.35	t	2026-05-04 20:15:40.251605+00
 8977	1547	kraken	84.83	t	2026-05-04 17:30:40.129568+00
 8978	1547	coinbase	84.83	t	2026-05-04 17:30:40.129568+00
 8982	1516	kraken	84.83	t	2026-05-04 17:30:40.140524+00
@@ -11702,6 +11798,34 @@ COPY public.price_snapshots (id, window_id, source, price_usd, is_close, created
 10295	1784	coinbase	1.40	f	2026-05-04 20:00:30.357841+00
 10296	1784	kraken	1.40	f	2026-05-04 20:00:30.357841+00
 10297	1784	bitfinex	1.40	f	2026-05-04 20:00:30.357841+00
+10316	1776	coinbase	2354.38	t	2026-05-04 20:05:30.115169+00
+10317	1776	kraken	2354.00	t	2026-05-04 20:05:30.115169+00
+10318	1776	bitfinex	2354.40	t	2026-05-04 20:05:30.115169+00
+10319	1776	coingecko	2354.11	t	2026-05-04 20:05:30.115169+00
+10320	1788	coinbase	79999.49	t	2026-05-04 20:05:30.127268+00
+10321	1788	kraken	79987.10	t	2026-05-04 20:05:30.127268+00
+10322	1788	bitfinex	79945.00	t	2026-05-04 20:05:30.127268+00
+10323	1788	coingecko	79959.00	t	2026-05-04 20:05:30.127268+00
+10324	1778	kraken	84.31	t	2026-05-04 20:05:30.135628+00
+10325	1778	coinbase	84.31	t	2026-05-04 20:05:30.135628+00
+10326	1778	coingecko	84.30	t	2026-05-04 20:05:30.135628+00
+10327	1791	coinbase	79999.49	f	2026-05-04 20:05:30.14618+00
+10328	1791	kraken	79987.10	f	2026-05-04 20:05:30.14618+00
+10329	1791	bitfinex	79945.00	f	2026-05-04 20:05:30.14618+00
+10380	1796	kraken	84.32	t	2026-05-04 20:15:40.22117+00
+10381	1796	coinbase	84.31	t	2026-05-04 20:15:40.22117+00
+10382	1796	coingecko	84.29	t	2026-05-04 20:15:40.22117+00
+10432	1806	coinbase	79952.65	t	2026-05-04 20:20:40.113946+00
+10433	1806	kraken	79965.20	t	2026-05-04 20:20:40.113946+00
+10434	1806	bitfinex	79904.00	t	2026-05-04 20:20:40.113946+00
+10435	1806	coingecko	80074.00	t	2026-05-04 20:20:40.113946+00
+10447	1811	kraken	84.17	f	2026-05-04 20:20:40.144525+00
+10448	1811	coinbase	84.16	f	2026-05-04 20:20:40.144525+00
+10481	1818	coinbase	2352.92	f	2026-05-04 20:25:30.226002+00
+10482	1818	kraken	2352.26	f	2026-05-04 20:25:30.226002+00
+10483	1818	bitfinex	2351.90	f	2026-05-04 20:25:30.226002+00
+10484	1819	coinbase	623.75	f	2026-05-04 20:25:30.269206+00
+10485	1819	kraken	623.80	f	2026-05-04 20:25:30.269206+00
 9128	1574	kraken	1.40	t	2026-05-04 17:45:40.217045+00
 9129	1574	bitfinex	1.40	t	2026-05-04 17:45:40.217045+00
 9130	1575	coinbase	627.32	t	2026-05-04 17:45:40.227184+00
@@ -11734,6 +11858,27 @@ COPY public.price_snapshots (id, window_id, source, price_usd, is_close, created
 10313	1789	bitfinex	79935.00	f	2026-05-04 20:00:40.113675+00
 10314	1790	kraken	84.36	f	2026-05-04 20:00:40.129553+00
 10315	1790	coinbase	84.36	f	2026-05-04 20:00:40.129553+00
+10377	1789	coinbase	80133.21	t	2026-05-04 20:15:40.217541+00
+10378	1789	kraken	80133.80	t	2026-05-04 20:15:40.217541+00
+10379	1789	bitfinex	80080.00	t	2026-05-04 20:15:40.217541+00
+10463	1812	coinbase	80030.38	t	2026-05-04 20:25:30.107455+00
+10464	1812	kraken	80031.30	t	2026-05-04 20:25:30.107455+00
+10465	1812	bitfinex	79980.00	t	2026-05-04 20:25:30.107455+00
+10466	1812	coingecko	79966.00	t	2026-05-04 20:25:30.107455+00
+10467	1811	kraken	84.24	t	2026-05-04 20:25:30.120293+00
+10468	1811	coinbase	84.22	t	2026-05-04 20:25:30.120293+00
+10469	1811	coingecko	84.20	t	2026-05-04 20:25:30.120293+00
+10470	1816	coinbase	80030.38	f	2026-05-04 20:25:30.127058+00
+10471	1816	kraken	80031.30	f	2026-05-04 20:25:30.127058+00
+10472	1816	bitfinex	79980.00	f	2026-05-04 20:25:30.127058+00
+10473	1817	kraken	84.24	f	2026-05-04 20:25:30.137187+00
+10474	1817	coinbase	84.22	f	2026-05-04 20:25:30.137187+00
+10475	1813	coinbase	2352.92	t	2026-05-04 20:25:30.197963+00
+10476	1813	kraken	2352.26	t	2026-05-04 20:25:30.197963+00
+10477	1813	bitfinex	2351.90	t	2026-05-04 20:25:30.197963+00
+10478	1813	coingecko	2352.17	t	2026-05-04 20:25:30.197963+00
+10479	1815	coinbase	623.75	t	2026-05-04 20:25:30.217099+00
+10480	1815	kraken	623.80	t	2026-05-04 20:25:30.217099+00
 9163	1583	coinbase	1.41	t	2026-05-04 17:50:40.233998+00
 9164	1583	kraken	1.41	t	2026-05-04 17:50:40.233998+00
 9165	1583	bitfinex	1.41	t	2026-05-04 17:50:40.233998+00
@@ -11888,6 +12033,34 @@ COPY public.price_snapshots (id, window_id, source, price_usd, is_close, created
 10286	1782	coinbase	2354.21	f	2026-05-04 20:00:30.350033+00
 10287	1782	kraken	2354.55	f	2026-05-04 20:00:30.350033+00
 10288	1782	bitfinex	2353.80	f	2026-05-04 20:00:30.350033+00
+10346	1791	coinbase	80037.88	t	2026-05-04 20:10:40.121176+00
+10347	1791	kraken	80029.60	t	2026-05-04 20:10:40.121176+00
+10348	1791	bitfinex	79990.00	t	2026-05-04 20:10:40.121176+00
+10349	1791	coingecko	80002.00	t	2026-05-04 20:10:40.121176+00
+10353	1792	coinbase	2354.55	t	2026-05-04 20:10:40.134062+00
+10354	1792	kraken	2354.71	t	2026-05-04 20:10:40.134062+00
+10355	1792	bitfinex	2353.80	t	2026-05-04 20:10:40.134062+00
+10356	1792	coingecko	2354.78	t	2026-05-04 20:10:40.134062+00
+10363	1798	coinbase	2354.55	f	2026-05-04 20:10:40.159995+00
+10364	1798	kraken	2354.71	f	2026-05-04 20:10:40.159995+00
+10365	1798	bitfinex	2353.80	f	2026-05-04 20:10:40.159995+00
+10383	1782	coinbase	2355.80	t	2026-05-04 20:15:40.242368+00
+10384	1782	kraken	2356.13	t	2026-05-04 20:15:40.242368+00
+10385	1782	bitfinex	2355.20	t	2026-05-04 20:15:40.242368+00
+10386	1782	coingecko	2355.00	t	2026-05-04 20:15:40.242368+00
+10403	1799	coinbase	80133.21	t	2026-05-04 20:15:40.271367+00
+10404	1799	kraken	80133.80	t	2026-05-04 20:15:40.271367+00
+10405	1799	bitfinex	80080.00	t	2026-05-04 20:15:40.271367+00
+10411	1803	coinbase	2355.80	f	2026-05-04 20:15:40.299922+00
+10412	1803	kraken	2356.13	f	2026-05-04 20:15:40.299922+00
+10413	1803	bitfinex	2355.20	f	2026-05-04 20:15:40.299922+00
+10425	1808	coinbase	2355.80	f	2026-05-04 20:15:40.315619+00
+10426	1808	kraken	2356.13	f	2026-05-04 20:15:40.315619+00
+10427	1808	bitfinex	2355.20	f	2026-05-04 20:15:40.315619+00
+10428	1809	coinbase	625.13	f	2026-05-04 20:15:40.319679+00
+10429	1809	kraken	625.35	f	2026-05-04 20:15:40.319679+00
+10430	1810	coinbase	625.13	f	2026-05-04 20:15:40.326591+00
+10431	1810	kraken	625.35	f	2026-05-04 20:15:40.326591+00
 9346	1618	coinbase	2370.80	t	2026-05-04 18:15:30.100316+00
 9347	1618	kraken	2368.91	t	2026-05-04 18:15:30.100316+00
 9348	1618	bitfinex	2370.00	t	2026-05-04 18:15:30.100316+00
@@ -11909,6 +12082,25 @@ COPY public.price_snapshots (id, window_id, source, price_usd, is_close, created
 10280	1781	coinbase	2354.21	f	2026-05-04 20:00:30.346532+00
 10281	1781	kraken	2354.55	f	2026-05-04 20:00:30.346532+00
 10282	1781	bitfinex	2353.80	f	2026-05-04 20:00:30.346532+00
+10389	1779	coinbase	1.40	t	2026-05-04 20:15:40.243186+00
+10390	1779	kraken	1.40	t	2026-05-04 20:15:40.243186+00
+10391	1779	bitfinex	1.40	t	2026-05-04 20:15:40.243186+00
+10392	1779	coingecko	1.40	t	2026-05-04 20:15:40.243186+00
+10400	1797	coinbase	1.40	t	2026-05-04 20:15:40.270793+00
+10401	1797	kraken	1.40	t	2026-05-04 20:15:40.270793+00
+10402	1797	bitfinex	1.40	t	2026-05-04 20:15:40.270793+00
+10416	1805	coinbase	1.40	f	2026-05-04 20:15:40.306417+00
+10417	1805	kraken	1.40	f	2026-05-04 20:15:40.306417+00
+10418	1805	bitfinex	1.40	f	2026-05-04 20:15:40.306417+00
+10422	1807	coinbase	1.40	f	2026-05-04 20:15:40.315451+00
+10423	1807	kraken	1.40	f	2026-05-04 20:15:40.315451+00
+10424	1807	bitfinex	1.40	f	2026-05-04 20:15:40.315451+00
+10486	1814	coinbase	1.39	t	2026-05-04 20:25:40.179138+00
+10487	1814	kraken	1.39	t	2026-05-04 20:25:40.179138+00
+10488	1814	bitfinex	1.39	t	2026-05-04 20:25:40.179138+00
+10489	1820	coinbase	1.39	f	2026-05-04 20:25:40.205781+00
+10490	1820	kraken	1.39	f	2026-05-04 20:25:40.205781+00
+10491	1820	bitfinex	1.39	f	2026-05-04 20:25:40.205781+00
 9354	1617	kraken	84.90	t	2026-05-04 18:15:40.170784+00
 9355	1617	coinbase	84.94	t	2026-05-04 18:15:40.170784+00
 9356	1617	coingecko	84.97	t	2026-05-04 18:15:40.170784+00
@@ -11944,6 +12136,20 @@ COPY public.price_snapshots (id, window_id, source, price_usd, is_close, created
 10283	1780	coinbase	1.40	f	2026-05-04 20:00:30.346982+00
 10284	1780	kraken	1.40	f	2026-05-04 20:00:30.346982+00
 10285	1780	bitfinex	1.40	f	2026-05-04 20:00:30.346982+00
+10436	1802	kraken	84.17	t	2026-05-04 20:20:40.115167+00
+10437	1802	coinbase	84.16	t	2026-05-04 20:20:40.115167+00
+10438	1802	coingecko	84.26	t	2026-05-04 20:20:40.115167+00
+10439	1808	coinbase	2350.97	t	2026-05-04 20:20:40.126297+00
+10440	1808	kraken	2351.07	t	2026-05-04 20:20:40.126297+00
+10441	1808	bitfinex	2350.50	t	2026-05-04 20:20:40.126297+00
+10442	1808	coingecko	2356.78	t	2026-05-04 20:20:40.126297+00
+10443	1807	coinbase	1.39	t	2026-05-04 20:20:40.134922+00
+10444	1807	kraken	1.39	t	2026-05-04 20:20:40.134922+00
+10445	1807	bitfinex	1.39	t	2026-05-04 20:20:40.134922+00
+10446	1807	coingecko	1.40	t	2026-05-04 20:20:40.134922+00
+10449	1812	coinbase	79952.65	f	2026-05-04 20:20:40.147966+00
+10450	1812	kraken	79965.20	f	2026-05-04 20:20:40.147966+00
+10451	1812	bitfinex	79904.00	f	2026-05-04 20:20:40.147966+00
 9360	1601	coinbase	80355.35	t	2026-05-04 18:15:40.17222+00
 9361	1601	kraken	80257.40	t	2026-05-04 18:15:40.17222+00
 9362	1601	bitfinex	80317.00	t	2026-05-04 18:15:40.17222+00
@@ -12698,9 +12904,7 @@ COPY public.price_snapshots (id, window_id, source, price_usd, is_close, created
 --
 
 COPY public.sport_bets (id, market_id, direction, amount_sats, payment_hash, payment_request, verify_url, status, payout_sats, withdraw_token, withdraw_status, claimed_at, created_at, paid_at) FROM stdin;
-1	1	away	623	875c71c84d1cf6ed42a5940fcf683c1aef791367ecbb5b99170e69d50921a5b3	lnbc6230n1p5l3jkfsp5m64486ru628zy55ezhra0aqz94mjfhhs5f583q7ghsxy7qv6qalqpp5saw8rjzdrnmw6s49js8u76purthhjym8aja4hxghpe5a2zfp5keshp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqg587a2yyuqeua9c3j8nw7wwpx709slwl5lzfs0t0vq3kdwemzp67rtwevqq95gqqyqqq5sgqqq9yzqq2q9qxpqysgqypu88cxv5d8x29tvfe8s7s2qqlljh897ym2nj7cyh2qa8ny66uqpmaw5vhxnt74xljm9snuhzwvxdxgkjx6ea5r6jqraek48qav5awcpn602qm	https://coinos.io/api/lnurl/verify/dee7fc28-88ee-4ac7-ab32-2b66f989a857	paid	\N	\N	\N	\N	2026-05-04 16:35:21.135784+00	2026-05-04 16:35:53.167+00
-2	1	home	623	c1b607f53fc7b03e40ddd98235414861031281baf99bff8d85401c00657fd216	lnbc6230n1p5l3jm6sp5ln9x7j7fktfns2lct7n9yzkuyke8n8lhym5jey6hn6kq2v4tptfspp5cxmq0aflc7crusxamxpr2s2gvyp39qd6lxdllrv9gqwqqetl6gtqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqwghf7zxvfkxq5a6sr65g0gdkv768p83mhsnt0msszapamzx2qvuxrv34gqqvusqqqqqqqqqqqqqraqq2q9qxpqysgquafpz6ukvg87wqyatpy9nug8pxngdnx7e9usgf3gnps7zffqppxzs5ssxzlyyu9tmthze53nudn8d4xp27j5g5vg8k5q4jm2650s6xcph9q9tl	https://coinos.io/api/lnurl/verify/4c3966a3-822f-41ee-b53d-b1b3b1432b3c	paid	\N	\N	\N	\N	2026-05-04 16:38:17.915725+00	2026-05-04 16:38:33.251+00
-3	1	draw	747	5bf35634270bf5cc27376402a45db54262283cef707355252b1e71496495a9be	lnbc7470n1p5l3jl8sp57f4fufqky05kw0axa2k6etns2vrdum8227env7kdd8ea3lc3smrqpp5t0e4vdp8p06ucfehvsp2ghd4gf3zs080wpe42fftrec5jey44xlqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqw0de9yc0j8n4hpgm269tm7qph4gwcyf5ys02uaapvpugrva87c7zr045uqq4jsqpsqqqqlgqqqq0rqq2q9qxpqysgqh4jm4tty2e497qhtnj43c7lnc3r7y48dug6mzdn37szh9f7crgd8zkry08ne2frxlavc9xdyh002au5ahnc9w347au8snw3k2yrns4gp792jpr	https://coinos.io/api/lnurl/verify/235dd2dc-5842-4c43-ab20-355529df33b8	paid	\N	\N	\N	\N	2026-05-04 16:40:07.058484+00	2026-05-04 16:40:33.296+00
+3	1	draw	747	5bf35634270bf5cc27376402a45db54262283cef707355252b1e71496495a9be	lnbc7470n1p5l3jl8sp57f4fufqky05kw0axa2k6etns2vrdum8227env7kdd8ea3lc3smrqpp5t0e4vdp8p06ucfehvsp2ghd4gf3zs080wpe42fftrec5jey44xlqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqw0de9yc0j8n4hpgm269tm7qph4gwcyf5ys02uaapvpugrva87c7zr045uqq4jsqpsqqqqlgqqqq0rqq2q9qxpqysgqh4jm4tty2e497qhtnj43c7lnc3r7y48dug6mzdn37szh9f7crgd8zkry08ne2frxlavc9xdyh002au5ahnc9w347au8snw3k2yrns4gp792jpr	https://coinos.io/api/lnurl/verify/235dd2dc-5842-4c43-ab20-355529df33b8	won	1953	583f59ff-5fbd-4c76-965b-afacc0559024	claimed	2026-05-04 20:14:46.386+00	2026-05-04 16:40:07.058484+00	2026-05-04 16:40:33.296+00
 4	2	home	622	c58546eebf02e2f3980149fe61a7602d5256ca30f4968ea72a36dab8772e20e0	lnbc6220n1p5l3kglsp5hsygsfwat0a675xsz35ye39dgplyep43et4le9vhtallzywqzanspp5ckz5dm4lqt308xqpf8lxrfmq94f9dj3s7jtgafe2xmdtsaewyrsqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqw963anm4rl4cjrkfnwny5wrxkvd2keqx4rdpz50pmyaek0j0cmrwrsekvqqqfqqq5qqqqqqqqqq9zsqzg9qxpqysgqme7cf0ulrvgahjwxtwujassxve6y7uy0xh6xpylecymal3d544qyjx4nd3udqutknnm7nw67wlr2tyzutvl88g2qh28t77fej6sr8hsqfwpl9y	https://coinos.io/api/lnurl/verify/f5ad677f-e2b0-48dd-8fac-751c0f5f9d57	paid	\N	\N	\N	\N	2026-05-04 17:36:31.339201+00	2026-05-04 17:37:00.554+00
 6	2	away	685	25c6e2b9b68e72421ab052bd8c31ba59e02938ad5457cf00648f73e72f8f327e	lnbc6850n1p5l3ksqsp5jcl6qvms424pkk5jnyqd5kuatknneqs74knpyd5hdeu709z7lgcqpp5yhrw9wdk3eeyyx4s227ccvd6t8szjw9d23tu7qry3ae7wtu0xflqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqwuz2wrh552u8dkc2lz6fqkls908p2zwjva4lmcypp2wdl9rchkksrjlqsqqx0cqqyqqqqlgqqqqqzsq2q9qxpqysgqytgm730wuv9t4g8hkp5ykthmpgcse3y266mu6nzyyswr0mln032qqg6t62srngqttrfk0sjpcglcpfld66ke9vqslr806pf8fyxs0dcqw3lv9h	https://coinos.io/api/lnurl/verify/5dc9e22c-bfd4-4624-9f7c-faf35f576b37	paid	\N	\N	\N	\N	2026-05-04 17:40:16.006512+00	2026-05-04 17:40:35.487+00
 7	3	home	621	bd207af1493a47c801d3ccd58ba37fdd6247d890edcec29ac48099602d0fc3e3	lnbc6210n1p5l3h3esp5s3nqrdr2p7hd724hppkamgc8m5nup0dlfd4770pljfwx0r0ea57spp5h5s84u2f8frusqwnen2chgmlm43y0kysah8v9xkyszvkqtg0c03shp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqwuz2wrh552u8dkc2lz6fqkls908p2zwjva4lmcypp2wdl9rchkksrjlqsqqx0cqqyqqqqlgqqqqqzsq2q9qxpqysgqtjltjhdrnvv0d79tnpxym3ap7dex3r7m2uzk3l3lhcq63kzm0ckj7fj9pj6jhsgtekw83pwk7hz0mamx3kph433uv5jsdqkam2xhddqp9r5hk9	https://coinos.io/api/lnurl/verify/31243677-de05-4ab8-8cf5-26fc04410580	paid	\N	\N	\N	\N	2026-05-04 17:58:17.151296+00	2026-05-04 17:58:35.667+00
@@ -12709,13 +12913,15 @@ COPY public.sport_bets (id, market_id, direction, amount_sats, payment_hash, pay
 5	2	away	685	f7f8a11ac58271813909d24b48bb35b3232c49c1334ea0e227c165b5b4ab363e	lnbc6850n1p5l3kdesp54cv436eveessc9kxaxta946f539engcedsmav29aeen7ujtg9yzqpp57lu2zxk9sfcczwgf6f953we4kv3jcjwpxd82pc38c9jmtd9txclqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqwuyhm4rwjccnjvkpw5g3jtxhjdwmux6p0qvqk9upadaalt03qg4vrnn65qqhxqqqqqqqqqqqqqqqvsq2q9qxpqysgqvvyrc7kt66wdte5dsszg7thstnmx5u6nfjynf6qelxa0yd4ssj09gkrch8nvdxaghrklc0etayfghuvrljq7d5q56vfp3ldq4nq7vxcqtrhlz9	https://coinos.io/api/lnurl/verify/ce1b89b0-84e2-4191-ac1f-d6860e667adf	expired	\N	\N	\N	\N	2026-05-04 17:39:04.46318+00	\N
 10	4	home	623	692f9270d3b6c5df0c465d2ec159f9b35283fc40c942409e3145feb16ba1371e	lnbc6230n1p5l3elqsp5f722rdxrsw22rg82893gj953mchu4e8qa22kerztgd92n6825fuqpp5dyheyuxnkmza7rzxt5hvzk0ekdfg8lzqe9pyp833ghltz6apxu0qhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqdx3thcdr8tyuc90nshnfz0afcq0et5awq5zkdlf60syrs0gwtdacrjprqqq9tgqqyqqqp7sqqqq05qq2q9qxpqysgqgkwd703cqnkflxewn5qcd9m57lwq969u6etufqjdfxtc3fsey2r5dydu3qxdxxu57l86tm7h6mf9rpe02d0xjqxf6d9j4z53530qtlqqvj568m	https://coinos.io/api/lnurl/verify/d0fb9388-d776-42ce-9b5a-5886a800db3d	paid	\N	\N	\N	\N	2026-05-04 18:39:27.511934+00	2026-05-04 18:39:46.26+00
 11	4	draw	636	1d0b8b7f5f09df5b73197f55492cc0139f5f7cf943f0b126cf134061593eef2b	lnbc6360n1p5l36q4sp55hczee5738xdut8t0df6lmsk2gl927kwqs7rkyav3pz9jg0l379qpp5r59ckl6lp804kuce0a25jtxqzw047l8eg0ctzfk0zdqxzkf7au4shp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqf6cm9sh2ztjqvpfyuqashysuvetcxma3kcwwpwl8uy862zlnjhsvrs5rvqq2lqqqyqqqqqqqqqzwyqq2q9qxpqysgqtldpvr5kw2epdffdx0ahzcq5p8n7692yvu8vwla4589ta4e7jxjk2p8yzadww4xmcuwplj3g9qky7szwpld6dd9u056jqp95qaa0w3gq48cr9u	https://coinos.io/api/lnurl/verify/fc690197-cf13-47a3-847e-c3cf5b44a6c6	paid	\N	\N	\N	\N	2026-05-04 18:40:20.921764+00	2026-05-04 18:40:35.979+00
+1	1	away	623	875c71c84d1cf6ed42a5940fcf683c1aef791367ecbb5b99170e69d50921a5b3	lnbc6230n1p5l3jkfsp5m64486ru628zy55ezhra0aqz94mjfhhs5f583q7ghsxy7qv6qalqpp5saw8rjzdrnmw6s49js8u76purthhjym8aja4hxghpe5a2zfp5keshp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqg587a2yyuqeua9c3j8nw7wwpx709slwl5lzfs0t0vq3kdwemzp67rtwevqq95gqqyqqq5sgqqq9yzqq2q9qxpqysgqypu88cxv5d8x29tvfe8s7s2qqlljh897ym2nj7cyh2qa8ny66uqpmaw5vhxnt74xljm9snuhzwvxdxgkjx6ea5r6jqraek48qav5awcpn602qm	https://coinos.io/api/lnurl/verify/dee7fc28-88ee-4ac7-ab32-2b66f989a857	lost	0	\N	\N	\N	2026-05-04 16:35:21.135784+00	2026-05-04 16:35:53.167+00
 12	4	away	648	027e6252ea00d15ebf3e23081f81008cfc72003f8ca45a7ebe6986326abb3f16	lnbc6480n1p5l36rdsp5za664avkscfxn744hjueu8py386hsrjr8fp3lwmmht6fns6wdvnqpp5qflxy5h2qrg4a0e7yvyplqgq3n78yqpl3jj95l47dxrry64m8utqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqgp7tvtwh6rmpz0j9cv82tcl0fn2r00h0pualrgun6xeztdlhxltgr3zw5qqyhgqqyqqqqlgqqqqqsqqvs9qxpqysgqpxez7rehcqs432y2j2t4sef47z6gu5eqgwhpk8sxkn59mxxyj0frnaav8y896ta9qwsez4sd5vn6n5qn7t22m9l5dczze0d2gmug6cqpn2mhp3	https://coinos.io/api/lnurl/verify/be72b6a8-c2ed-468a-8a47-8d14f6307582	paid	\N	\N	\N	\N	2026-05-04 18:41:49.391564+00	2026-05-04 18:42:06.286+00
 13	5	home	624	d6ade835362f3f65ca1ec2ab9abb25f7d022b63e2983632808d830bf1f08e197	lnbc6240n1p5l36e2sp5d2nh98hsrkvh8vneye5na22ls4y09ckq6knzlqkgllru0zklxzwqpp566k7sdfk9ulktjs7c24e4we97lgz9d379xpkx2qgmqct78cguxtshp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqwpd2kpnrwdqc8g5rattwyy5v34dvyg7xnse04rns5s9qxds8t7uxrj7q5qqj9cqqqqqqqqqqqqqqjgqyq9qxpqysgqz0w8dw40gevwalgldv9gu7mxcryl2wfv5pe3zk4sulmhdknfftz5jdwd95wdua92avmwcc8tyw4t52rx4cf5hnd8uze7d8a3l9zn5uspn02nll	https://coinos.io/api/lnurl/verify/947899c8-cbf6-4e93-a954-b0a8129d941c	paid	\N	\N	\N	\N	2026-05-04 18:53:29.779574+00	2026-05-04 18:53:51.467+00
 14	6	home	624	68e58f8b301ec67aa02ede87d8e546f7eaa536325f7710c36f4ee8a4b68c0cff	lnbc6240n1p5l3mt3sp57lmey5hmj6s3zzuvjlhfkh2k5ty4vvqmws7xyg22r3hjydgrdwvspp5drjclzesrmr84gpwm6ra3e2x7l422d3jtam3psm0fm52fd5vpnlshp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqtahnsafzgwctvfxdpaazy02a0ep4242tjljxt3tdsaalzqr7sqcyrjnlvqq86qqqyqqqqlgqqqqqqgq2q9qxpqysgqj56fncawm4ndlg7jz7dftktdjsxdaa7yynj6s7wf8vlqn4ezgvu53d0gj8m0qh0vhavyx66afefxuglc27q8hcfpaajnxrvh0zpdcugq60fckq	https://coinos.io/api/lnurl/verify/a6b18bde-9bf3-45ab-a999-825e411f2865	paid	\N	\N	\N	\N	2026-05-04 19:03:13.39121+00	2026-05-04 19:03:26.694+00
-15	6	draw	625	cb5eeabdba334124557c9e8502e30cc704d260a78595c26f75ef37ef4862d8a4	lnbc6250n1p5l3m00sp5r88htrvq3pplyt40fmmsm00t0p3fnxl7cfz7qvz6d7u86s0xmspqpp5ed0w40d6xdqjg4tun6zs9ccvcuzdyc98sk2uymm4aum77jrzmzjqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjq0t87dkylqtcnch7gfgz3wkvj6cenqf74epxc5tltzdytugnds072rjlxuqqjhgqqqqqqqqqqqqq36gqyg9qxpqysgq705g358fc74jhsyw9j8cfegfack5wldqmvaznxvd4sqnxtx6xdgjt38x86x833mnu6zllvfxz5cs9f5fqymc78xe8r50yntpnewywuqq8r35r4	https://coinos.io/api/lnurl/verify/fc0342d8-30ac-42cb-98ed-faf9746ce034	pending	\N	\N	\N	\N	2026-05-04 19:05:18.528266+00	\N
 16	6	draw	650	d06ae1b9a555e3381eded1805665a0c1090c3e93027a0eee7e1050af53491d97	lnbc6500n1p5l3msnsp5lxzex8rp4jsh6n0fgxem6z3jas8uclftc8lhgezazqtfpzl24mtqpp56p4wrwd92h3ns8k76xq9vedqcyysc05nqfaqamn7zpg2756frktshp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqt9dfmzv3vxu93crtgvf37teerr3dx7l7a8qrttv57h2t8v9ck0gkrvumyqqh5cqqyqqqqqqqqqqjqgqjq9qxpqysgq2esy30hadh40vzetw3ztv0gzc99egezjfayc03hd2a4d8v9pjr35m7gsd3ynpv5tn45hqajnxxwxu3wzt3xmttcv4vfa4s2yw6manlcqt3y03w	https://coinos.io/api/lnurl/verify/4ec957d7-9999-48f5-aebc-33db8ab88347	paid	\N	\N	\N	\N	2026-05-04 19:05:55.715349+00	2026-05-04 19:06:21.628+00
-17	6	away	662	8302aeeea62f8fe13e2845fd043fb8b0a41dbd603be0c34d723790c4b93ff8e4	lnbc6620n1p5l3mjwsp5azca4mcdqmzr8sunvwr0tq4rky7qgst875074qcqa4eewsut6sgqpp5svp2am4x9787z03ggh7sg0ackzjpm0tq80svxntjx7gvfwfllrjqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqdqne4nrkxmz96ktnngat4nzx7sv0kf5uqmgfvqvvars7pac7fn9wr8fjvqq3csqqqqqqqqqqqqq2zgqvs9qxpqysgqyckvcmvq6h4x5zrvsk4c3wkxjacgeeme3s3v63ffk22jqgpqsaf9zul5qxgdx7twzewj9s067ve3xuezhakang2glpna4mur08txe8qpc84kqt	https://coinos.io/api/lnurl/verify/57286589-002f-44cc-b3e4-ce9c40466e8c	pending	\N	\N	\N	\N	2026-05-04 19:06:54.292994+00	\N
 18	7	home	637	c7a525582631eb93b6ab98053e1d648211bafd4ea21b6d5f090ac1661858b106	lnbc6370n1p5l3muysp50xawf77v23725q5uj3fsf4dtj67eucrlc6puhgl50c7nh8trxxmspp5c7jj2kpxx84e8d4tnqznu8tysggm4l2w5gdk6hcfptqkvxzckyrqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjq0xp6zfjhwvmq6tltd09jcdc82ml6eh3alzvnaw8httxcx7tu78syrvfkqqqm0qqqyqqqqlgqqqvx5qqjq9qxpqysgqkvep3lkzgvu64jkrl0899wdrkygrqxqnf9geu40828pf6xmllvvpfe999ya4q95pk7lfz539tf8kecxj5tszpheq2j2wp7r6cja6pfcphyvgvg	https://coinos.io/api/lnurl/verify/0ba291b6-019e-41a7-8db8-0b14d29affe8	paid	\N	\N	\N	\N	2026-05-04 19:12:04.677887+00	2026-05-04 19:12:17.14+00
+15	6	draw	625	cb5eeabdba334124557c9e8502e30cc704d260a78595c26f75ef37ef4862d8a4	lnbc6250n1p5l3m00sp5r88htrvq3pplyt40fmmsm00t0p3fnxl7cfz7qvz6d7u86s0xmspqpp5ed0w40d6xdqjg4tun6zs9ccvcuzdyc98sk2uymm4aum77jrzmzjqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjq0t87dkylqtcnch7gfgz3wkvj6cenqf74epxc5tltzdytugnds072rjlxuqqjhgqqqqqqqqqqqqq36gqyg9qxpqysgq705g358fc74jhsyw9j8cfegfack5wldqmvaznxvd4sqnxtx6xdgjt38x86x833mnu6zllvfxz5cs9f5fqymc78xe8r50yntpnewywuqq8r35r4	https://coinos.io/api/lnurl/verify/fc0342d8-30ac-42cb-98ed-faf9746ce034	expired	\N	\N	\N	\N	2026-05-04 19:05:18.528266+00	\N
+17	6	away	662	8302aeeea62f8fe13e2845fd043fb8b0a41dbd603be0c34d723790c4b93ff8e4	lnbc6620n1p5l3mjwsp5azca4mcdqmzr8sunvwr0tq4rky7qgst875074qcqa4eewsut6sgqpp5svp2am4x9787z03ggh7sg0ackzjpm0tq80svxntjx7gvfwfllrjqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqdqne4nrkxmz96ktnngat4nzx7sv0kf5uqmgfvqvvars7pac7fn9wr8fjvqq3csqqqqqqqqqqqqq2zgqvs9qxpqysgqyckvcmvq6h4x5zrvsk4c3wkxjacgeeme3s3v63ffk22jqgpqsaf9zul5qxgdx7twzewj9s067ve3xuezhakang2glpna4mur08txe8qpc84kqt	https://coinos.io/api/lnurl/verify/57286589-002f-44cc-b3e4-ce9c40466e8c	expired	\N	\N	\N	\N	2026-05-04 19:06:54.292994+00	\N
+2	1	home	623	c1b607f53fc7b03e40ddd98235414861031281baf99bff8d85401c00657fd216	lnbc6230n1p5l3jm6sp5ln9x7j7fktfns2lct7n9yzkuyke8n8lhym5jey6hn6kq2v4tptfspp5cxmq0aflc7crusxamxpr2s2gvyp39qd6lxdllrv9gqwqqetl6gtqhp5s2gwrhn09vucwd50465vyak8h678zw8s5xnazvhkv884nw8jt6csxq9z0rgqcqpnrzjqwghf7zxvfkxq5a6sr65g0gdkv768p83mhsnt0msszapamzx2qvuxrv34gqqvusqqqqqqqqqqqqqraqq2q9qxpqysgquafpz6ukvg87wqyatpy9nug8pxngdnx7e9usgf3gnps7zffqppxzs5ssxzlyyu9tmthze53nudn8d4xp27j5g5vg8k5q4jm2650s6xcph9q9tl	https://coinos.io/api/lnurl/verify/4c3966a3-822f-41ee-b53d-b1b3b1432b3c	lost	0	\N	\N	\N	2026-05-04 16:38:17.915725+00	2026-05-04 16:38:33.251+00
 \.
 
 
@@ -12724,13 +12930,13 @@ COPY public.sport_bets (id, market_id, direction, amount_sats, payment_hash, pay
 --
 
 COPY public.sport_markets (id, event_id, event_name, home_team, away_team, home_badge, away_badge, league, sport, starts_at, status, home_score, away_score, outcome, total_home_sats, total_draw_sats, total_away_sats, finished_at, settled_at, created_at) FROM stdin;
-1	1436185	Al-Ittihad FC vs Al Kholood	Al-Ittihad FC	Al Kholood	https://media.api-sports.io/football/teams/2938.png	https://media.api-sports.io/football/teams/10509.png	Pro League	Soccer	2026-05-04 18:00:00+00	open	\N	\N	\N	623	747	623	\N	\N	2026-05-04 16:35:21.133108+00
 2	basketball_461497	Heidelberg vs Syntainics MBC	Heidelberg	Syntainics MBC	https://media.api-sports.io/basketball/teams/552.png	https://media.api-sports.io/basketball/teams/2263.png	BBL	Basketball	2026-05-04 18:00:00+00	open	\N	\N	\N	622	0	685	\N	\N	2026-05-04 17:36:31.336776+00
 3	1378211	AS Roma vs Fiorentina	AS Roma	Fiorentina	https://media.api-sports.io/football/teams/497.png	https://media.api-sports.io/football/teams/502.png	Serie A	Soccer	2026-05-04 18:45:00+00	open	\N	\N	\N	621	635	648	\N	\N	2026-05-04 17:58:17.149037+00
 4	1379314	Everton vs Manchester City	Everton	Manchester City	https://media.api-sports.io/football/teams/45.png	https://media.api-sports.io/football/teams/50.png	Premier League	Soccer	2026-05-04 19:00:00+00	open	\N	\N	\N	623	636	648	\N	\N	2026-05-04 18:39:27.509589+00
 5	1391156	Sevilla vs Real Sociedad	Sevilla	Real Sociedad	https://media.api-sports.io/football/teams/536.png	https://media.api-sports.io/football/teams/548.png	La Liga	Soccer	2026-05-04 19:00:00+00	open	\N	\N	\N	624	0	0	\N	\N	2026-05-04 18:53:29.777234+00
 6	1396524	Sporting CP vs Guimaraes	Sporting CP	Guimaraes	https://media.api-sports.io/football/teams/228.png	https://media.api-sports.io/football/teams/224.png	Primeira Liga	Soccer	2026-05-04 19:15:00+00	open	\N	\N	\N	624	650	0	\N	\N	2026-05-04 19:03:13.389138+00
 7	1491944	Gimnasia M. vs Defensa Y Justicia	Gimnasia M.	Defensa Y Justicia	https://media.api-sports.io/football/teams/1066.png	https://media.api-sports.io/football/teams/442.png	Liga Profesional Argentina	Soccer	2026-05-04 20:00:00+00	open	\N	\N	\N	637	0	0	\N	\N	2026-05-04 19:12:04.675588+00
+1	1436185	Al-Ittihad FC vs Al Kholood	Al-Ittihad FC	Al Kholood	https://media.api-sports.io/football/teams/2938.png	https://media.api-sports.io/football/teams/10509.png	Pro League	Soccer	2026-05-04 18:00:00+00	settled	0	0	draw	623	747	623	2026-05-04 20:13:31.7+00	2026-05-04 20:13:31.714+00	2026-05-04 16:35:21.133108+00
 \.
 
 
@@ -13183,14 +13389,14 @@ SELECT pg_catalog.setval('public.bets_id_seq', 9, true);
 -- Name: market_windows_id_seq; Type: SEQUENCE SET; Schema: public; Owner: pwsats
 --
 
-SELECT pg_catalog.setval('public.market_windows_id_seq', 1790, true);
+SELECT pg_catalog.setval('public.market_windows_id_seq', 1820, true);
 
 
 --
 -- Name: price_snapshots_id_seq; Type: SEQUENCE SET; Schema: public; Owner: pwsats
 --
 
-SELECT pg_catalog.setval('public.price_snapshots_id_seq', 10315, true);
+SELECT pg_catalog.setval('public.price_snapshots_id_seq', 10491, true);
 
 
 --
@@ -13414,5 +13620,5 @@ ALTER TABLE ONLY public.webhook_events
 -- PostgreSQL database dump complete
 --
 
-\unrestrict f6TH6A6MpIjyEtdIXCfkOvGjc3pAsLFSWVSnkgR71fgMfeCU8y9OWP0czkmacEE
+\unrestrict Spd0C1nqVnWNyDblSLfdKEDXJmzKA4IKFk4IihH57fmCMbPUCS9dfPnwqXj71KQ
 
