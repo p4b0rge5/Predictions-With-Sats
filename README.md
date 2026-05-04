@@ -1,6 +1,6 @@
 # Predictions With Sats
 
-Prediction market platform where users bet **Bitcoin (sats)** on outcome events — crypto price direction, sports matches, weather forecasts, and Polymarket-synced events. Payments are processed via the **Lightning Network** through Coinos.io.
+Prediction market platform where users bet **Bitcoin (sats)** on outcome events — crypto price direction, sports matches, and weather forecasts. Payments are processed via the **Lightning Network** through Coinos.io.
 
 ## Quick Summary
 
@@ -26,7 +26,7 @@ Predictions-With-Sats/
 │   │       │   ├── market.ts    #   /market — market state & history
 │   │       │   ├── sports.ts    #   /sports — events, markets, bets
 │   │       │   ├── weather.ts   #   /weather — weather markets & bets
-│   │       │   ├── sports-poly.ts  # /sports-poly — Polymarket-synced sports
+│   │       │   ├── sports-poly.ts  # /sports-poly — expanded sports markets
 │   │       │   ├── withdraw.ts    # /withdraw — LNURL-withdraw payouts
 │   │       │   ├── webhook.ts     # /webhook — Alby webhook for payment confirmation
 │   │       │   ├── stats.ts       # /stats — platform statistics
@@ -40,14 +40,14 @@ Predictions-With-Sats/
 │   │           ├── mma.ts             # MMA/UFC data
 │   │           ├── rugby.ts           # Rugby data
 │   │           ├── hockey.ts          # Hockey data
-│   │           ├── weather.ts         # Weather market sync (Polymarket)
+│   │           ├── weather.ts         # Weather market data
 │   │           ├── coinos.ts          # Coinos.io Lightning client (payouts)
 │   │           ├── lightning-invoice.ts # Bolt11 invoice generation
 │   │           ├── lnurl-withdraw.ts  # LNURL-withdraw payout generation
 │   │           ├── payment-poller.ts  # Two-tier payment verification (LUD-21 + Alby)
 │   │           ├── sports-pollers.ts  # Settlement polling (force-refresh + direct lookup)
 │   │           ├── weather-pollers.ts # Weather settlement polling
-│   │           └── polymarket-*.ts    # Polymarket Gamma API integration
+│   │           └── external-*.ts      # External data source integration
 │   │
 │   ├── predictions-with-sats-web/   # React 19 frontend (Vite, port 3002)
 │   │   └── src/
@@ -73,8 +73,8 @@ Predictions-With-Sats/
 │   │       ├── price-snapshots.ts   # Historical price snapshots
 │   │       ├── sport-markets.ts     # Sports markets
 │   │       ├── sport-bets.ts        # Sports bets
-│   │       ├── sport-poly-markets.ts # Polymarket-synced sports markets
-│   │       ├── sport-poly-bets.ts   # Polymarket-synced sports bets
+│   │       ├── sport-poly-markets.ts # Expanded sports markets
+│   │       ├── sport-poly-bets.ts   # Expanded sports bets
 │   │       ├── weather-markets.ts   # Weather markets
 │   │       ├── weather-bets.ts      # Weather bets
 │   │       └── webhook-events.ts    # Webhook event log
@@ -111,7 +111,7 @@ Bet on whether a cryptocurrency's price will go **up** or **down** within a fixe
 
 ### ⚽ Sports
 
-Bet on the outcome of real-world sports matches. Data sourced from **api-sports.io** and synced with **Polymarket** for expanded coverage.
+Bet on the outcome of real-world sports matches. Data sourced from **api-sports.io** with expanded market coverage.
 
 | Sport | Draw? | Key Details |
 |---|---|---|
@@ -128,11 +128,11 @@ Bet on the outcome of real-world sports matches. Data sourced from **api-sports.
 
 ### 🌡️ Weather
 
-Bet on whether actual temperature/precipitation will be above or below forecasted values. Market data synced from **Polymarket**.
+Bet on whether actual temperature/precipitation will be above or below forecasted values.
 
 - **Types:** Temperature, Precipitation
 - **Settlement:** Automated at window close time (typically midnight local time)
-- **Sync:** Polymarket Gamma API with paginated market fetching
+- **Data:** External forecasting API with paginated market fetching
 
 ---
 
@@ -147,8 +147,8 @@ Bet on whether actual temperature/precipitation will be above or below forecaste
 | `price_snapshots` | Historical crypto price data |
 | `sport_markets` | Sports match markets (eventId, home/away, start time, status) |
 | `sport_bets` | Sports bets (linked to market, direction, sats, settlement) |
-| `sport_poly_markets` | Polymarket-synced sports markets |
-| `sport_poly_bets` | Polymarket-synced sports bets |
+| `sport_poly_markets` | Expanded sports markets |
+| `sport_poly_bets` | Expanded sports bets |
 | `weather_markets` | Weather forecast markets |
 | `weather_bets` | Weather bets |
 | `webhook_events` | Webhook request log (signature verification, payload) |
