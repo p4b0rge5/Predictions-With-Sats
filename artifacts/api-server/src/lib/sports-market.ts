@@ -156,17 +156,19 @@ export async function settleMarket(
     return;
   }
 
+  const winners = paidBets.filter((b) => b.direction === outcome);
   const paidOutcomeCount = new Set(paidBets.map((b) => b.direction)).size;
 
   // ── Refund path: no opposing liquidity ───────────────────────────────────
   // Triggered when:
-  //   1) All bets are on a single outcome (regardless of who won)
-  //   2) The winning outcome had zero bets
+  //   1) The winning outcome had zero bets  (nobody picked the right result)
+  //   2) All bets landed on a single outcome (no opposing liquidity)
   // In both cases, everyone gets their stake back minus 0.5 % refund fee.
   //
-  // When 2+ outcomes have liquidity → normal settlement (winner takes pool).
+  // Normal settlement only when 2+ distinct outcomes have liquidity AND
+  // the winning outcome actually has bets.
 
-  if (paidOutcomeCount <= 1) {
+  if (winners.length === 0 || paidOutcomeCount <= 1) {
     // Single-side liquidity — refund all bets
     for (const bet of paidBets) {
       const refundSats = Math.floor(bet.amountSats * (1 - NO_LIQUIDITY_REFUND_FEE));
@@ -190,7 +192,6 @@ export async function settleMarket(
     const totalPool = market.totalHomeSats + market.totalDrawSats + market.totalAwaySats;
     const netPool = Math.floor(totalPool * (1 - HOUSE_FEE));
 
-    const winners = paidBets.filter((b) => b.direction === outcome);
     const losers = paidBets.filter((b) => b.direction !== outcome);
     const totalWinnerStake = winners.reduce((s, b) => s + Number(b.amountSats), 0);
 
