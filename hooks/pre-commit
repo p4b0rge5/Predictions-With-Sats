@@ -1,0 +1,9 @@
+#!/bin/bash
+# Sync workspace MEMORY.md into the repo before every commit
+if [ -f /opt/baal-agent/workspace/memory/MEMORY.md ]; then
+    cp /opt/baal-agent/workspace/memory/MEMORY.md "$(git rev-parse --show-toplevel)/memory/MEMORY.md"
+fi
+if [ -f /opt/baal-agent/workspace/memory/USER.md ]; then
+    mkdir -p "$(git rev-parse --show-toplevel)/memory"
+    cp /opt/baal-agent/workspace/memory/USER.md "$(git rev-parse --show-toplevel)/memory/USER.md"
+fi
