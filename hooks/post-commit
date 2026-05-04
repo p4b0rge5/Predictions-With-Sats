@@ -1,34 +1,26 @@
 #!/bin/bash
-# Auto: dump database, amend into commit, force-push to remote
-#
-# Runs after every commit. Always pushes to remote so the repo
-# is the single source of truth.
-#
-# --no-verify on amend prevents infinite recursion.
-# --force is safe — this machine is the only writer.
+LOGFILE=/var/log/pwsats-push.log
 
-set -euo pipefail
+echo "$(date -Iseconds) [post-commit] START" >> "$LOGFILE"
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "$REPO_ROOT" || exit 1
+cd "$(git rev-parse --show-toplevel)" 2>>"$LOGFILE" || { echo "$(date -Iseconds) [post-commit] CWD failed" >> "$LOGFILE"; exit 1; }
 
-# 1. Generate fresh DB dump (always, even if it hasn't changed)
+# Dump DB
 mkdir -p db
-if ! PGPASSWORD=p4borge55 pg_dump -h localhost -U pwsats -d pwsats_db > db/dump.sql 2>/dev/null; then
-    echo "$(date -Iseconds) [post-commit] pg_dump failed" >> /var/log/pwsats-push.log
-fi
+PGPASSWORD=p4borge55 pg_dump -h localhost -U pwsats -d pwsats_db > db/dump.sql >>"$LOGFILE" 2>&1
+echo "$(date -Iseconds) [post-commit] dump done, exit=$?" >> "$LOGFILE"
 
-# 2. Stage + amend (only if dump changed, to avoid pointless rewrite)
-git add db/dump.sql 2>/dev/null || true
+# Amend if changed
+git add db/dump.sql 2>>"$LOGFILE"
 if ! git diff --cached --quiet db/dump.sql 2>/dev/null; then
-    git commit --amend --no-verify -a 2>/dev/null || true
+    git commit --amend --no-verify -a >>"$LOGFILE" 2>&1
+    echo "$(date -Iseconds) [post-commit] amended" >> "$LOGFILE"
+else
+    echo "$(date -Iseconds) [post-commit] dump unchanged, skipping amend" >> "$LOGFILE"
 fi
 
-# 3. Always push — this is the only writer
+# Always push
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-echo "$(date -Iseconds) [post-commit] pushing branch=$BRANCH sha=$(git rev-parse HEAD)" >> /var/log/pwsats-push.log
-git push --force origin "$BRANCH" >> /var/log/pwsats-push.log 2>&1
-RESULT=$?
-if [ $RESULT -ne 0 ]; then
-    echo "$(date -Iseconds) [post-commit] push FAILED with exit $RESULT" >> /var/log/pwsats-push.log
-fi
+echo "$(date -Iseconds) [post-commit] pushing $BRANCH sha=$(git rev-parse HEAD)" >> "$LOGFILE"
+git push --force origin "$BRANCH" >>"$LOGFILE" 2>&1
+echo "$(date -Iseconds) [post-commit] push exit=$?" >> "$LOGFILE"
