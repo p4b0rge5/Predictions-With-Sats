@@ -208,3 +208,4 @@ Implementation rules:
 - When adjusting card spacing or tint in one category, review and apply the same pattern to the parallel category pages unless there is an explicit reason to diverge
 - Card tint intensity should follow the softer Sports Results standard across the app; adjust opacity/shadow only, not the hue mapping for each category
 - This applies to `My Bets` cards too: crypto bet widgets, sport bet status cards and weather bet status cards must use the same global tint treatment as market/result cards
+
