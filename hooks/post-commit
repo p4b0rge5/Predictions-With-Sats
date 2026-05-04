@@ -1,18 +1,30 @@
 #!/bin/bash
 # Auto: dump database, amend commit, push to remote
+#
+# This hook runs after every commit. It:
+#   1. Generates a fresh PostgreSQL dump
+#   2. If the dump changed, amends it into the current commit
+#   3. Force-pushes the branch to remote
+#
+# Note: uses --no-verify to prevent infinite recursion on amend.
+# Uses git fetch first so --force-with-lease has fresh ref state.
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT" || exit
 
-# Generate fresh DB dump
+# 1. Generate fresh DB dump
 mkdir -p db
 PGPASSWORD=p4borge55 pg_dump -h localhost -U pwsats -d pwsats_db > db/dump.sql 2>/dev/null || true
 
-# Stage and amend if dump changed
-git add db/dump.sql
+# 2. Stage dump
+git add db/dump.sql 2>/dev/null
+
+# 3. Amend only if dump actually changed
 if ! git diff --cached --quiet db/dump.sql 2>/dev/null; then
-    git commit --amend --no-verify --no-edit -a 2>/dev/null || true
+    git commit --amend --no-verify -a 2>/dev/null || true
 fi
 
-# Push with force-with-lease
+# 4. Push — fetch first to get fresh remote refs, then force-push
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git fetch origin "$BRANCH" 2>/dev/null
 git push --force-with-lease origin "$BRANCH" 2>/var/log/pwsats-push.log

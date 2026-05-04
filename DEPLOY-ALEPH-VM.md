@@ -260,3 +260,4 @@ curl -6 http://[2a0e:97c0:3e3:274:3:95a7:288f:92e1]/
 # Retorna: HTML da aplicação com "Server: nginx/1.24.0 (Ubuntu)"
 ```
 
+# test
