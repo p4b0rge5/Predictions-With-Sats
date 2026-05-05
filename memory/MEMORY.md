@@ -42,7 +42,14 @@ A pre-commit hook at `.git/hooks/pre-commit` syncs this MEMORY.md from the works
 - `/pwsats/*` → web frontend (:3002) — **no strip**, Vite expects the prefix
 - `/pwsats/api/*` → API server (:3001) — **strips prefix**
 - `/` → baal-agent (:8080) — default fallback
-- Build uses `BASE_PATH=/pwsats` (set in systemd env for `pwsats-web`)
+
+### BASE_PATH for Web Build (CRITICAL)
+- `BASE_PATH=/pwsats` must be set when running `vite build` for the web frontend
+- Without it, the build produces `/assets/...` paths instead of `/pwsats/assets/...`
+- This causes a **blank white page** because JS/CSS assets 404
+- The systemd service `pwsats-web` has `Environment=BASE_PATH=/pwsats` (for preview)
+- `scripts/build-deploy.sh` sets `BASE_PATH=/pwsats` before the web build (line 75)
+- When building manually: `BASE_PATH=/pwsats pnpm --filter @workspace/predictions-with-sats-web run build`
 
 ---
 
