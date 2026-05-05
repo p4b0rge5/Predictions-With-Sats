@@ -1360,9 +1360,9 @@ function UpcomingCard({
               <Button key={dir} size="sm" onClick={() => onBet(dir)}
                 className={`text-[11px] sm:text-xs lg:text-sm font-mono font-bold transition-all flex flex-col justify-center min-h-[4.75rem] sm:min-h-[5.5rem] lg:min-h-[6rem] px-2 py-2 gap-1 ${DIRECTION_COLORS[dir].btn}`}>
                 <span>{dir === "home" ? "↑" : dir === "away" ? "↓" : "="} {DIRECTION_LABELS[dir]}</span>
-                <>
+                <div className="flex flex-col text-left">
                   <span className={`${sportDef.hasDraw ? "text-[8px]" : "text-[9px]"} font-normal leading-none opacity-70`}>
-                    {formatSats(dirSats)} sats in pool
+                    {dirSats === 0 ? "No liquidity — 0 sats" : `${formatSats(dirSats)} sats in pool`}
                   </span>
                   {userStakeSats > 0 && (
                     <span className={`${sportDef.hasDraw ? "text-[8px]" : "text-[9px]"} font-normal leading-none opacity-80`}>
@@ -1374,7 +1374,7 @@ function UpcomingCard({
                       {returnLabel}
                     </span>
                   ) : null}
-                </>
+                </div>
               </Button>
             );
           })}
