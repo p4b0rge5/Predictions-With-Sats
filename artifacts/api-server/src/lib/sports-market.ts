@@ -118,19 +118,76 @@ export async function addToPool(marketId: number, direction: SportDirection, amo
 // Settlement — three-way (HOME | DRAW | AWAY)
 // ---------------------------------------------------------------------------
 
-export async function settleMarket(
-  marketId: number,
-  outcome: SportDirection,
-  homeScore: number | null,
-  awayScore: number | null,
-) {
+// ── Early refund: no opposing liquidity ────────────────────────────────────
+// When betting closes and all paid bets are on a single outcome, there's no
+// meaningful contest. Refund everyone immediately — no need to wait for the
+// actual game result. Returns true when an early refund was executed.
+
+export async function tryEarlyRefund(marketId: number): Promise<boolean> {
   const [market] = await db
     .select()
     .from(sportMarketsTable)
     .where(and(eq(sportMarketsTable.id, marketId), eq(sportMarketsTable.status, "open")))
     .limit(1);
 
-  if (!market) {
+  if (!market) return false;
+
+  const paidBets = await db
+    .select()
+    .from(sportBetsTable)
+    .where(and(eq(sportBetsTable.marketId, marketId), eq(sportBetsTable.status, "paid")));
+
+  if (paidBets.length === 0) return false;
+
+  const paidOutcomeCount = new Set(paidBets.map((b) => b.direction)).size;
+  if (paidOutcomeCount > 1) return false;
+
+  // All bets on one outcome — refund immediately
+  for (const bet of paidBets) {
+    const refundSats = Math.floor(bet.amountSats * (1 - NO_LIQUIDITY_REFUND_FEE));
+    const token = randomUUID();
+    await db
+      .update(sportBetsTable)
+      .set({
+        status: "won",
+        payoutSats: refundSats,
+        withdrawToken: token,
+        withdrawStatus: "unclaimed",
+      })
+      .where(and(eq(sportBetsTable.id, bet.id), eq(sportBetsTable.status, "paid")));
+  }
+
+  await db
+    .update(sportMarketsTable)
+    .set({
+      status: "settled",
+      outcome: "no_liquidity",
+      finishedAt: market.finishedAt ?? new Date(),
+      settledAt: new Date(),
+    })
+    .where(eq(sportMarketsTable.id, marketId));
+
+  logger.info(
+    { marketId, refundedBets: paidBets.length, refundFeeRate: NO_LIQUIDITY_REFUND_FEE },
+    "Sport market — early refund (single outcome, no opposing liquidity)",
+  );
+  return true;
+}
+
+export async function settleMarket(
+  marketId: number,
+  outcome: SportDirection,
+  homeScore: number | null,
+  awayScore: number | null,
+) {
+  // If market was already settled by early refund, skip
+  const [market] = await db
+    .select()
+    .from(sportMarketsTable)
+    .where(eq(sportMarketsTable.id, marketId))
+    .limit(1);
+
+  if (!market || market.status !== "open") {
     logger.warn({ marketId }, "Sport market not found or already settled");
     return;
   }
