@@ -13,7 +13,7 @@
 import { db, sportBetsTable, sportMarketsTable } from "@workspace/db";
 import { eq, and, lt } from "drizzle-orm";
 import { logger } from "./logger";
-import { markMarketFinished, settleMarket } from "./sports-market";
+import { markMarketFinished, settleMarket, tryEarlyRefund } from "./sports-market";
 import { shouldRunStartupPrewarm, recordStartupPrewarm } from "./sports-request-budget";
 import { getSportsEvents, fetchFixtureById } from "./sports";
 import { getNbaEvents, fetchNbaGameById } from "./nba";
@@ -214,6 +214,15 @@ async function pollSportSettlement(): Promise<void> {
 
       // Still not finished — match in progress or not yet available
       if (!event || event.status !== "finished") {
+        // Early refund check: if the event has started but only 1 outcome has
+        // paid bets, refund immediately — no need to wait for the game result
+        if (await tryEarlyRefund(market.id)) {
+          logger.info(
+            { marketId: market.id, eventId: market.eventId },
+            "Early refund executed during live event (single outcome liquidity)",
+          );
+          continue;
+        }
         logger.info(
           { marketId: market.id, eventId: market.eventId, status: event?.status ?? "not_found" },
           "Market event not yet finished — skipping settlement",
@@ -231,6 +240,15 @@ async function pollSportSettlement(): Promise<void> {
       }
 
       await markMarketFinished(market.id);
+
+      // Early refund: if only 1 outcome has paid bets, refund immediately
+      if (await tryEarlyRefund(market.id)) {
+        logger.info(
+          { marketId: market.id, eventId: market.eventId },
+          "Early refund executed — skipping normal settlement",
+        );
+        continue;
+      }
 
       logger.info(
         {

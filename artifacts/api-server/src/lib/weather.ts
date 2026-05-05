@@ -1,5 +1,5 @@
 import { db, weatherBetsTable, weatherMarketsTable, type WeatherOutcomeRecord } from "@workspace/db";
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, lte } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { fetchPolymarketWeatherMarkets, type ExternalWeatherMarket } from "./polymarket-weather";
 import { logger } from "./logger";
@@ -265,17 +265,80 @@ export async function settleWeatherMarket(marketId: number): Promise<void> {
     .where(eq(weatherMarketsTable.id, marketId));
 }
 
+// ── Early refund: no opposing liquidity ────────────────────────────────────
+// When the market date is past (betting closed) but no winning outcome is yet
+// available from Polymarket, check if all paid bets are on a single outcome.
+// If so, refund everyone immediately — no need to wait for the resolution.
+
+async function tryEarlyWeatherRefund(marketId: number): Promise<boolean> {
+  const paidBets = await db
+    .select()
+    .from(weatherBetsTable)
+    .where(and(eq(weatherBetsTable.marketId, marketId), eq(weatherBetsTable.status, "paid")));
+
+  if (paidBets.length === 0) return false;
+
+  const paidOutcomeCount = new Set(paidBets.map((b) => b.direction)).size;
+  if (paidOutcomeCount > 1) return false;
+
+  // All bets on one outcome — refund immediately
+  for (const bet of paidBets) {
+    const refundSats = Math.floor(bet.amountSats * (1 - NO_LIQUIDITY_REFUND_FEE));
+    await db
+      .update(weatherBetsTable)
+      .set({
+        status: "refunded",
+        payoutSats: refundSats,
+        withdrawToken: bet.withdrawToken ?? randomUUID(),
+        withdrawStatus: "unclaimed",
+      })
+      .where(eq(weatherBetsTable.id, bet.id));
+  }
+
+  // Also expire any still-pending invoices
+  await db
+    .update(weatherBetsTable)
+    .set({ status: "expired" })
+    .where(and(eq(weatherBetsTable.marketId, marketId), eq(weatherBetsTable.status, "pending")));
+
+  await db
+    .update(weatherMarketsTable)
+    .set({
+      status: "settled",
+      settledAt: new Date(),
+    })
+    .where(and(eq(weatherMarketsTable.id, marketId), eq(weatherMarketsTable.status, "open")));
+
+  logger.info(
+    { marketId, refundedBets: paidBets.length, refundFeeRate: NO_LIQUIDITY_REFUND_FEE },
+    "Weather market — early refund (single outcome, no opposing liquidity)",
+  );
+  return true;
+}
+
 export async function settleResolvedWeatherMarkets(): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10);
   const markets = await db
     .select()
     .from(weatherMarketsTable)
     .where(eq(weatherMarketsTable.provider, "polymarket"));
 
   for (const market of markets) {
-    if (!getWinningOutcome(market)) continue;
-    await settleWeatherMarket(market.id).catch((err) =>
-      logger.warn({ err, marketId: market.id }, "Weather settlement error"),
-    );
+    if (market.status !== "open") continue;
+
+    const winningOutcome = getWinningOutcome(market);
+
+    if (winningOutcome) {
+      // Normal settlement path — result is known
+      await settleWeatherMarket(market.id).catch((err) =>
+        logger.warn({ err, marketId: market.id }, "Weather settlement error"),
+      );
+    } else if (market.date < today) {
+      // Date is past but no resolution yet — try early refund
+      await tryEarlyWeatherRefund(market.id).catch((err) =>
+        logger.warn({ err, marketId: market.id }, "Early weather refund error"),
+      );
+    }
   }
 }
 
