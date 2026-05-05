@@ -848,6 +848,7 @@ function MarketCard({
               `${formatSats(outcome.poolSats)} sats`,
               totalPool - outcome.poolSats > 0 && poolMultiple ? `x${poolMultiple.toFixed(2)}` : null,
             ].filter(Boolean);
+            const liquidityLabel = getLiquidityLabel(outcome, outcomes);
             return (
               <Button
                 key={outcome.key}
@@ -863,9 +864,7 @@ function MarketCard({
                   {isWinner && <CheckCircle2 className="h-3.5 w-3.5 text-green-400 shrink-0" />}
                 </span>
                 <span className="text-[10px] text-muted-foreground">
-                  {outcome.poolSats === 0
-                    ? "No liquidity"
-                    : poolDetailParts.join(" · ")}
+                  {liquidityLabel} · {poolDetailParts.join(" · ")}
                 </span>
               </Button>
             );
