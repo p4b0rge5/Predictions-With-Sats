@@ -843,10 +843,8 @@ function MarketCard({
           {visibleOutcomes.map(({ outcome }, index) => {
             const accent = getOutcomeAccent(index);
             const isWinner = outcome.isWinner === true;
-            const liquidityLabel = getLiquidityLabel(outcome, outcomes);
             const poolMultiple = getPoolMultiple({ selectedPoolSats: outcome.poolSats, totalPoolSats: totalPool });
-            const detailParts = [
-              liquidityLabel,
+            const poolDetailParts = [
               `${formatSats(outcome.poolSats)} sats`,
               totalPool - outcome.poolSats > 0 && poolMultiple ? `x${poolMultiple.toFixed(2)}` : null,
             ].filter(Boolean);
@@ -857,15 +855,17 @@ function MarketCard({
                 variant="outline"
                 disabled={!isBettable}
                 onClick={() => setSelectedOutcome({ outcome, index })}
-                className={`h-auto min-h-14 lg:min-h-16 justify-between border-border/60 px-3 py-2 text-left font-mono ${isWinner ? "border-green-500/40 bg-green-500/10" : "bg-background/30 hover:bg-muted/40"}`}
+                className={`h-auto min-h-14 lg:min-h-16 border-border/60 px-3 py-2 text-left font-mono flex flex-col gap-1 justify-center ${isWinner ? "border-green-500/40 bg-green-500/10" : "bg-background/30 hover:bg-muted/40"}`}
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <span className={`h-2.5 w-2.5 rounded-full ${accent}`} />
                   <span className="truncate text-[11px] font-bold uppercase tracking-wider">{outcome.label}</span>
                   {isWinner && <CheckCircle2 className="h-3.5 w-3.5 text-green-400 shrink-0" />}
                 </span>
-                <span className="max-w-[55%] truncate text-right text-[10px] text-muted-foreground shrink-0">
-                  {detailParts.join(" · ")}
+                <span className="text-[10px] text-muted-foreground">
+                  {outcome.poolSats === 0
+                    ? "No liquidity"
+                    : poolDetailParts.join(" · ")}
                 </span>
               </Button>
             );
