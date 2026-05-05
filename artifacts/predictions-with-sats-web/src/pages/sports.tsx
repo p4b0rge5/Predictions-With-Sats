@@ -967,7 +967,7 @@ function SportBetModal({ event, direction, sportKey, onClose, onRefetch }: Sport
         setBetStatus(data);
         if (data.status !== "pending") {
           clearInterval(pollRef.current!);
-          if (data.status === "paid" || data.status === "won") saveSportBetHashForKey(sportKey, paymentHash);
+          if (data.status === "paid" || data.status === "won" || data.status === "refunded") saveSportBetHashForKey(sportKey, paymentHash);
           if (data.status === "paid") { onRefetch?.(); }
         }
       } catch { /* ignore */ }
@@ -1262,10 +1262,27 @@ function SportBetModal({ event, direction, sportKey, onClose, onRefetch }: Sport
 
         {betStatus?.status === "won" && (
           <div className="space-y-4 py-4 flex flex-col items-center">
-            <CheckCircle2 className="h-14 w-14 text-yellow-400" />
+            <Trophy className="h-14 w-14 text-yellow-400" />
             <div className="text-xl font-bold uppercase tracking-wider text-yellow-400">You Won!</div>
             <p className="text-muted-foreground text-sm text-center">
               {betStatus.payoutSats ? `Payout: ${formatSats(Number(betStatus.payoutSats))} sats` : ""}
+            </p>
+            {betStatus.withdrawLnurl && (
+              <div className="bg-white p-2.5 rounded-xl">
+                <QRCodeSVG value={betStatus.withdrawLnurl} size={160} level="M" />
+              </div>
+            )}
+            <Button onClick={handleClose} className="w-full font-bold uppercase tracking-wider" variant="outline">Close</Button>
+          </div>
+        )}
+
+        {betStatus?.status === "refunded" && (
+          <div className="space-y-4 py-4 flex flex-col items-center">
+            <CheckCircle2 className="h-14 w-14 text-green-500" />
+            <div className="text-xl font-bold uppercase tracking-wider text-green-500">Refund Ready</div>
+            <p className="text-muted-foreground text-sm text-center">
+              No opposing bets were placed. Your stake returns as REFUND (0.5% fee).
+              {betStatus.payoutSats ? ` ${formatSats(Number(betStatus.payoutSats))} sats` : ""}
             </p>
             {betStatus.withdrawLnurl && (
               <div className="bg-white p-2.5 rounded-xl">
@@ -1541,11 +1558,13 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
   const shouldPoll = (d: SportBetRecord) =>
     d.status === "pending" ||
     d.status === "paid" ||
-    (d.status === "won" && d.withdrawStatus === "unclaimed");
+    (d.status === "won" && d.withdrawStatus === "unclaimed") ||
+    (d.status === "refunded" && d.withdrawStatus === "unclaimed");
 
   const pollInterval = (d: SportBetRecord) =>
     d.status === "pending" ? 3000
     : (d.status === "won" && d.withdrawStatus === "unclaimed") ? 10000
+    : (d.status === "refunded" && d.withdrawStatus === "unclaimed") ? 10000
     : 30000;
 
   useEffect(() => {
@@ -1610,6 +1629,12 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
       return { label: "Bet expired", color: "text-muted-foreground", pulse: false, icon: XCircle };
     if (bet.status === "won" && bet.withdrawStatus === "claimed")
       return { label: "Prize claimed! 🎉", color: "text-green-500", pulse: false, icon: CheckCircle2 };
+    if (bet.status === "won")
+      return { label: "You won! Scan to claim", color: "text-yellow-400", pulse: false, icon: Trophy };
+    if (bet.status === "refunded" && bet.withdrawStatus === "claimed")
+      return { label: "Refund claimed!", color: "text-green-500", pulse: false, icon: CheckCircle2 };
+    if (bet.status === "refunded")
+      return { label: "Refund ready to claim (0.5% fee)", color: "text-green-500", pulse: false, icon: CheckCircle2 };
     return null;
   })();
 
@@ -1737,6 +1762,11 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
           +{new Intl.NumberFormat("en-US").format(Number(bet.payoutSats))} sats won
         </div>
       )}
+      {bet.status === "refunded" && bet.payoutSats && (
+        <div className="text-green-500 text-sm font-bold mb-3">
+          {new Intl.NumberFormat("en-US").format(Number(bet.payoutSats))} sats refunded
+        </div>
+      )}
 
       {/* Status */}
       {statusInfo && (
@@ -1767,12 +1797,12 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
         </div>
       )}
 
-      {/* CLAIM WINNINGS — QR + LNURL flow */}
-      {bet.status === "won" && bet.withdrawStatus === "unclaimed" && bet.withdrawLnurl && (
+      {/* CLAIM WINNINGS — QR + LNURL flow (won & refunded) */}
+      {(bet.status === "won" || bet.status === "refunded") && bet.withdrawStatus === "unclaimed" && bet.withdrawLnurl && (
         <div className="mt-3 space-y-3">
-          <div className="flex items-center gap-2 text-yellow-400 text-xs font-bold uppercase tracking-wider animate-pulse">
+          <div className={`flex items-center gap-2 text-xs font-bold uppercase tracking-wider animate-pulse ${bet.status === "refunded" ? "text-green-500" : "text-yellow-400"}`}>
             <Trophy className="h-3.5 w-3.5" />
-            You won! Scan to claim
+            {bet.status === "refunded" ? "Refund ready — scan to claim" : "You won! Scan to claim"}
           </div>
           <div className="flex flex-col items-center gap-3 pt-1">
             <div

@@ -149,7 +149,7 @@ export async function tryEarlyRefund(marketId: number): Promise<boolean> {
     await db
       .update(sportBetsTable)
       .set({
-        status: "won",
+        status: "refunded",
         payoutSats: refundSats,
         withdrawToken: token,
         withdrawStatus: "unclaimed",
@@ -233,7 +233,7 @@ export async function settleMarket(
       await db
         .update(sportBetsTable)
         .set({
-          status: "won",
+          status: "refunded",
           payoutSats: refundSats,
           withdrawToken: token,
           withdrawStatus: "unclaimed",
