@@ -856,7 +856,7 @@ function MarketCard({
                 variant="outline"
                 disabled={!isBettable}
                 onClick={() => setSelectedOutcome({ outcome, index })}
-                className={`h-auto min-h-14 lg:min-h-16 border-border/60 px-3 py-2 font-mono flex flex-col gap-1 justify-center ${isWinner ? "border-green-500/40 bg-green-500/10" : "bg-background/30 hover:bg-muted/40"}`}
+                className={`h-auto min-h-14 lg:min-h-16 border-border/60 px-3 py-2 font-mono flex flex-col gap-1 justify-start items-start text-left ${isWinner ? "border-green-500/40 bg-green-500/10" : "bg-background/30 hover:bg-muted/40"}`}
               >
                 <div className="flex items-center gap-2 text-left">
                   <span className={`h-2.5 w-2.5 rounded-full ${accent} shrink-0`} />
