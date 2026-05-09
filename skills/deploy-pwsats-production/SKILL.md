@@ -30,7 +30,7 @@ export GITHUB_CLONE_URL="https://p4b0rge5:YOUR_TOKEN@github.com/p4b0rge5/Predict
 ./scripts/deploy-to-production.sh
 ```
 
-This script handles all 8 steps below automatically: pre-flight, dependencies, PostgreSQL, clone, dump import, build, systemd, Caddy + HTTPS.
+This script handles all steps automatically: pre-flight, dependencies, PostgreSQL, clone, `.env` copy, Drizzle schema migrations, build, systemd, Caddy + HTTPS. Database dumps are NOT imported — production data is preserved.
 
 ---
 
@@ -42,7 +42,7 @@ This script handles all 8 steps below automatically: pre-flight, dependencies, P
 - Domain DNS (**both A + AAAA records**) pointing to the new VM — **no stale records**
 - GitHub PAT embedded in clone URL
 - Deployment SSH key (ed25519)
-- `.env` file and `db/dump.sql` from the dev machine
+- `.env` file from the dev machine (dump.sql is in repo as backup, but NOT auto-imported)
 
 ### Step 1: Install Dependencies
 
@@ -114,8 +114,7 @@ pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 "
 ```
 
-### Step 4: Copy .env and Import Database Dump
-
+**WARNING:** This manual reference document describes the original deploy approach. The production script (`scripts/deploy-to-production.sh`) has been updated to NOT import dumps — see the automated script instead.
 ```bash
 # From dev machine
 SCP='scp -i KEY -P PORT'
@@ -141,7 +140,7 @@ EOSQL
 "
 ```
 
-### Step 5: Build
+**WARNING:** This manual reference describes the original approach. The production script (`scripts/deploy-to-production.sh`) has been updated to NOT import dumps — uses `drizzle-kit push` instead. See the automated script.
 
 ```bash
 $SSH "set -e
