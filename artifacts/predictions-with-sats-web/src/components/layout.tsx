@@ -13,25 +13,25 @@ const CATEGORIES = [
     label: "Crypto",
     href: "/app",
     icon: <TrendingUp className="h-3.5 w-3.5" />,
-    routes: ["/app", "/history", "/guide", "/stats"],
+    routes: ["/app", "/app/history", "/app/guide", "/app/stats"],
     subNav: [] as { label: string; href: string }[],
     activeClass: "chip-tint-orange text-orange-300",
   },
   {
     key: "sports",
     label: "Sports",
-    href: "/sports",
+    href: "/app/sports",
     icon: <Trophy className="h-3.5 w-3.5 text-yellow-400 fill-yellow-400/20" />,
-    routes: ["/sports"],
+    routes: ["/app/sports"],
     subNav: [] as { label: string; href: string }[],
     activeClass: "chip-tint-yellow text-yellow-300",
   },
   {
     key: "weather",
     label: "Weather",
-    href: "/weather",
+    href: "/app/weather",
     icon: <Cloud className="h-3.5 w-3.5 text-cyan-400" />,
-    routes: ["/weather"],
+    routes: ["/app/weather"],
     subNav: [] as { label: string; href: string }[],
     activeClass: "chip-tint-cyan text-cyan-300",
   },
@@ -109,7 +109,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const { pathname } = useLocation();
   const isLanding = pathname === "/";
-  const myBetsActive = pathname.startsWith("/my-bets");
+  const myBetsActive = pathname.startsWith("/app/my-bets") || pathname.startsWith("/my-bets");
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background text-foreground overflow-x-hidden selection:bg-primary selection:text-primary-foreground">

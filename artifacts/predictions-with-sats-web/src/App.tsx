@@ -27,22 +27,24 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <BrowserRouter>
-            <Routes>
-              {/* Root → Landing page */}
-              <Route path="/" element={<Landing />} />
-              {/* App pages — also accessible from /app/* for direct links */}
-              <Route path="/app" element={<Home />} />
-              <Route path="/app/history" element={<History />} />
-              <Route path="/app/stats" element={<Stats />} />
-              <Route path="/app/sports" element={<Sports />} />
-              <Route path="/app/weather" element={<Weather />} />
-              <Route path="/app/my-bets" element={<GlobalMyBets />} />
-              <Route path="/app/guide" element={<Guide />} />
-              {/* Legacy /sports-poly redirect */}
-              <Route path="/app/sports-poly" element={<Navigate to="/app/sports" replace />} />
-              {/* Catch-all */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <Layout>
+              <Routes>
+                {/* Root → Landing page */}
+                <Route path="/" element={<Landing />} />
+                {/* App pages */}
+                <Route path="/app" element={<Home />} />
+                <Route path="/app/history" element={<History />} />
+                <Route path="/app/stats" element={<Stats />} />
+                <Route path="/app/sports" element={<Sports />} />
+                <Route path="/app/weather" element={<Weather />} />
+                <Route path="/app/my-bets" element={<GlobalMyBets />} />
+                <Route path="/app/guide" element={<Guide />} />
+                {/* Legacy /sports-poly redirect */}
+                <Route path="/app/sports-poly" element={<Navigate to="/app/sports" replace />} />
+                {/* Catch-all */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Layout>
           </BrowserRouter>
           <Toaster />
         </TooltipProvider>
