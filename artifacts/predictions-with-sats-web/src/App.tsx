@@ -17,34 +17,32 @@ import { setBaseUrl } from "@workspace/api-client-react";
 
 const queryClient = new QueryClient();
 
-// Configure the API client to route through the same origin prefix.
-// The Caddy proxy passes /pwsats/api/* → localhost:3001/api/*
-// so the frontend at /pwsats/ can reach the API at /pwsats/api/...
+// Configure the API client. Caddy routes /app/api/* → backend.
 const apiBase = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 if (apiBase) setBaseUrl(apiBase);
 
 function App() {
-  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          <BrowserRouter basename={base}>
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route path="/app" element={<Home />} />
-                <Route path="/history" element={<History />} />
-                <Route path="/stats" element={<Stats />} />
-                <Route path="/sports" element={<Sports />} />
-                <Route path="/sports-poly" element={<Navigate to="/sports" replace />} />
-                <Route path="/weather" element={<Weather />} />
-                <Route path="/my-bets" element={<GlobalMyBets />} />
-                <Route path="/guide" element={<Guide />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Layout>
+          <BrowserRouter>
+            <Routes>
+              {/* Root → Landing page */}
+              <Route path="/" element={<Landing />} />
+              {/* App pages — also accessible from /app/* for direct links */}
+              <Route path="/app" element={<Home />} />
+              <Route path="/app/history" element={<History />} />
+              <Route path="/app/stats" element={<Stats />} />
+              <Route path="/app/sports" element={<Sports />} />
+              <Route path="/app/weather" element={<Weather />} />
+              <Route path="/app/my-bets" element={<GlobalMyBets />} />
+              <Route path="/app/guide" element={<Guide />} />
+              {/* Legacy /sports-poly redirect */}
+              <Route path="/app/sports-poly" element={<Navigate to="/app/sports" replace />} />
+              {/* Catch-all */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
           </BrowserRouter>
           <Toaster />
         </TooltipProvider>

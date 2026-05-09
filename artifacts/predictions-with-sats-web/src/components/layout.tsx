@@ -137,7 +137,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             ) : null}
 
             <NavLink
-              to="/my-bets"
+              to="/app/my-bets"
               className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold font-mono tracking-wide transition-all ${
                 myBetsActive
                   ? "chip-tint-emerald text-emerald-300"

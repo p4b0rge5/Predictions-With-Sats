@@ -44,38 +44,29 @@ A pre-commit hook at `.git/hooks/pre-commit` syncs this MEMORY.md from the works
 
 ### Caddy Routing (two site blocks, auto_https off)
 **pwsats.com block (order matters — Caddy evaluates handles top to bottom):**
-1. `/` → rewrite to `/pwsats/` → web frontend (:3002) — **Landing page**
-2. `/app*` → rewrite to `/pwsats{re.1}` → web frontend (:3002) — **App**
-3. `/api*` → API server (:3001) — **direct**
-4. `/pwsats/api*` → strip_prefix `/pwsats` → `/api/*` → API (:3001) — **critical!**
-5. `/pwsats/*` → Vite static assets (:3002) — CSS, JS, favicon, manifest
-
-**Why handler 4 exists:** The JS bundle uses `import.meta.env.BASE_URL` which is `/pwsats/` (from Vite's `base` config). So API calls are `/pwsats/api/...` not `/api/...`. Without handler 4, these fall through to handler 5 (@assets) which returns index.html (text/html) instead of JSON → **blank page**.
-
-**.2n6.me block:**
-- `reverse_proxy localhost:8080` — baal-agent (default)
+1. `/` → `rewrite * /app` → Vite frontend (:3002) — **Landing page, clean URL**
+2. `/app/api*` → `uri strip_prefix /app` → `/api/*` → API (:3001)
+3. `/api*` → API (:3001) — direct, for external calls
+4. `/app*` → Vite frontend (:3002) — SPA
 
 **.2n6.me block:**
 - `reverse_proxy localhost:8080` — baal-agent (default)
 
 ### BASE_PATH for Web Build (CRITICAL)
-- `BASE_PATH=/pwsats` must be set when running `vite build` for the web frontend
-- Without it, the build produces `/assets/...` paths instead of `/pwsats/assets/...`
-- This causes a **blank white page** because JS/CSS assets 404
-- The systemd service `pwsats-web` has `Environment=BASE_PATH=/pwsats` (for preview)
-- `scripts/build-deploy.sh` sets `BASE_PATH=/pwsats` before the web build (line 75)
-- When building manually: `BASE_PATH=/pwsats pnpm --filter @workspace/predictions-with-sats-web run build`
+- `BASE_PATH=/app` must be set when running `vite build` for the web frontend
+- Without it, the build produces wrong paths and assets 404
+- The systemd service `pwsats-web` has `Environment=BASE_PATH=/app`
+- `scripts/build-deploy.sh` sets `BASE_PATH=/app` before the web build
+- When building manually: `BASE_PATH=/app pnpm --filter @workspace/predictions-with-sats-web run build`
 
 ---
 
 ## PWSats Deployment Fixes (2026-05-04)
 
 ### Root Cause: Vite Preview SPA Routing with BASE_PATH
-- The Vite preview server with `base: "/pwsats"` expects requests WITH the `/pwsats` prefix
-- Do NOT use `uri strip_prefix /pwsats` for the web frontend handler
-- Caddy `handle_path` with `strip_prefix` was breaking this because it sent `/` to Vite instead of `/pwsats/`
-- Build must be done with `BASE_PATH=/pwsats` to get correct asset paths in HTML
-- The systemd service `pwsats-web` includes `Environment=BASE_PATH=/pwsats`
+- The Vite preview server serves static files from `dist/public/` — paths are baked at build time
+- No rewrite needed in Caddy when `BASE_PATH` matches the URL structure
+- Build was changed from `BASE_PATH=/pwsats` → `BASE_PATH=/app` to clean up URLs
 
 ### Key Finding
 - Vite preview server with `base: "/pwsats"` serves index.html at `/pwsats/` (200)

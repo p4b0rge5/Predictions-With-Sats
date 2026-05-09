@@ -145,7 +145,7 @@ export function Landing() {
               variant="outline"
               className="h-12 rounded-none border-border/60 bg-background/70 px-8 font-mono text-xs uppercase tracking-[0.2em]"
             >
-              <Link to="/sports">Browse Sports</Link>
+              <Link to="/app/sports">Browse Sports</Link>
             </Button>
           </div>
 
@@ -261,7 +261,7 @@ export function Landing() {
             size="lg"
             className="h-12 rounded-none bg-yellow-400 px-8 font-mono text-xs uppercase tracking-[0.2em] text-black hover:bg-yellow-300"
           >
-            <Link to="/sports">
+            <Link to="/app/sports">
               Browse All Sports Markets
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
@@ -359,7 +359,7 @@ export function Landing() {
             variant="outline"
             className="h-12 rounded-none border-border/60 bg-background/70 px-8 font-mono text-xs uppercase tracking-[0.2em]"
           >
-            <Link to="/sports">Sports Markets</Link>
+            <Link to="/app/sports">Sports Markets</Link>
           </Button>
           <Button
             asChild
@@ -367,7 +367,7 @@ export function Landing() {
             variant="outline"
             className="h-12 rounded-none border-border/60 bg-background/70 px-8 font-mono text-xs uppercase tracking-[0.2em]"
           >
-            <Link to="/weather">Weather Markets</Link>
+            <Link to="/app/weather">Weather Markets</Link>
           </Button>
         </div>
       </section>
