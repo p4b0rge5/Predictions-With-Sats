@@ -20,57 +20,93 @@ A pre-commit hook at `.git/hooks/pre-commit` syncs this MEMORY.md from the works
 
 ## Infrastructure
 
-### Server
-- Debian 12 VM on Aleph Cloud, full root access
+### Dev Server (this machine)
+- Ubuntu 24.04 VM on Aleph Cloud, full root access
 - Public FQDN: `priority-swing-fork-monkey.2n6.me`
-- **New domain**: `pwsats.com` → AAAA record `2a01:240:ad00:2502:3:aafb:816d:c791` (IPv6-only, Njalla DNS)
-- **Let's Encrypt cert** for `pwsats.com` obtained 2026-05-09, expires 2026-08-07. Manual DNS challenge only.
-- Cert files: `/etc/letsencrypt/live/pwsats.com/` — owned `root:ssl-cert`, caddy user in `ssl-cert` group
-- Caddy reverse proxy on port 443 — **Caddyfile rewritten** with two site blocks (one per domain, each with its own TLS cert). Will be overwritten on redeploy!
-- Old SSH tunnel to `37.114.37.140:24001` (port 8081) has been **removed** — no longer needed
-- Custom Caddy snippets in `/etc/caddy/conf.d/*.caddy` (currently empty)
+- PostgreSQL 16, Node 20, pnpm 10, Caddy 2.8
+- Runs `pwsats-api` (:3001) + `pwsats-web` (:3002) + Caddy (:443)
+- Caddy serves `pwsats.com` (with `/app` base path) + `.2n6.me` agent
 
-### Database
-- PostgreSQL 16, database `pwsats_db`, user `pwsats`, password `p4borge55`
-- Drizzle ORM schema: 10 tables
-- `.env` at `artifacts/predictions-with-sats-api/.env` with DB, Coinos JWT, Alby webhook, API keys
+### Production Server
+- Debian 12 VM on Aleph Cloud
+- IP: `37.114.37.140`, SSH port `24003`
+- IPv6: `2a0e:97c0:3e3:274:3:d6e:5c17:e5a1`
+- SSH key: `/root/.ssh/id_ed25519_deployment`
+- Domain: `pwsats.com` → A record `37.114.37.140` + AAAA `2a0e:97c0:3e3:274:3:d6e:5c17:e5a1` (Njalla DNS)
+- **Let's Encrypt cert** obtained 2026-05-09, expires 2026-08-07. Automatic HTTP-01 challenge.
+- PostgreSQL 15, Node 20, pnpm 10.33.4, Caddy 2.6.2
+- Caddy serves `pwsats.com` only (single site block, `BASE_PATH=/`)
+- **No agent UI on production** — production is PWSats-only
 
-### Services
+### Database (both dev and prod)
+- PostgreSQL database `pwsats_db`
+- User `pwsats`, password `p4borge55` (app user used in `.env`'s `DATABASE_URL`)
+- User `p4borge55`, same password (owner, for dumps and GRANT operations)
+- **IMPORTANT:** After importing a dump, run `GRANT ALL ON ALL TABLES/SEQUENCES TO pwsats` — dump creates tables as `postgres`
+- Drizzle ORM schema: 10 tables (bets, market_windows, price_snapshots, sport_bets, sport_markets, sport_poly_bets, sport_poly_markets, weather_bets, weather_markets, webhook_events)
+
+### .env Location
+- `.env` at repo root: `/opt/Predictions-With-Sats/.env`
+- `DATABASE_URL="postgresql://pwsats:p4borge55@localhost:5432/pwsats_db"`
+- `EnvironmentFile=/opt/Predictions-With-Sats/.env` in systemd unit (not in `artifacts/`)
+
+### Services (production)
 | Service | Port | Type |
 |---------|------|------|
-| `pwsats-api` | 3001 | API server (Hono + Node.js) |
-| `pwsats-web` | 3002 | Vite preview server (React SPA) |
-| `caddy` | 443 | Reverse proxy (HTTPS) |
+| `pwsats-api` | 3001 | API server (Node.js, Express/Hono) |
+| `pwsats-web` | 3002 | Vite preview server (React SPA) — **backup only** |
+| `caddy` | 80, 443 | Reverse proxy (HTTPS), serves static SPA directly |
 
-### Caddy Routing (two site blocks, auto_https off)
-**pwsats.com block (order matters — Caddy evaluates handles top to bottom):**
-1. `/` → `rewrite * /app` → Vite frontend (:3002) — **Landing page, clean URL**
-2. `/app/api*` → `uri strip_prefix /app` → `/api/*` → API (:3001)
-3. `/api*` → API (:3001) — direct, for external calls
-4. `/app*` → Vite frontend (:3002) — SPA
+### Caddy Routing (production — single site block, BASE_PATH=/)
+**pwsats.com block:**
+1. `handle /api*` → `reverse_proxy localhost:3001` (API routes)
+2. `handle { root ...; try_files {path} /index.html; file_server }` (SPA static files)
 
-**.2n6.me block:**
-- `reverse_proxy localhost:8080` — baal-agent (default)
+**Why handle blocks:** Caddy evaluates `handle` blocks in order — first match wins. Without `handle`, `file_server` + `try_files` intercepts `/api/*` and serves `index.html` instead of proxying to the API.
 
 ### BASE_PATH for Web Build (CRITICAL)
-- `BASE_PATH=/app` must be set when running `vite build` for the web frontend
-- Without it, the build produces wrong paths and assets 404
-- The systemd service `pwsats-web` has `Environment=BASE_PATH=/app`
-- `scripts/build-deploy.sh` sets `BASE_PATH=/app` before the web build
-- When building manually: `BASE_PATH=/app pnpm --filter @workspace/predictions-with-sats-web run build`
+- **Production:** `BASE_PATH=/` (serve at domain root, no prefix)
+- **Dev machine:** `BASE_PATH=/app` (serve at `/app` subpath)
+- When building: `BASE_PATH=/ pnpm --filter @workspace/predictions-with-sats-web run build`
 
 ---
 
-## PWSats Deployment Fixes (2026-05-04)
+## Deployment
 
-### Root Cause: Vite Preview SPA Routing with BASE_PATH
-- The Vite preview server serves static files from `dist/public/` — paths are baked at build time
-- No rewrite needed in Caddy when `BASE_PATH` matches the URL structure
-- Build was changed from `BASE_PATH=/pwsats` → `BASE_PATH=/app` to clean up URLs
+### Automated Script
+```bash
+export PROD_HOST=37.114.37.140
+export PROD_PORT=24003
+export PROD_SSH_KEY=/root/.ssh/id_ed25519_deployment
+export DOMAIN=pwsats.com
+export DB_USER=pwsats
+export DB_PASSWORD=p4borge55
+export DB_NAME=pwsats_db
+export GITHUB_CLONE_URL="https://p4b0rge5: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@github.com/p4b0rge5/Predictions-With-Sats.git"
 
-### Key Finding
-- Vite preview server with `base: "/pwsats"` serves index.html at `/pwsats/` (200)
-- Without prefix, `/` redirects 302 to `/pwsats` (built-in Vite behavior)
+./scripts/deploy-to-production.sh
+```
+
+### Key Differences: Dev vs Production
+| Aspect | Dev | Production |
+|--------|-----|------------|
+| OS | Ubuntu 24.04 | Debian 12 |
+| PostgreSQL | 16 | 15 |
+| BASE_PATH | `/app` | `/` |
+| Caddy | Two site blocks (pwsats + .2n6.me) | Single block (pwsats only) |
+| Cert | Manual cert files + auto_https off | Automatic Let's Encrypt |
+| Extra services | baal-agent (:8080) | None |
+
+### Deployment Lessons Learned (2026-05-09)
+1. **DNS AAAA must be updated** — Let's Encrypt tries IPv6 first; stale AAAA = cert failure
+2. **Need both users** — `p4borge55` (owner for dumps) and `pwsats` (app user in .env)
+3. **GRANT after import** — dump creates tables as `postgres`; `pwsats` gets `permission denied` without GRANT
+4. **Stale Caddy process** — manual `caddy run` as root leaves stale port 2019 binding → `pkill -9 caddy` before `systemctl start`
+5. **Cert ownership** — manual `caddy run` as root saves certs to `/root/.local/share/caddy/` → systemd (user `caddy`) can't read them. Clear both cert dirs before restart.
+6. **handle blocks required** — can't mix `reverse_proxy` + `try_files` in same Caddy block
+
+### Full deploy skill
+See: `skills/deploy-pwsats-production/SKILL.md`
 
 ---
 
@@ -119,15 +155,16 @@ chmod +x .git/hooks/{pre-commit,post-commit}
 
 ## Coinos Integration
 - JWT token is 27 days old (issued 2026-04-06), `daysUntilStale: 0`, `expired: false` — may need refreshing soon
-- Token stored in `.env` as `COINOS_JWT`
+- Token stored in `.env` as `COINOS_JWT_TOKEN`
 
 ---
 
 ## Repo
-- Remote: `https://github.com/p4b0rge55/Predictions-With-Sats.git`
+- Remote: `https://github.com/p4borge55/Predictions-With-Sats.git`
 - Branch: `main`
 - Monorepo with pnpm workspaces:
   - `packages/database` — Drizzle schema + migrations
-  - `artifacts/predictions-with-sats-api` — Backend (Hono + Node.js)
+  - `artifacts/predictions-with-sats-api` — Backend (Express + Node.js)
   - `artifacts/predictions-with-sats-web` — Frontend (React + Vite)
   - `artifacts/mockup-sandbox` — UI mockup (dev only)
+- Scripts: `scripts/deploy-to-production.sh` (automated remote deploy), `scripts/build-deploy.sh` (local rebuild + restart)
