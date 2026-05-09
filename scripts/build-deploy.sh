@@ -72,7 +72,7 @@ build_api() {
 build_web() {
   log "Buildando frontend (vite build)..."
   cd "$ROOT_DIR"
-  BASE_PATH=/pwsats pnpm --filter @workspace/predictions-with-sats-web run build
+  BASE_PATH=/app pnpm --filter @workspace/predictions-with-sats-web run build
   ok "Frontend OK → artifacts/predictions-with-sats-web/dist/"
 }
 

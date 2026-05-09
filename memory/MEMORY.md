@@ -23,8 +23,12 @@ A pre-commit hook at `.git/hooks/pre-commit` syncs this MEMORY.md from the works
 ### Server
 - Debian 12 VM on Aleph Cloud, full root access
 - Public FQDN: `priority-swing-fork-monkey.2n6.me`
-- Caddy reverse proxy on port 443 (managed, `/etc/caddy/Caddyfile` overwritten on redeploy)
-- Custom Caddy snippets in `/etc/caddy/conf.d/*.caddy` survive redeploys
+- **New domain**: `pwsats.com` → AAAA record `2a01:240:ad00:2502:3:aafb:816d:c791` (IPv6-only, Njalla DNS)
+- **Let's Encrypt cert** for `pwsats.com` obtained 2026-05-09, expires 2026-08-07. Manual DNS challenge only.
+- Cert files: `/etc/letsencrypt/live/pwsats.com/` — owned `root:ssl-cert`, caddy user in `ssl-cert` group
+- Caddy reverse proxy on port 443 — **Caddyfile rewritten** with two site blocks (one per domain, each with its own TLS cert). Will be overwritten on redeploy!
+- Old SSH tunnel to `37.114.37.140:24001` (port 8081) has been **removed** — no longer needed
+- Custom Caddy snippets in `/etc/caddy/conf.d/*.caddy` (currently empty)
 
 ### Database
 - PostgreSQL 16, database `pwsats_db`, user `pwsats`, password `p4borge55`
@@ -38,10 +42,21 @@ A pre-commit hook at `.git/hooks/pre-commit` syncs this MEMORY.md from the works
 | `pwsats-web` | 3002 | Vite preview server (React SPA) |
 | `caddy` | 443 | Reverse proxy (HTTPS) |
 
-### Caddy Routing
-- `/pwsats/*` → web frontend (:3002) — **no strip**, Vite expects the prefix
-- `/pwsats/api/*` → API server (:3001) — **strips prefix**
-- `/` → baal-agent (:8080) — default fallback
+### Caddy Routing (two site blocks, auto_https off)
+**pwsats.com block (order matters — Caddy evaluates handles top to bottom):**
+1. `/` → rewrite to `/pwsats/` → web frontend (:3002) — **Landing page**
+2. `/app*` → rewrite to `/pwsats{re.1}` → web frontend (:3002) — **App**
+3. `/api*` → API server (:3001) — **direct**
+4. `/pwsats/api*` → strip_prefix `/pwsats` → `/api/*` → API (:3001) — **critical!**
+5. `/pwsats/*` → Vite static assets (:3002) — CSS, JS, favicon, manifest
+
+**Why handler 4 exists:** The JS bundle uses `import.meta.env.BASE_URL` which is `/pwsats/` (from Vite's `base` config). So API calls are `/pwsats/api/...` not `/api/...`. Without handler 4, these fall through to handler 5 (@assets) which returns index.html (text/html) instead of JSON → **blank page**.
+
+**.2n6.me block:**
+- `reverse_proxy localhost:8080` — baal-agent (default)
+
+**.2n6.me block:**
+- `reverse_proxy localhost:8080` — baal-agent (default)
 
 ### BASE_PATH for Web Build (CRITICAL)
 - `BASE_PATH=/pwsats` must be set when running `vite build` for the web frontend
