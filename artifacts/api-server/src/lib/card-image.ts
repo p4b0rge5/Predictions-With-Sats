@@ -4,8 +4,11 @@
  * Compact landscape cards matching the in-app card layout.
  * Team & league badges downloaded from API with initials fallback.
  *
- * Sport cards:   1080×440
- * Weather cards: 1080×360
+ * Sport cards:   1080×400 rendered at 75% → 810×300
+ * Weather cards: 1080×360 rendered at 75% → 810×270
+ *
+ * The SVG is built at full 1080×{H} resolution, then sharp.resize()
+ * scales everything down proportionally — keeping all alignments intact.
  *
  * Returns base64 PNG string (no data: prefix).
  */
@@ -21,6 +24,14 @@ import https from "node:https";
 const W = 1080;
 const H_SPORT = 400;
 const H_WEATHER = 360;
+
+/** Render-scale factor. < 1 produces smaller PNGs. 1.0 = full res. */
+const SCALE = 0.75;
+
+const RW_SPORT  = Math.round(W * SCALE);
+const RH_SPORT  = Math.round(H_SPORT * SCALE);
+const RW_WEATH  = Math.round(W * SCALE);
+const RH_WEATH  = Math.round(H_WEATHER * SCALE);
 
 const WHITE  = "#fafffe";
 const MUTED  = "#98a2b3";
@@ -104,7 +115,7 @@ async function badgeFragment(url: string | null | undefined, name: string, size:
 }
 
 // ---------------------------------------------------------------------------
-// Sport Market Card  (1080×440)
+// Sport Market Card  (SVG 1080×400 → rendered 810×300)
 // ---------------------------------------------------------------------------
 
 export async function generateSportMarketCard(p: {
@@ -132,7 +143,7 @@ export async function generateSportMarketCard(p: {
     badgeFragment(p.leagueLogo, p.league, 22, true),
   ]);
 
-  // Layout
+  // Layout — all at full 1080×400 resolution
   const cx = W / 2;
   const PAD = 24;
 
@@ -244,11 +255,11 @@ export async function generateSportMarketCard(p: {
   ${guideText}
 </svg>`;
 
-  return svgToBase64Png(svg, H);
+  return svgToBase64Png(svg, RW_SPORT, RH_SPORT);
 }
 
 // ---------------------------------------------------------------------------
-// Weather Market Card  (1080×360)
+// Weather Market Card  (SVG 1080×360 → rendered 810×270)
 // ---------------------------------------------------------------------------
 
 export async function generateWeatherMarketCard(p: {
@@ -291,23 +302,23 @@ export async function generateWeatherMarketCard(p: {
     ${settled ? "RESULTS ANNOUNCED" : "BET NOW → pwsats.com"}</text>
 </svg>`;
 
-  return svgToBase64Png(svg, H);
+  return svgToBase64Png(svg, RW_WEATH, RH_WEATH);
 }
 
 // ---------------------------------------------------------------------------
-// Rasterize SVG → base64 PNG
+// Rasterize SVG → base64 PNG (resized to target dimensions)
 // ---------------------------------------------------------------------------
 
-function svgToBase64Png(svgString: string, h: number): Promise<string> {
+function svgToBase64Png(svgString: string, rw: number, rh: number): Promise<string> {
   return sharp(Buffer.from(svgString), {
-    limitInputPixels: W * h * 2,
+    limitInputPixels: W * H_SPORT * 2,
   })
-    .resize(W, h)
+    .resize(rw, rh)
     .png({ compressionLevel: 9 })
     .toBuffer()
     .then(b => b.toString("base64"))
     .catch(err => {
-      logger.error({ err }, "Failed to rasterize SVG card");
+      logger.error({ err, rw, rh }, "Failed to rasterize SVG card");
       throw err;
     });
 }
