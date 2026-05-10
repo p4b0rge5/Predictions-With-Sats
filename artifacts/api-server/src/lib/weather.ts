@@ -110,7 +110,26 @@ export async function getOrSyncWeatherMarkets(force = false): Promise<void> {
           .set(values)
           .where(eq(weatherMarketsTable.id, existing.id));
       } else {
-        await db.insert(weatherMarketsTable).values(values);
+        const [newMarket] = await db
+          .insert(weatherMarketsTable)
+          .values(values)
+          .returning();
+
+        // Publish to Nostr for promotion (fire-and-forget, only new markets)
+        import("./nostr-publisher")
+          .then((np) =>
+            np.publishWeatherMarketCreated({
+              id: newMarket.id,
+              city: newMarket.city,
+              country: newMarket.country,
+              question: newMarket.question ?? "",
+              date: newMarket.date,
+              threshold: parseFloat(newMarket.threshold),
+            }),
+          )
+          .catch((err) =>
+            logger.warn({ err, marketId: newMarket.id }, "Nostr publish failed for new weather market"),
+          );
       }
     }
 
@@ -263,6 +282,25 @@ export async function settleWeatherMarket(marketId: number): Promise<void> {
       settledAt: market.settledAt ?? new Date(),
     })
     .where(eq(weatherMarketsTable.id, marketId));
+
+  // Publish settlement to Nostr (fire-and-forget)
+  import("./nostr-publisher")
+    .then((np) =>
+      np.publishWeatherMarketSettled({
+        id: market.id,
+        city: market.city,
+        country: market.country,
+        question: market.question ?? "",
+        date: market.date,
+        threshold: parseFloat(market.threshold),
+        resolvedValue: market.resolvedValue,
+        yesSats: Number(market.totalYesSats),
+        noSats: Number(market.totalNoSats),
+      }),
+    )
+    .catch((err) =>
+      logger.warn({ err, marketId }, "Nostr publish failed for weather settlement"),
+    );
 }
 
 export async function settleResolvedWeatherMarkets(): Promise<void> {

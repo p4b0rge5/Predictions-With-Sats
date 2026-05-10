@@ -21,6 +21,7 @@ import { db, sportMarketsTable, sportBetsTable } from "@workspace/db";
 import { eq, and, inArray, isNull } from "drizzle-orm";
 import { logger } from "./logger";
 import type { SportEvent } from "./sports";
+import { publishSportMarketCreated, publishSportMarketSettled } from "./nostr-publisher";
 
 const HOUSE_FEE = 0.02;
 const NO_LIQUIDITY_REFUND_FEE = 0.005;
@@ -57,6 +58,12 @@ export async function findOrCreateMarket(event: SportEvent) {
     .returning();
 
   logger.info({ marketId: market.id, eventId: event.id }, "Sport market created");
+
+  // Publish to Nostr for promotion (fire-and-forget, never blocks creation)
+  publishSportMarketCreated(market).catch((err) =>
+    logger.warn({ err, marketId: market.id }, "Nostr publish failed for new market"),
+  );
+
   return market;
 }
 
@@ -297,4 +304,24 @@ export async function settleMarket(
       settledAt: new Date(),
     })
     .where(eq(sportMarketsTable.id, marketId));
+
+  // Publish settlement to Nostr for promotion (fire-and-forget)
+  publishSportMarketSettled({
+    id: market.id,
+    homeTeam: market.homeTeam,
+    awayTeam: market.awayTeam,
+    league: market.league,
+    sport: market.sport,
+    homeScore,
+    awayScore,
+    homeSats: market.totalHomeSats,
+    drawSats: market.totalDrawSats,
+    awaySats: market.totalAwaySats,
+    startsAt: market.startsAt,
+    homeBadge: market.homeBadge ?? undefined,
+    awayBadge: market.awayBadge ?? undefined,
+    outcome,
+  }).catch((err) =>
+    logger.warn({ err, marketId }, "Nostr publish failed for settlement"),
+  );
 }

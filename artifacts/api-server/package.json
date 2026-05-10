@@ -19,8 +19,10 @@
     "drizzle-orm": "catalog:",
     "express": "^5",
     "node-cron": "^4.2.1",
+    "nostr-tools": "^2.23.3",
     "pino": "^9",
-    "pino-http": "^10"
+    "pino-http": "^10",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

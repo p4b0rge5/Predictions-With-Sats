@@ -100,12 +100,18 @@ source .env.deploy && ./scripts/backup-prod-db.sh
 
 ### Restore from Backup
 ```bash
-# Restore latest backup to dev DB:
+# From git remote (every push carries the latest prod backup):
+gunzip -c db/prod-backup.sql.gz | psql -U pwsats pwsats_db
+
+# From local backups/:
 gunzip -c backups/pwsats-prod-backup-$(date +%Y-%m-%d).sql.gz | psql -U pwsats pwsats_db
 
 # Restore backup to production (use the existing script):
 ./scripts/restore-dump-to-production.sh
 ```
+
+### Prod Backup in Git (redundancy layer)
+Every `git commit` triggers the post-commit hook which copies the **latest production backup** from `backups/` into `db/prod-backup.sql.gz` and amends it into the commit before force-pushing. This means **every push to GitHub carries a production DB snapshot** as a fallback. Even if the dev VM is destroyed, anyone who can `git clone` has access to the latest prod backup.
 
 ---
 

@@ -8,6 +8,7 @@ import withdrawRouter from "./withdraw";
 import sportsRouter from "./sports";
 import sportsPolyRouter from "./sports-poly";
 import weatherRouter from "./weather";
+import nostrRouter from "./nostr";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(withdrawRouter);
 router.use(sportsRouter);
 router.use(sportsPolyRouter);
 router.use(weatherRouter);
+router.use(nostrRouter);
 
 export default router;
