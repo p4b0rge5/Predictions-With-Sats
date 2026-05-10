@@ -19,20 +19,35 @@ echo "$(date -Iseconds) [post-commit] START" >> "$LOGFILE"
 
 cd "$(git rev-parse --show-toplevel)" 2>>"$LOGFILE" || { echo "$(date -Iseconds) [post-commit] CWD failed" >> "$LOGFILE"; exit 1; }
 
-# Dump DB
+# Dump local DB
 mkdir -p db
 PGPASSWORD=p4borge55 pg_dump -h localhost -U pwsats -d pwsats_db > db/dump.sql 2>>"$LOGFILE"
 DUMP_EXIT=$?
 echo "$(date -Iseconds) [post-commit] dump done, exit=$DUMP_EXIT" >> "$LOGFILE"
 
-# Amend only if dump changed
-git add db/dump.sql 2>>"$LOGFILE"
-if ! git diff --cached --quiet db/dump.sql 2>/dev/null; then
-    echo "$(date -Iseconds) [post-commit] dump changed, amending..." >> "$LOGFILE"
+# Copy latest production backup to tracked location (overwrites on each commit)
+# The crontab script maintains backups/ with retention; pick the newest timestamped file.
+BACKUP_DIR="$(pwd)/backups"
+if [ -d "$BACKUP_DIR" ]; then
+    LATEST_BACKUP=$(find "$BACKUP_DIR" -name "pwsats-prod-backup-*.sql.gz" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
+    if [ -n "$LATEST_BACKUP" ] && [ -f "$LATEST_BACKUP" ]; then
+        cp "$LATEST_BACKUP" db/prod-backup.sql.gz
+        echo "$(date -Iseconds) [post-commit] prod backup copied: $(basename "$LATEST_BACKUP")" >> "$LOGFILE"
+    else
+        echo "$(date -Iseconds) [post-commit] no prod backup found in $BACKUP_DIR" >> "$LOGFILE"
+    fi
+else
+    echo "$(date -Iseconds) [post-commit] backups/ directory not found" >> "$LOGFILE"
+fi
+
+# Amend only if dump or prod backup changed
+git add db/dump.sql db/prod-backup.sql.gz 2>>"$LOGFILE"
+if ! git diff --cached --quiet 2>/dev/null; then
+    echo "$(date -Iseconds) [post-commit] dump/backup changed, amending..." >> "$LOGFILE"
     git commit --amend --no-verify -a >>"$LOGFILE" 2>&1
     echo "$(date -Iseconds) [post-commit] amended" >> "$LOGFILE"
 else
-    echo "$(date -Iseconds) [post-commit] dump unchanged, skipping amend" >> "$LOGFILE"
+    echo "$(date -Iseconds) [post-commit] dump/backup unchanged, skipping amend" >> "$LOGFILE"
 fi
 
 # Always push
