@@ -19,7 +19,7 @@ import https from "node:https";
 // ---------------------------------------------------------------------------
 
 const W = 1080;
-const H_SPORT = 480;
+const H_SPORT = 400;
 const H_WEATHER = 360;
 
 const WHITE  = "#fafffe";
