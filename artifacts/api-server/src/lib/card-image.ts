@@ -19,7 +19,7 @@ import https from "node:https";
 // ---------------------------------------------------------------------------
 
 const W = 1080;
-const H_SPORT = 440;
+const H_SPORT = 480;
 const H_WEATHER = 360;
 
 const WHITE  = "#fafffe";
@@ -201,10 +201,11 @@ export async function generateSportMarketCard(p: {
     <rect x="${b2x}" y="${boxY}" width="${boxW}" height="${boxH}" rx="8" fill="${AWAY_C}" fill-opacity="0.10" stroke="${AWAY_C}" stroke-width="1.5"/>
     <text x="${b2x + boxW/2}" y="${boxY + 34}" text-anchor="middle" font-size="17" fill="${AWAY_C}" font-weight="bold" font-family="sans-serif">↓ AWAY</text>`;
 
-  // CTA below boxes, guide below CTA
-  const ctaY = boxY + boxH + 14;
+  // CTA below boxes, guide below CTA — balanced spacing
+  const gap = 28;
+  const ctaY = boxY + boxH + gap;
   const ctaH = 36;
-  const guideY = ctaY + ctaH + 14;
+  const guideY = ctaY + ctaH + gap;
 
   const guideText = settled
     ? `<text x="${cx}" y="${guideY}" text-anchor="middle" font-size="12" fill="${MUTED}" font-family="sans-serif">Winners split the pool (2% fee) · Payouts via Lightning</text>`
