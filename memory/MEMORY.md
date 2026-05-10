@@ -73,19 +73,32 @@ A pre-commit hook at `.git/hooks/pre-commit` syncs this MEMORY.md from the works
 
 ## Deployment
 
-### Automated Script
-```bash
-export PROD_HOST=37.114.37.140
-export PROD_PORT=24003
-export PROD_SSH_KEY=/root/.ssh/id_ed25519_deployment
-export DOMAIN=pwsats.com
-export DB_USER=pwsats
-export DB_PASSWORD=p4borge55
-export DB_NAME=pwsats_db
-export GITHUB_CLONE_URL="https://p4b0rge5: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@github.com/p4b0rge5/Predictions-With-Sats.git"
+### Deployment — Two Scripts
+- `scripts/deploy-to-production.sh` — Safe deploy: `git pull` + `drizzle-kit push` + build + restart. **Never imports dump.** Production data preserved.
+- `scripts/deploy-to-production.sh quick` — Same but skips dependency installation (faster)
+- `scripts/restore-dump-to-production.sh` — **DANGEROUS**: Overwrites entire production DB from dump. Requires typing `DESTROY` to confirm. For disaster recovery only.
 
-./scripts/deploy-to-production.sh
+### Env vars (set in shell or .env.deploy)
+```bash
+PROD_HOST=37.114.37.140
+PROD_PORT=24003
+PROD_SSH_KEY=/root/.ssh/id_ed25519_deployment
+DOMAIN=pwsats.com
+DB_USER=pwsats
+DB_PASSWORD=p4borge55
+DB_NAME=pwsats_db
+GITHUB_CLONE_URL="https://p4b0rge5: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@github.com/p4b0rge5/Predictions-With-Sats.git"
 ```
+```bash
+# Normal deploy (safe — does NOT touch production data):
+./scripts/deploy-to-production.sh          # full
+./scripts/deploy-to-production.sh quick   # skip deps
+
+# Manual dump restore (DANGEROUS — overwrites ALL prod data):
+./scripts/restore-dump-to-production.sh
+```
+
+**Database strategy:** The deploy script NEVER imports `db/dump.sql` into production. Schema migrations are applied via `drizzle-kit push` (adds/alters columns without dropping data). Production bets, markets, and user data are preserved across deploys. The dump stays in the repo as a backup for disaster recovery only.
 
 ### Key Differences: Dev vs Production
 | Aspect | Dev | Production |

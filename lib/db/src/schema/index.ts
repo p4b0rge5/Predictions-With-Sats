@@ -8,3 +8,4 @@ export * from "./sport-poly-markets";
 export * from "./sport-poly-bets";
 export * from "./weather-markets";
 export * from "./weather-bets";
+export * from "./seed-migrations";

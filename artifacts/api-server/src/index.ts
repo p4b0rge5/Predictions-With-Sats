@@ -1,3 +1,4 @@
+import { runAllSeeds } from "@workspace/db";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startMarketEngine } from "./lib/market";
@@ -33,6 +34,10 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  // Run database seeds (idempotent — only applied once per database)
+  runAllSeeds().catch((e) =>
+    logger.error({ err: e }, "Seed run failed (non-fatal — server continues)" ),
+  );
   startMarketEngine();
   startPaymentPoller();
   startSportsPollers();
