@@ -153,9 +153,12 @@ export async function generateSportMarketCard(p: {
   // Time aligned to right edge of AWAY box
   const timeX = hasDraw ? b3x + boxW : b2x + boxW;
 
+  // Team centers aligned to their outcome boxes
+  const homeCenter = b1x + boxW / 2;
+  const awayCenter = hasDraw ? b3x + boxW / 2 : b2x + boxW / 2;
+
   // Team layout
   const badgeSize = 76;
-  const hx = 360, ax = 720;
   const badgeY = 42;
   const vsY = 106;
   const teamNameY = 138;
@@ -180,10 +183,10 @@ export async function generateSportMarketCard(p: {
 
   // Team names
   const teams = `
-  <text x="${hx}" y="${teamNameY}" text-anchor="middle" font-size="22" fill="${WHITE}" font-weight="bold" font-family="sans-serif">${esc(p.homeTeam)}</text>
-  <text x="${hx}" y="${labelY}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="sans-serif" letter-spacing="2">HOME</text>
-  <text x="${ax}" y="${teamNameY}" text-anchor="middle" font-size="22" fill="${WHITE}" font-weight="bold" font-family="sans-serif">${esc(p.awayTeam)}</text>
-  <text x="${ax}" y="${labelY}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="sans-serif" letter-spacing="2">AWAY</text>`;
+  <text x="${homeCenter}" y="${teamNameY}" text-anchor="middle" font-size="22" fill="${WHITE}" font-weight="bold" font-family="sans-serif">${esc(p.homeTeam)}</text>
+  <text x="${homeCenter}" y="${labelY}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="sans-serif" letter-spacing="2">HOME</text>
+  <text x="${awayCenter}" y="${teamNameY}" text-anchor="middle" font-size="22" fill="${WHITE}" font-weight="bold" font-family="sans-serif">${esc(p.awayTeam)}</text>
+  <text x="${awayCenter}" y="${labelY}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="sans-serif" letter-spacing="2">AWAY</text>`;
 
   // Bet boxes — label only, no sats
   const betBoxes = hasDraw
@@ -198,14 +201,15 @@ export async function generateSportMarketCard(p: {
     <rect x="${b2x}" y="${boxY}" width="${boxW}" height="${boxH}" rx="8" fill="${AWAY_C}" fill-opacity="0.10" stroke="${AWAY_C}" stroke-width="1.5"/>
     <text x="${b2x + boxW/2}" y="${boxY + 34}" text-anchor="middle" font-size="17" fill="${AWAY_C}" font-weight="bold" font-family="sans-serif">↓ AWAY</text>`;
 
-  // Guide + CTA
-  const guideY = boxY + boxH + 12;
-  const ctaY = guideY + 28;
+  // CTA below boxes, guide below CTA
+  const ctaY = boxY + boxH + 14;
+  const ctaH = 36;
+  const guideY = ctaY + ctaH + 14;
 
   const guideText = settled
-    ? `<text x="${cx}" y="${guideY}" text-anchor="middle" font-size="13" fill="${MUTED}" font-family="sans-serif">Winners split the pool (2% fee) · Payouts via Lightning</text>`
-    : `<text x="${cx}" y="${guideY}" text-anchor="middle" font-size="13" fill="${MUTED}" font-family="sans-serif">Pick an outcome · Pay via Lightning (min $0.50) · Winners split the pool (2% fee)</text>
-  <text x="${cx}" y="${guideY + 16}" text-anchor="middle" font-size="11" fill="${DIM}" font-family="sans-serif">
+    ? `<text x="${cx}" y="${guideY}" text-anchor="middle" font-size="12" fill="${MUTED}" font-family="sans-serif">Winners split the pool (2% fee) · Payouts via Lightning</text>`
+    : `<text x="${cx}" y="${guideY}" text-anchor="middle" font-size="12" fill="${MUTED}" font-family="sans-serif">Pick an outcome · Pay via Lightning (min $0.50) · Winners split the pool (2% fee)</text>
+  <text x="${cx}" y="${guideY + 15}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="sans-serif">
     ${hasDraw ? "All three outcomes are real — if the match ends in a draw, only DRAW bettors collect" : "No draws possible — overtime until a winner is decided"} · Bet early for better value</text>`;
 
   const svg = `
@@ -221,8 +225,8 @@ export async function generateSportMarketCard(p: {
   ${outcomeEl}
 
   <!-- Team badges -->
-  <g transform="translate(${hx - badgeSize/2}, ${badgeY})">${hb}</g>
-  <g transform="translate(${ax - badgeSize/2}, ${badgeY})">${ab}</g>
+  <g transform="translate(${homeCenter - badgeSize/2}, ${badgeY})">${hb}</g>
+  <g transform="translate(${awayCenter - badgeSize/2}, ${badgeY})">${ab}</g>
 
   <!-- VS / Score -->
   ${vsOrScore}
@@ -233,13 +237,13 @@ export async function generateSportMarketCard(p: {
   <!-- Bet boxes -->
   ${betBoxes}
 
-  <!-- Guide -->
-  ${guideText}
-
   <!-- CTA -->
-  <rect x="${cx - 240}" y="${ctaY}" width="480" height="36" rx="18" fill="${BTC}"/>
+  <rect x="${cx - 240}" y="${ctaY}" width="480" height="${ctaH}" rx="18" fill="${BTC}"/>
   <text x="${cx}" y="${ctaY + 25}" text-anchor="middle" font-size="16" fill="#fff" font-weight="bold" font-family="sans-serif">
     ${settled ? "RESULTS ANNOUNCED" : "BET NOW → pwsats.com"}</text>
+
+  <!-- Guide -->
+  ${guideText}
 </svg>`;
 
   return svgToBase64Png(svg, H);
