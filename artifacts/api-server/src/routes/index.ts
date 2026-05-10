@@ -21,6 +21,6 @@ router.use(withdrawRouter);
 router.use(sportsRouter);
 router.use(sportsPolyRouter);
 router.use(weatherRouter);
-router.use(nostrRouter);
+router.use("/admin/nostr", nostrRouter);
 
 export default router;

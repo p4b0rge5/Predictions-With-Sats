@@ -1,4 +1,4 @@
-import { runAllSeeds } from "@workspace/db";
+import { runAllSeeds } from "@workspace/db/seed";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startMarketEngine } from "./lib/market";

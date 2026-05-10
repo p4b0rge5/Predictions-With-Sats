@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./db": "./src/db.ts",
     "./schema": "./src/schema/index.ts",
+    "./schema/sport-markets": "./src/schema/sport-markets.ts",
     "./seed": "./src/seed.ts"
   },
   "scripts": {

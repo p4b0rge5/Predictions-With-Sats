@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { testNostrPost } from "../lib/nostr";
 import { publishSportMarketCreated } from "../lib/nostr-publisher";
+import { publishMarketDigest } from "../lib/nostr-digest";
 import { db, sportMarketsTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 
 const router = Router();
 
@@ -57,6 +58,36 @@ router.post("/test-market", async (_req, res) => {
     });
 
     return res.json({ success: true, marketId: latest.id, message: "Test market post published to Nostr" });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// GET /api/admin/nostr/digest
+// Returns the formatted text digest (preview without publishing)
+router.get("/digest", async (_req, res) => {
+  try {
+    const result = await publishMarketDigest();
+    return res.json(result);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// POST /api/admin/nostr/digest
+// Publishes the digest to Nostr (same as GET but explicit intent)
+router.post("/digest", async (_req, res) => {
+  try {
+    const result = await publishMarketDigest();
+    if (!result.success && !process.env.NOSTR_PRIVATE_KEY) {
+      return res.status(200).json({
+        ...result,
+        note: "NOSTR_PRIVATE_KEY not set — text generated but not published",
+      });
+    }
+    return res.json(result);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return res.status(500).json({ error: msg });

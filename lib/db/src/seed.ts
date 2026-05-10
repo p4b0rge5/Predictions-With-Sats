@@ -93,17 +93,19 @@ interface RegisteredSeed {
   fn: SeedFn;
 }
 
-const SEEDS: RegisteredSeed[] = [];
+let SEEDS: RegisteredSeed[] | undefined;
 
 /**
  * Register a seed function. Called from lib/db/src/seed/scripts/*.ts files
  * which are imported by the registry at the bottom of this file.
  */
 export function registerSeed(name: string, fn: SeedFn): void {
+  if (!SEEDS) SEEDS = [];
   SEEDS.push({ name, fn });
 }
 
 function getRegisteredSeeds(): RegisteredSeed[] {
+  if (!SEEDS) SEEDS = [];
   return SEEDS;
 }
 
