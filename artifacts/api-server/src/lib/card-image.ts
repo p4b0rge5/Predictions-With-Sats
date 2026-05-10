@@ -19,7 +19,7 @@ import https from "node:https";
 // ---------------------------------------------------------------------------
 
 const W = 1080;
-const H_SPORT = 420;
+const H_SPORT = 400;
 const H_WEATHER = 360;
 
 const WHITE  = "#fafffe";
@@ -208,8 +208,7 @@ export async function generateSportMarketCard(p: {
   const guideY = ctaY + ctaH + gap;
 
   const guideText = `<text x="${cx}" y="${guideY}" text-anchor="middle" font-size="12" fill="${MUTED}" font-family="sans-serif">Pick an outcome · Pay via Lightning (min $0.50) · Winners split the pool (2% fee)</text>
-  <text x="${cx}" y="${guideY + 16}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="sans-serif">Lightning-fast payments · No account · Transparent pools</text>
-  <text x="${cx}" y="${guideY + 30}" text-anchor="middle" font-size="10" fill="${DIM}" font-family="sans-serif">Wallet in, wallet out · Winners split the pool</text>`;
+  <text x="${cx}" y="${guideY + 16}" text-anchor="middle" font-size="10" fill="${tint.accent}" font-family="sans-serif">◆ Lightning-fast · ◆ No account · ◆ Transparent pools · ◆ Wallet in, wallet out</text>`;
 
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
