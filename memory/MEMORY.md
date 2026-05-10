@@ -162,6 +162,10 @@ GITHUB_CLONE_URL="https://p4b0rge5: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@gith
 5. **Cert ownership** — manual `caddy run` as root saves certs to `/root/.local/share/caddy/` → systemd (user `caddy`) can't read them. Clear both cert dirs before restart.
 6. **handle blocks required** — can't mix `reverse_proxy` + `try_files` in same Caddy block
 
+### Deployment Bug Fix (2026-05-10)
+7. **drizzle-kit push needs DATABASE_URL** — The deploy script runs `pnpm --filter @workspace/database exec npx drizzle-kit push` inside `lib/db/`, but `pnpm exec` doesn't source the repo's `.env`. The `drizzle.config.ts` reads `DATABASE_URL` from env, so without it the push silently fails with "DATABASE_URL, ensure the database is provisioned". Fixed by adding `export DATABASE_URL` before the drizzle command in the deploy script.
+8. **Missing columns cause 500 errors** — When `league_logo` column was missing from `sport_markets`, every query against that table returned 500. The fix: `ALTER TABLE sport_markets ADD COLUMN IF NOT EXISTS league_logo text;`. The deploy script's drizzle-kit push should prevent this going forward now that DATABASE_URL is exported.
+
 ### Full deploy skill
 See: `skills/deploy-pwsats-production/SKILL.md`
 
