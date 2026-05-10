@@ -50,6 +50,7 @@ export async function findOrCreateMarket(event: SportEvent) {
       awayTeam: event.awayTeam,
       homeBadge: event.homeBadge,
       awayBadge: event.awayBadge,
+      leagueLogo: event.leagueLogo,
       league: event.league,
       sport: event.sport,
       startsAt: new Date(event.startsAt),
@@ -320,6 +321,7 @@ export async function settleMarket(
     startsAt: market.startsAt,
     homeBadge: market.homeBadge ?? undefined,
     awayBadge: market.awayBadge ?? undefined,
+    leagueLogo: market.leagueLogo ?? undefined,
     outcome,
   }).catch((err) =>
     logger.warn({ err, marketId }, "Nostr publish failed for settlement"),

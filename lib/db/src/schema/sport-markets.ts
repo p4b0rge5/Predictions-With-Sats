@@ -15,6 +15,7 @@ export const sportMarketsTable = pgTable("sport_markets", {
   awayTeam: text("away_team").notNull(),
   homeBadge: text("home_badge"),
   awayBadge: text("away_badge"),
+  leagueLogo: text("league_logo"),
   league: text("league").notNull(),
   sport: text("sport").notNull(),
   startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
