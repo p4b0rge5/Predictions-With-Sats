@@ -210,6 +210,9 @@ log "Step 5: Applying Drizzle schema migrations"
 $SSH "set -e
 cd ${REMOTE_PATH}
 
+# Load DATABASE_URL from .env so drizzle-kit can connect
+export DATABASE_URL='postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}'
+
 # Run Drizzle push to sync schema with production DB
 # This adds/alters columns and tables WITHOUT dropping data
 pnpm --filter @workspace/database exec npx drizzle-kit push
