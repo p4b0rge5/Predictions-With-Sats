@@ -150,6 +150,9 @@ export async function generateSportMarketCard(p: {
   const leagueNameX = leagueX + leagueLogoSize + 8;
   const headerY = 18;
 
+  // Time aligned to right edge of AWAY box
+  const timeX = hasDraw ? b3x + boxW : b2x + boxW;
+
   // Team layout
   const badgeSize = 76;
   const hx = 360, ax = 720;
@@ -213,7 +216,7 @@ export async function generateSportMarketCard(p: {
   <!-- Header: league logo + name aligned to HOME box, time on right -->
   <g transform="translate(${leagueX}, ${headerY - 5})">${lb}</g>
   <text x="${leagueNameX}" y="${headerY + 5}" font-size="11" fill="${DIM}" font-family="sans-serif" letter-spacing="2">${esc(p.league.toUpperCase())}</text>
-  <text x="${W - PAD}" y="${headerY + 5}" text-anchor="end" font-size="11" fill="${DIM}" font-family="sans-serif">🕐 ${settled ? "SETTLED" : `${dateStr}, ${timeStr}`}</text>
+  <text x="${timeX}" y="${headerY + 5}" text-anchor="end" font-size="11" fill="${DIM}" font-family="sans-serif">🕐 ${settled ? "SETTLED" : `${dateStr}, ${timeStr}`}</text>
 
   ${outcomeEl}
 
