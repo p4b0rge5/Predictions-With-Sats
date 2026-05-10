@@ -71,6 +71,44 @@ A pre-commit hook at `.git/hooks/pre-commit` syncs this MEMORY.md from the works
 
 ---
 
+## Database Backup System
+
+### Automatic Backups (crontab — survives agent rebuild)
+Crontab (root) runs `scripts/backup-prod-db.sh` at 00:00 and 12:00 daily:
+```
+0 0,12 * * * cd /opt/baal-agent/workspace/Predictions-With-Sats && source .env.deploy && ./scripts/backup-prod-db.sh >> .runtime/logs/backup-prod-db.log 2>&1
+```
+- SSH to prod → `sudo -u postgres pg_dump` → gzip → `backups/`
+- Retention: 30 days, automatic cleanup
+- Each backup: `backups/pwsats-prod-backup-YYYYMMDD-HHMMSS.sql.gz`
+- Date-indexed copy: `backups/pwsats-prod-backup-YYYY-MM-DD.sql.gz`
+- Credentials in `.env.deploy` (gitignored, stored at repo root)
+
+### After Agent Rebuild (CRITICAL — do this FIRST)
+If the dev environment is rebuilt from scratch, the **crontab is lost**. Restore it:
+```bash
+cd /opt/baal-agent/workspace/Predictions-With-Sats
+echo '0 0,12 * * * cd /opt/baal-agent/workspace/Predictions-With-Sats && source .env.deploy && ./scripts/backup-prod-db.sh >> .runtime/logs/backup-prod-db.log 2>&1' | crontab -
+```
+Verify with `crontab -l`.
+
+### Manual Backup
+```bash
+cd /opt/baal-agent/workspace/Predictions-With-Sats
+source .env.deploy && ./scripts/backup-prod-db.sh
+```
+
+### Restore from Backup
+```bash
+# Restore latest backup to dev DB:
+gunzip -c backups/pwsats-prod-backup-$(date +%Y-%m-%d).sql.gz | psql -U pwsats pwsats_db
+
+# Restore backup to production (use the existing script):
+./scripts/restore-dump-to-production.sh
+```
+
+---
+
 ## Deployment
 
 ### Deployment — Two Scripts
