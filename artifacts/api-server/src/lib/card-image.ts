@@ -147,11 +147,11 @@ export async function generateSportMarketCard(p: {
   const cx = W / 2;
   const PAD = 24;
 
-  // Bet boxes — these are the anchor for left alignment
-  const boxW = hasDraw ? 310 : 490;
-  const boxH = 56;
-  const boxGap = 20;
-  const boxSX = hasDraw ? 35 : 45;
+  // Bet boxes — narrower to fit card better
+  const boxW = hasDraw ? 260 : 380;
+  const boxH = 48;
+  const boxGap = 16;
+  const boxSX = hasDraw ? 45 : 60;
   const b1x = boxSX, b2x = boxSX + boxW + boxGap, b3x = boxSX + (boxW + boxGap) * 2;
   const boxY = 175;
 
@@ -202,15 +202,15 @@ export async function generateSportMarketCard(p: {
   // Bet boxes — label only, no sats
   const betBoxes = hasDraw
     ? `<rect x="${b1x}" y="${boxY}" width="${boxW}" height="${boxH}" rx="8" fill="${HOME_C}" fill-opacity="0.10" stroke="${HOME_C}" stroke-width="1.5"/>
-    <text x="${b1x + boxW/2}" y="${boxY + 34}" text-anchor="middle" font-size="17" fill="${HOME_C}" font-weight="bold" font-family="sans-serif">↑ HOME</text>
+    <text x="${b1x + boxW/2}" y="${boxY + 29}" text-anchor="middle" font-size="15" fill="${HOME_C}" font-weight="bold" font-family="sans-serif">↑ HOME</text>
     <rect x="${b2x}" y="${boxY}" width="${boxW}" height="${boxH}" rx="8" fill="${DRAW_C}" fill-opacity="0.10" stroke="${DRAW_C}" stroke-width="1.5"/>
-    <text x="${b2x + boxW/2}" y="${boxY + 34}" text-anchor="middle" font-size="17" fill="${DRAW_C}" font-weight="bold" font-family="sans-serif">= DRAW</text>
+    <text x="${b2x + boxW/2}" y="${boxY + 29}" text-anchor="middle" font-size="15" fill="${DRAW_C}" font-weight="bold" font-family="sans-serif">= DRAW</text>
     <rect x="${b3x}" y="${boxY}" width="${boxW}" height="${boxH}" rx="8" fill="${AWAY_C}" fill-opacity="0.10" stroke="${AWAY_C}" stroke-width="1.5"/>
-    <text x="${b3x + boxW/2}" y="${boxY + 34}" text-anchor="middle" font-size="17" fill="${AWAY_C}" font-weight="bold" font-family="sans-serif">↓ AWAY</text>`
+    <text x="${b3x + boxW/2}" y="${boxY + 29}" text-anchor="middle" font-size="15" fill="${AWAY_C}" font-weight="bold" font-family="sans-serif">↓ AWAY</text>`
     : `<rect x="${b1x}" y="${boxY}" width="${boxW}" height="${boxH}" rx="8" fill="${HOME_C}" fill-opacity="0.10" stroke="${HOME_C}" stroke-width="1.5"/>
-    <text x="${b1x + boxW/2}" y="${boxY + 34}" text-anchor="middle" font-size="17" fill="${HOME_C}" font-weight="bold" font-family="sans-serif">↑ HOME</text>
+    <text x="${b1x + boxW/2}" y="${boxY + 29}" text-anchor="middle" font-size="15" fill="${HOME_C}" font-weight="bold" font-family="sans-serif">↑ HOME</text>
     <rect x="${b2x}" y="${boxY}" width="${boxW}" height="${boxH}" rx="8" fill="${AWAY_C}" fill-opacity="0.10" stroke="${AWAY_C}" stroke-width="1.5"/>
-    <text x="${b2x + boxW/2}" y="${boxY + 34}" text-anchor="middle" font-size="17" fill="${AWAY_C}" font-weight="bold" font-family="sans-serif">↓ AWAY</text>`;
+    <text x="${b2x + boxW/2}" y="${boxY + 29}" text-anchor="middle" font-size="15" fill="${AWAY_C}" font-weight="bold" font-family="sans-serif">↓ AWAY</text>`;
 
   // CTA below boxes, guide below CTA — balanced spacing
   const gap = 28;
@@ -247,7 +247,7 @@ export async function generateSportMarketCard(p: {
   ${betBoxes}
 
   <!-- CTA -->
-  <rect x="${cx - 240}" y="${ctaY}" width="480" height="${ctaH}" rx="18" fill="${BTC}"/>
+  <rect x="${cx - 200}" y="${ctaY}" width="400" height="${ctaH}" rx="18" fill="${BTC}"/>
   <text x="${cx}" y="${ctaY + 25}" text-anchor="middle" font-size="16" fill="#fff" font-weight="bold" font-family="sans-serif">
     ${settled ? "RESULTS ANNOUNCED" : "BET NOW → pwsats.com"}</text>
 
