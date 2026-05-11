@@ -134,19 +134,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Zap className="h-3.5 w-3.5 text-yellow-400" />
                 <span>Open app</span>
               </NavLink>
-            ) : null}
-
-            <NavLink
-              to="/app/my-bets"
-              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold font-mono tracking-wide transition-all ${
-                myBetsActive
-                  ? "chip-tint-emerald text-emerald-300"
-                  : "bg-background/70 text-muted-foreground border-border/50 hover:border-border hover:bg-muted/40 hover:text-foreground"
-              }`}
-            >
-              <Wallet className="h-3.5 w-3.5 text-emerald-400" />
-              <span>My bets</span>
-            </NavLink>
+            ) : (
+              <NavLink
+                to="/app/my-bets"
+                className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold font-mono tracking-wide transition-all ${
+                  myBetsActive
+                    ? "chip-tint-emerald text-emerald-300"
+                    : "bg-background/70 text-muted-foreground border-border/50 hover:border-border hover:bg-muted/40 hover:text-foreground"
+                }`}
+              >
+                <Wallet className="h-3.5 w-3.5 text-emerald-400" />
+                <span>My bets</span>
+              </NavLink>
+            )}
 
             <Button
               variant="ghost"
