@@ -151,7 +151,6 @@ export async function publishWeatherMarketCreated(market: {
 
     if (market.outcomes && market.outcomes.length > 0) {
       outcomesText = market.outcomes
-        .slice(0, 8)
         .map((o, i) => `${emojis[i % emojis.length]} ${o.label}`)
         .join("\n");
       betOptions = `Pick the temperature`;
