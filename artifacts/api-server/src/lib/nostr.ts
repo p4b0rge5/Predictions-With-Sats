@@ -32,7 +32,8 @@ const DEFAULT_RELAYS = [
   "wss://relay.nostr.band",
   "wss://nos.lol",
   "wss://relay.nosver.se",
-  "wss://purplepag.es",
+  // NOTE: purplepag.es blocks kind 1 events (only accepts kind 0 metadata).
+  // Do not re-add.
 ];
 
 function getRelays(): string[] {
