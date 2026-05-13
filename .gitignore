@@ -42,7 +42,8 @@ testem.log
 Thumbs.db
 
 # local environment files
-.env
+# .env is versioned in this repo (see README.md)
+# .env.deploy contains local deploy overrides
 .env.deploy
 !.env.example
 

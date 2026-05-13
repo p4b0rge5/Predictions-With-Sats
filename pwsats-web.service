@@ -1,0 +1,22 @@
+[Unit]
+Description=Predictions With Sats - Web Frontend (Vite Preview)
+After=pwsats-api.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/baal-agent/workspace/Predictions-With-Sats/artifacts/predictions-with-sats-web
+Environment=PORT=3000
+Environment=NODE_ENV=production
+Environment=BASE_PATH=/
+Environment=API_PORT=3001
+Environment=NODE_PATH=/root/.nvm/versions/node/v22.22.2/lib/node_modules
+ExecStart=/root/.nvm/versions/node/v22.22.2/bin/node /root/.nvm/versions/node/v22.22.2/lib/node_modules/vite/bin/vite.mjs preview --port 3000 --host 0.0.0.0
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pwsats-web
+
+[Install]
+WantedBy=multi-user.target
