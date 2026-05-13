@@ -1,20 +1,21 @@
 /**
- * NBA data — powered by api-sports.io Basketball API
+ * NBA data — ESPN (primary, free, no rate limits) + API-Sports (fallback)
  *
- * Base URL: https://v1.basketball.api-sports.io
- * Same API key as API-Football (x-apisports-key header).
+ * ESPN: Single call to /apis/v2/scoreboard/header returns all active sports
+ * API-Sports: https://v1.basketball.api-sports.io (100 req/day, same key as Football)
  *
  * NBA has NO draws — outcomes are always "home" or "away" (OT decides ties).
- * Event IDs are prefixed with "nba_" to avoid collision with football IDs.
+ * Event IDs are prefixed with "nba_" (API-Sports) or "espn_basketball_" (ESPN).
  *
- * Free plan: 100 req/day per API.
- * Request budget: today + tomorrow + yesterday = 3 req per cache refresh (1h TTL → ~72/day).
+ * Request budget (API-Sports only, ESPN is free):
+ *   today + tomorrow + yesterday = 3 req per cache refresh (1h TTL → ~72/day).
  */
 
 import { logger } from "./logger";
 import { reserveSportsRequests } from "./sports-request-budget";
 import type { SportEvent } from "./sports";
 import { getSportsDateWindowStrings } from "./sports-date-window";
+import { getEspnNbaEvents } from "./espn-multi";
 
 const API_NBA_BASE = "https://v1.basketball.api-sports.io";
 const API_NBA_KEY  = process.env.API_FOOTBALL_KEY ?? "";
@@ -171,6 +172,44 @@ let refreshPromise: Promise<{ upcoming: SportEvent[]; live: SportEvent[]; finish
 // ---------------------------------------------------------------------------
 
 export async function getNbaEvents(forceRefresh = false): Promise<{
+  upcoming:  SportEvent[];
+  live:      SportEvent[];
+  finished:  SportEvent[];
+  suspended: boolean;
+}> {
+  // ESPN primary: free, no rate limits
+  const espnEvents = await getEspnNbaEvents(forceRefresh);
+  const espnTotal = espnEvents.upcoming.length + espnEvents.live.length + espnEvents.finished.length;
+  if (espnTotal > 0) {
+    logger.info({ total: espnTotal }, "NBA: ESPN has data, using ESPN only");
+    // Merge with API-Sports cache if ESPN is partial
+    if (espnTotal < 10) {
+      const apiData = await fetchNbaFromApiSports(forceRefresh);
+      // Merge: combine ESPN and API-Sports, deduplicate by id
+      const seen = new Set<string>();
+      const merged = [...espnEvents.upcoming, ...apiData.upcoming]
+        .filter((e) => { if (seen.has(e.id)) return false; seen.add(e.id); return true; })
+        .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+      const mergedLive = [...espnEvents.live, ...apiData.live]
+        .filter((e) => { if (seen.has(e.id)) return false; seen.add(e.id); return true; });
+      const mergedFinished = [...espnEvents.finished, ...apiData.finished]
+        .filter((e) => { if (seen.has(e.id)) return false; seen.add(e.id); return true; })
+        .slice(0, 30);
+      return { upcoming: merged, live: mergedLive, finished: mergedFinished, suspended: false };
+    }
+    return {
+      upcoming:  espnEvents.upcoming,
+      live:      espnEvents.live,
+      finished:  espnEvents.finished,
+      suspended: false,
+    };
+  }
+
+  // Fallback to API-Sports
+  return fetchNbaFromApiSports(forceRefresh);
+}
+
+async function fetchNbaFromApiSports(forceRefresh = false): Promise<{
   upcoming:  SportEvent[];
   live:      SportEvent[];
   finished:  SportEvent[];

@@ -18,6 +18,7 @@ import { logger } from "./logger";
 import { reserveSportsRequests } from "./sports-request-budget";
 import type { SportEvent } from "./sports";
 import { getSportsDateWindowStrings } from "./sports-date-window";
+import { getEspnMlbEvents } from "./espn-multi";
 
 const API_MLB_BASE = "https://v1.baseball.api-sports.io";
 const API_MLB_KEY  = process.env.API_FOOTBALL_KEY ?? "";
@@ -211,6 +212,15 @@ export async function getMlbEvents(forceRefresh = false): Promise<{
   finished:  SportEvent[];
   suspended: boolean;
 }> {
+  // ESPN primary: free, no rate limits
+  const espnEvents = await getEspnMlbEvents(forceRefresh);
+  const espnTotal = espnEvents.upcoming.length + espnEvents.live.length + espnEvents.finished.length;
+  if (espnTotal > 0) {
+    logger.info({ total: espnTotal }, "MLB: ESPN has data, using ESPN");
+    return { upcoming: espnEvents.upcoming, live: espnEvents.live, finished: espnEvents.finished, suspended: false };
+  }
+
+  // Fallback: API-Sports
   if (isMlbOffseason()) {
     return { upcoming: [], live: [], finished: [], suspended: false };
   }

@@ -15,6 +15,7 @@
  */
 
 import { logger } from "./logger";
+import { getEspnNhlEvents } from "./espn-multi";
 import { reserveSportsRequests } from "./sports-request-budget";
 import type { SportEvent } from "./sports";
 
@@ -184,6 +185,15 @@ export async function getHockeyEvents(forceRefresh = false): Promise<{
   finished:  SportEvent[];
   suspended: boolean;
 }> {
+  // ESPN primary: free, no rate limits
+  const espnEvents = await getEspnNhlEvents(forceRefresh);
+  const espnTotal = espnEvents.upcoming.length + espnEvents.live.length + espnEvents.finished.length;
+  if (espnTotal > 0) {
+    logger.info({ total: espnTotal }, "Hockey: ESPN has data, using ESPN");
+    return { upcoming: espnEvents.upcoming, live: espnEvents.live, finished: espnEvents.finished, suspended: false };
+  }
+
+  // Fallback: API-Sports
   const cacheAge = Date.now() - hockeyCache.fetchedAt;
   const canForce = forceRefresh && cacheAge >= FORCE_REFRESH_COOLDOWN_MS;
   if (!canForce && cacheAge < CACHE_TTL_MS) {
