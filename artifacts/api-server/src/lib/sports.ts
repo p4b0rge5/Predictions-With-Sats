@@ -1,12 +1,19 @@
 /**
- * Sports data — powered by API-Football (api-sports.io)
+ * Sports data — powered by ESPN API (primary, no key) + API-Football (fallback)
  *
- * Free plan constraints (100 req/day):
- *  - Date-based queries (?date=YYYY-MM-DD) work without season parameter
- *  - Cannot use ?next=N / ?last=N / ?season=2025
- *  - Fixture lookup by ID works for settlement
+ * ESPN API (free, no auth, no rate limits):
+ *  - Single call returns ALL soccer leagues + NBA/NFL/NHL/MLB/etc.
+ *  - Response: ~50KB gzipped with scores, status, team badges, form, odds
+ *  - Covers: Premier League, La Liga, Serie A, Bundesliga, Ligue 1,
+ *    Primeira Liga, Brasileirão, MLS, Europa League
+ *  - Does NOT cover: Champions League (400 off-season), Championship, Liga MX
  *
- * Request budget:
+ * API-Football (100 req/day free plan):
+ *  - Fallback for leagues ESPN doesn't cover (Champions League, etc.)
+ *  - Date-based queries (?date=YYYY-MM-DD)
+ *  - Fixture lookup by ID for settlement
+ *
+ * Request budget (API-Football only):
  *  - Fetch today + tomorrow: 2 req per cache refresh (1h TTL → ~48/day)
  *  - Settlement lookup: 1 req per open market per check (~<30/day)
  */
@@ -14,6 +21,7 @@
 import { logger } from "./logger";
 import { reserveSportsRequests } from "./sports-request-budget";
 import { getSportsDateWindowStrings } from "./sports-date-window";
+import { getEspnSoccerEvents, fetchEspnSoccerMatch } from "./espn-soccer";
 
 const API_FOOTBALL_BASE = "https://v3.football.api-sports.io";
 const API_FOOTBALL_KEY  = process.env.API_FOOTBALL_KEY ?? "";
@@ -238,73 +246,100 @@ export async function getSportsEvents(forceRefresh = false): Promise<{
   }
 
   refreshPromise = (async () => {
-    const dateWindow = getSportsDateWindowStrings();
-    const dateFetches = await Promise.allSettled(
-      dateWindow.map((date) => apiFetch(`/fixtures?date=${date}`)),
-    );
+    // Primary: ESPN (free, no key, covers 8 major leagues in one call)
+    let espnResults = { upcoming: [] as SportEvent[], live: [] as SportEvent[], finished: [] as SportEvent[], suspended: false };
+    try {
+      espnResults = await getEspnSoccerEvents(forceRefresh);
+    } catch (err) {
+      logger.warn({ err }, "ESPN soccer fetch failed, relying on API-Football fallback");
+    }
 
-    const allFixtures: ApiFixture[] = [];
-    let apiErrored = false;
+    // Fallback: API-Football for leagues ESPN doesn't cover
+    let afResults = { upcoming: [] as SportEvent[], live: [] as SportEvent[], finished: [] as SportEvent[] };
+    const hasApiKey = !!API_FOOTBALL_KEY;
 
-    for (const result of dateFetches) {
-      if (result.status === "fulfilled") {
-        const data = result.value;
-        if (hasApiErrors(data.errors)) {
-          logger.warn({ errors: data.errors }, "API-Football returned errors");
-          apiErrored = true;
+    if (hasApiKey) {
+      try {
+        const dateWindow = getSportsDateWindowStrings();
+        const dateFetches = await Promise.allSettled(
+          dateWindow.map((date) => apiFetch(`/fixtures?date=${date}`)),
+        );
+
+        const allFixtures: ApiFixture[] = [];
+        let apiErrored = false;
+
+        for (const result of dateFetches) {
+          if (result.status === "fulfilled") {
+            const data = result.value;
+            if (hasApiErrors(data.errors)) {
+              logger.warn({ errors: data.errors }, "API-Football returned errors");
+              apiErrored = true;
+            }
+            allFixtures.push(...(data.response ?? []));
+          } else {
+            logger.warn({ err: result.reason }, "API-Football date fetch failed");
+            apiErrored = true;
+          }
         }
-        allFixtures.push(...(data.response ?? []));
-      } else {
-        logger.warn({ err: result.reason }, "API-Football date fetch failed");
-        apiErrored = true;
+
+        if (!apiErrored || allFixtures.length > 0) {
+          const filtered = allFixtures.filter((f) => LEAGUE_IDS.has(f.league.id));
+          const now      = Date.now();
+          const mapped   = filtered
+            .map(mapFixture)
+            .map((ev) => ({ ...ev, status: normalizeEventStatus(ev, now) }));
+
+          afResults = {
+            upcoming: mapped
+              .filter((ev) => ev.status === "upcoming" && new Date(ev.startsAt).getTime() > now)
+              .sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+            live: mapped
+              .filter((ev) => ev.status === "live")
+              .sort((a, b) => b.startsAt.localeCompare(a.startsAt)),
+            finished: mapped
+              .filter((ev) => ev.status === "finished")
+              .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
+              .slice(0, 30),
+          };
+        }
+      } catch (err) {
+        logger.warn({ err }, "API-Football fetch failed");
       }
     }
 
-    if (apiErrored && allFixtures.length === 0) {
-      cache.fetchedAt = Date.now() - CACHE_TTL_MS + CACHE_ERROR_TTL_MS;
-      const hasStale = cache.upcoming.length > 0 || cache.live.length > 0 || cache.finished.length > 0;
-      cache.suspended = !hasStale;
-      logger.warn({ hasStale }, hasStale
-        ? "API-Football error — serving stale cache without suspension"
-        : "API-Football error — no stale data available, suspending");
-      return { upcoming: cache.upcoming, live: cache.live, finished: cache.finished, suspended: cache.suspended };
-    }
+    // Merge: ESPN events (prefix espn_) + API-Football events (numeric ids)
+    // Deduplicate by id (they use different ID formats so no collision)
+    const now = Date.now();
 
-    const filtered = allFixtures.filter((f) => LEAGUE_IDS.has(f.league.id));
-    const now      = Date.now();
-    const mapped   = filtered
-      .map(mapFixture)
-      .map((ev) => ({ ...ev, status: normalizeEventStatus(ev, now) }));
-
-    const upcoming = mapped
-      .filter((ev) => {
-        if (ev.status !== "upcoming") return false;
-        const kickoff = new Date(ev.startsAt).getTime();
-        return kickoff > now;
-      })
+    const combinedUpcoming = [...espnResults.upcoming, ...afResults.upcoming]
       .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-
-    const live = mapped
-      .filter((ev) => ev.status === "live")
-      .sort((a, b) => b.startsAt.localeCompare(a.startsAt));
-
-    const finished = mapped
-      .filter((ev) => ev.status === "finished")
+    const combinedLive     = [...espnResults.live,     ...afResults.live];
+    const combinedFinished = [...espnResults.finished, ...afResults.finished]
       .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
-      .slice(0, 30);
+      .slice(0, 40);
 
-    cache.upcoming  = upcoming;
-    cache.live      = live;
-    cache.finished  = finished;
-    cache.fetchedAt = Date.now();
-    cache.suspended = false;
+    const suspended = espnResults.suspended && (!hasApiKey || afResults.upcoming.length === 0);
 
+    cache.upcoming  = combinedUpcoming;
+    cache.live      = combinedLive;
+    cache.finished  = combinedFinished;
+    cache.fetchedAt = now;
+    cache.suspended = suspended;
+
+    const espnCount = espnResults.upcoming.length + espnResults.live.length + espnResults.finished.length;
+    const afCount   = afResults.upcoming.length + afResults.live.length + afResults.finished.length;
     logger.info(
-      { upcoming: upcoming.length, live: live.length, finished: finished.length, total: filtered.length },
-      "API-Football fixtures refreshed",
+      {
+        upcoming: combinedUpcoming.length,
+        live: combinedLive.length,
+        finished: combinedFinished.length,
+        espn: espnCount,
+        apiFootball: afCount,
+      },
+      "Soccer fixtures refreshed (ESPN + API-Football)",
     );
 
-    return { upcoming: cache.upcoming, live: cache.live, finished: cache.finished, suspended: false };
+    return { upcoming: cache.upcoming, live: cache.live, finished: cache.finished, suspended: cache.suspended };
   })();
   refreshPromise.catch(() => {}).finally(() => { refreshPromise = null; });
 
@@ -320,6 +355,15 @@ export async function getSportsEvents(forceRefresh = false): Promise<{
 // ---------------------------------------------------------------------------
 
 export async function fetchFixtureById(fixtureId: string): Promise<SportEvent | null> {
+  // If this is an ESPN event ID, use ESPN lookup directly
+  if (fixtureId.startsWith("espn_")) {
+    try {
+      return await fetchEspnSoccerMatch(fixtureId);
+    } catch {
+      return null;
+    }
+  }
+  // Otherwise use API-Football
   try {
     const data = await apiFetch(`/fixtures?id=${fixtureId}`);
     const f = data.response?.[0];

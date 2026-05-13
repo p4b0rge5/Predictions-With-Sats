@@ -16,6 +16,7 @@ import { logger } from "./logger";
 import { markMarketFinished, settleMarket, tryEarlyRefund } from "./sports-market";
 import { shouldRunStartupPrewarm, recordStartupPrewarm } from "./sports-request-budget";
 import { getSportsEvents, fetchFixtureById } from "./sports";
+import { getEspnSoccerEvents } from "./espn-soccer";
 import { getNbaEvents, fetchNbaGameById } from "./nba";
 import { getNflEvents, fetchNflGameById } from "./nfl";
 import { getMlbEvents, fetchMlbGameById } from "./mlb";
@@ -124,6 +125,7 @@ function sportFromEventId(eventId: string): MarketSport {
   if (eventId.startsWith("rugby_"))      return "rugby";
   if (eventId.startsWith("hockey_"))     return "hockey";
   if (eventId.startsWith("basketball_")) return "basketball";
+  if (eventId.startsWith("espn_"))       return "football"; // ESPN soccer → handled by getSportsEvents
   return "football";
 }
 

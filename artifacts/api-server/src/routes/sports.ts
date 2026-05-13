@@ -14,7 +14,7 @@ import { Router, type IRouter, type Request } from "express";
 import { randomUUID, createHash } from "node:crypto";
 import { db, sportBetsTable, sportMarketsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { getSportsEvents, type SportEvent } from "../lib/sports";
+import { getSportsEvents, type SportEvent, fetchFixtureById } from "../lib/sports";
 import { getNbaEvents } from "../lib/nba";
 import { getNflEvents } from "../lib/nfl";
 import { getMlbEvents } from "../lib/mlb";
