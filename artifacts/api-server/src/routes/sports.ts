@@ -22,7 +22,7 @@ import { getMmaEvents } from "../lib/mma";
 import { getRugbyEvents } from "../lib/rugby";
 import { getHockeyEvents } from "../lib/hockey";
 import { getBasketballEvents } from "../lib/basketball";
-import { findOrCreateMarket, addToPool, markMarketFinished } from "../lib/sports-market";
+import { findOrCreateMarket, addToPool, markMarketFinished, syncAndPublishNewMarkets } from "../lib/sports-market";
 import { createInvoice } from "../lib/alby";
 import { coinosPayInvoice } from "../lib/coinos";
 import { logger } from "../lib/logger";
@@ -216,6 +216,15 @@ router.get("/sports/events", async (req, res): Promise<void> => {
         settleSportEvents(req, "hockey",     () => getHockeyEvents()),
         settleSportEvents(req, "basketball", () => getBasketballEvents()),
       ]);
+    }
+
+    // Sync new upcoming events to DB markets + publish Nostr posts
+    // Only runs once per cache refresh — subsequent requests within TTL hit the cache above
+    const allUpcoming = [...soccer.upcoming, ...nba.upcoming, ...nfl.upcoming, ...mlb.upcoming, ...mma.upcoming, ...rugby.upcoming, ...hockey.upcoming, ...basketball.upcoming];
+    try {
+      await syncAndPublishNewMarkets(allUpcoming);
+    } catch (err) {
+      req.log.error({ err }, "Failed to sync new sport markets");
     }
 
     let allMarkets: Array<typeof sportMarketsTable.$inferSelect>;

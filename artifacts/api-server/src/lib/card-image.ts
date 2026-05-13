@@ -87,6 +87,21 @@ function fetchImage(url: string): Promise<string | null> {
   });
 }
 
+/**
+ * Resize a badge URL to a tiny 48×48 PNG and return as base64 (no data: prefix).
+ * Returns null if the URL can't be fetched or resized.
+ */
+export async function resizeBadgeToMini(url: string | null | undefined, size: number = 48): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const data = await fetchImage(url);
+    if (!data) return null;
+    const buf = Buffer.from(data, "base64");
+    const resized = await sharp(buf).resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+    return resized.toString("base64");
+  } catch { return null; }
+}
+
 async function badgeFragment(url: string | null | undefined, name: string, size: number = 80, circular: boolean = false): Promise<string> {
   if (url && circular) {
     try {

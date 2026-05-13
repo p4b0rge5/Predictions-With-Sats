@@ -121,10 +121,17 @@ export async function getOrSyncWeatherMarkets(force = false): Promise<void> {
             np.publishWeatherMarketCreated({
               id: newMarket.id,
               city: newMarket.city,
-              country: newMarket.country,
               question: newMarket.question ?? "",
-              date: newMarket.date,
               threshold: parseFloat(newMarket.threshold),
+              date: newMarket.date,
+              yesSats: getLegacyPools(mergedOutcomes).totalYesSats,
+              noSats: getLegacyPools(mergedOutcomes).totalNoSats,
+              outcomes: mergedOutcomes.map((o) => ({
+                key: o.key,
+                label: o.label,
+                price: o.price,
+                poolSats: o.poolSats,
+              })),
             }),
           )
           .catch((err) =>
@@ -289,13 +296,19 @@ export async function settleWeatherMarket(marketId: number): Promise<void> {
       np.publishWeatherMarketSettled({
         id: market.id,
         city: market.city,
-        country: market.country,
         question: market.question ?? "",
-        date: market.date,
         threshold: parseFloat(market.threshold),
         resolvedValue: market.resolvedValue,
         yesSats: Number(market.totalYesSats),
         noSats: Number(market.totalNoSats),
+        outcome: market.outcome,
+        outcomes: (market.outcomes ?? []).map((o) => ({
+          key: o.key,
+          label: o.label,
+          price: o.price,
+          poolSats: o.poolSats,
+          isWinner: o.isWinner,
+        })),
       }),
     )
     .catch((err) =>

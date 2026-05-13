@@ -61,11 +61,111 @@ export async function findOrCreateMarket(event: SportEvent) {
   logger.info({ marketId: market.id, eventId: event.id }, "Sport market created");
 
   // Publish to Nostr for promotion (fire-and-forget, never blocks creation)
-  publishSportMarketCreated(market).catch((err) =>
+  publishSportMarketCreated({
+    id: market.id,
+    homeTeam: market.homeTeam,
+    awayTeam: market.awayTeam,
+    league: market.league,
+    sport: market.sport,
+    startsAt: market.startsAt,
+    totalHomeSats: market.totalHomeSats,
+    totalDrawSats: market.totalDrawSats,
+    totalAwaySats: market.totalAwaySats,
+    homeBadge: market.homeBadge ?? undefined,
+    awayBadge: market.awayBadge ?? undefined,
+    leagueLogo: market.leagueLogo ?? undefined,
+  }).catch((err) =>
     logger.warn({ err, marketId: market.id }, "Nostr publish failed for new market"),
   );
 
   return market;
+}
+
+// ---------------------------------------------------------------------------
+// Batch sync: create DB markets + Nostr posts for upcoming events without one
+// Called from GET /api/sports/events on cache refresh to ensure markets appear
+// in the Markets tab the moment the API-Football data arrives.
+// ---------------------------------------------------------------------------
+
+export async function syncAndPublishNewMarkets(events: SportEvent[]): Promise<void> {
+  if (events.length === 0) return;
+
+  const eventIds = events.map((ev) => ev.id);
+
+  // Single query: which event IDs already have a market?
+  const existing = await db
+    .select({ eventId: sportMarketsTable.eventId })
+    .from(sportMarketsTable)
+    .where(inArray(sportMarketsTable.eventId, eventIds));
+
+  const existingIds = new Set(existing.map((r) => r.eventId));
+  const newEvents = events.filter((ev) => !existingIds.has(ev.id));
+
+  if (newEvents.length === 0) return;
+
+  logger.info(
+    { count: newEvents.length, total: events.length },
+    "Syncing new sport markets from API-Football",
+  );
+
+  // Create markets in parallel (each is an independent INSERT)
+  const createdMarkets = await Promise.all(
+    newEvents.map(async (ev) => {
+      const [market] = await db
+        .insert(sportMarketsTable)
+        .values({
+          eventId: ev.id,
+          eventName: ev.event,
+          homeTeam: ev.homeTeam,
+          awayTeam: ev.awayTeam,
+          homeBadge: ev.homeBadge,
+          awayBadge: ev.awayBadge,
+          leagueLogo: ev.leagueLogo,
+          league: ev.league,
+          sport: ev.sport,
+          startsAt: new Date(ev.startsAt),
+          status: "open",
+        })
+        .returning();
+      return market;
+    }),
+  );
+
+  // Publish to Nostr: 1 market per league (earliest start), fire-and-forget.
+  // All markets are created in DB; only the representative per league gets posted
+  // to avoid spamming the relay with 100+ posts per refresh.
+  const byLeague = new Map<string, typeof createdMarkets[0]>();
+  for (const m of createdMarkets) {
+    const existing = byLeague.get(m.league);
+    if (!existing || new Date(m.startsAt) < new Date(existing.startsAt)) {
+      byLeague.set(m.league, m);
+    }
+  }
+  const publishCandidates = Array.from(byLeague.values());
+  const delayBetween = 3000; // 3s between posts
+  setImmediate(() => {
+    for (const [i, market] of publishCandidates.entries()) {
+      setTimeout(() => {
+        publishSportMarketCreated({
+          id: market.id,
+          homeTeam: market.homeTeam,
+          awayTeam: market.awayTeam,
+          league: market.league,
+          sport: market.sport,
+          startsAt: market.startsAt,
+          totalHomeSats: market.totalHomeSats,
+          totalDrawSats: market.totalDrawSats,
+          totalAwaySats: market.totalAwaySats,
+          homeBadge: market.homeBadge ?? undefined,
+          awayBadge: market.awayBadge ?? undefined,
+          leagueLogo: market.leagueLogo ?? undefined,
+        }).catch((err) =>
+          logger.warn({ err, marketId: market.id }, "Nostr publish failed for synced market"),
+        );
+      }, i * delayBetween);
+    }
+  });
+  logger.info({ created: createdMarkets.length, leagues: byLeague.size, posting: publishCandidates.length }, "Batch sync complete — Nostr posts scheduled");
 }
 
 export async function getOpenMarkets() {
