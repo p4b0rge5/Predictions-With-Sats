@@ -112,9 +112,9 @@ interface HeaderResponse {
 // ---------------------------------------------------------------------------
 
 const SPORT_MAP: Record<string, SportEvent["sport"]> = {
-  basketball: "basketball",
-  hockey: "hockey",
-  baseball: "baseball",
+  basketball: "Basketball",
+  hockey: "Hockey",
+  baseball: "Baseball",
   soccer: "football",
   // MMA not in ESPN scoreboard
   football: "football",
