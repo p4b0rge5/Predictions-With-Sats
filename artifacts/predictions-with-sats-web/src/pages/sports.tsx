@@ -129,6 +129,7 @@ interface CategoryDef {
 
 const CATEGORIES: CategoryDef[] = [
   { key: "football",          label: "Football",          icon: "⚽", sports: ["football"] },
+  { key: "baseball",          label: "Baseball",          icon: "⚾", sports: ["mlb"] },
   { key: "basketball",        label: "Basketball",        icon: "🏀", sports: ["basketball"] },
   { key: "mma",               label: "MMA",               icon: "🥊", sports: ["mma"] },
   { key: "rugby",             label: "Rugby",             icon: "🏉", sports: ["rugby"] },
