@@ -1184,7 +1184,39 @@ let marketFetchCache:
 const OFFICIAL_METADATA_TTL_MS = 6 * 60 * 60 * 1000;
 const OFFICIAL_TEAMS_GATEWAY_URL = "https://gateway.polymarket.us/v1/sports/teams";
 const TEAM_PAGE_LIMIT = 500;
-const TEAM_MAX_PAGES = 10;
+const TEAM_MAX_PAGES = 15;
+const SPORTS_LEAGUES = [
+  "lal", "epl", "mls", "bun", "fif", "fifa",
+  "nba", "nfl", "nhl", "mlb", "wnba",
+  "ucl", "uel",
+  "cbb", "cfb", "wcbb",
+  "atp", "wta",
+  "ufc",
+  "sea", "cod", "cs2",
+  "lol", "csgo", "valorant", "dota2", "rl", "ow", "starcraft2",
+  "crban", "crbtnmlyhkg20", "crafgwi20", "crafpl", "craus",
+  "criplcl", "cricpakt20cup", "cricps", "cricss", "cricthunderbolt", "cricwncl",
+  "crind", "crnew", "crpak", "crsou", "cru19wc", "cruae",
+  "t20", "test", "odi", "wttmen", "wttwom", "wttc",
+  "por", "arg", "col", "bra", "bra2", "chl", "bol1", "per1", "par", "ecu", "uri",
+  "ligue1", "fr1", "fr2",
+  "seriea", "itc", "bkseriea",
+  "tur", "rou1", "gr1", "gre1",
+  "ned", "ned1",
+  "j1100", "j2100",
+  "kleague",
+  "bl2", "den", "nor", "rus", "sud",
+  "mex", "cfl", "ufl", "npb", "kbo",
+  "ahl", "khl", "shl",
+  "rugby", "urc", "nrl", "superrugby",
+  "euroleague", "bbl", "acb", "lba", "bkarg", "bkfr1", "bkjpn", "bkkbl", "bkcba", "kbl",
+  "mmua", "pfl", "bellator", "one",
+  "pga", "liv", "golf",
+  "bbl", "wbbl",
+  "challenger", "itf",
+  "j1", "j2", "es1", "lmx", "liga", "spl", "csl", "saudi",
+  "fl1", "bra", "arg",
+].filter((v, i, a) => a.indexOf(v) === i);
 
 function hasExplicitTimeComponent(value: string | null): boolean {
   return value !== null && /t\d{2}:\d{2}|\b\d{1,2}:\d{2}\b/i.test(value);
@@ -1354,29 +1386,16 @@ async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOfficialMeta
       });
 
     const teams: PolymarketOfficialTeam[] = [];
-    try {
-      const teamItems = await (async () => {
-        const gatewayPayload = await fetchJson<unknown>(OFFICIAL_TEAMS_GATEWAY_URL);
-        const gatewayTeams =
-          gatewayPayload &&
-          typeof gatewayPayload === "object" &&
-          Array.isArray((gatewayPayload as { teams?: unknown }).teams)
-            ? (gatewayPayload as { teams: unknown[] }).teams
-            : [];
-        if (gatewayTeams.length > 0) return gatewayTeams;
+    const seenIds = new Set<string>();
 
-        const sidecarTeams = await fetchGammaSidecarTeams();
-        if (sidecarTeams) return sidecarTeams;
-
-        return [];
-      })();
-
-      for (const item of teamItems) {
+    // Helper to push unique teams
+    const pushTeams = (items: unknown[]) => {
+      for (const item of items) {
         const team = item as PolymarketTeamLike;
         const id = asString(team.id);
         const name = asString(team.name);
-        if (!id || !name) continue;
-
+        if (!id || !name || seenIds.has(id)) continue;
+        seenIds.add(id);
         teams.push({
           id,
           name,
@@ -1386,10 +1405,50 @@ async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOfficialMeta
           alias: asString(team.alias),
         });
       }
+    };
+
+    try {
+      // Primary: fetch from Gamma API by known sports leagues (fast, targeted)
+      const leagueBatches = await Promise.allSettled(
+        SPORTS_LEAGUES.map((league) =>
+          fetchJson<unknown>(`${GAMMA_API_BASE}/teams?league=${league}&limit=${TEAM_PAGE_LIMIT}`),
+        ),
+      );
+
+      for (const result of leagueBatches) {
+        if (result.status !== "fulfilled") continue;
+        const batch = Array.isArray(result.value) ? result.value : [];
+        pushTeams(batch);
+      }
     } catch (err) {
-      logger.warn({ err }, "Failed to fetch Polymarket gateway teams payload");
+      logger.warn({ err }, "Failed to fetch teams by league from Polymarket Gamma API");
     }
 
+    // Secondary: Polymarket Gateway (fills gaps with legacy IDs/aliases)
+    try {
+      const gatewayPayload = await fetchJson<unknown>(OFFICIAL_TEAMS_GATEWAY_URL);
+      const gatewayTeams =
+        gatewayPayload &&
+        typeof gatewayPayload === "object" &&
+        Array.isArray((gatewayPayload as { teams?: unknown }).teams)
+          ? (gatewayPayload as { teams: unknown[] }).teams
+          : [];
+      pushTeams(gatewayTeams);
+    } catch (err) {
+      logger.warn({ err }, "Failed to fetch teams from Polymarket Gateway");
+    }
+
+    // Tertiary: Gamma sidecar if still empty
+    if (teams.length === 0) {
+      try {
+        const sidecarTeams = await fetchGammaSidecarTeams();
+        if (sidecarTeams) pushTeams(sidecarTeams);
+      } catch (err) {
+        logger.warn({ err }, "Failed to fetch teams from Gamma sidecar");
+      }
+    }
+
+    // Final fallback: paginated Gamma /teams
     if (teams.length === 0) {
       const teamPages = Array.from({ length: TEAM_MAX_PAGES }, (_, index) => index);
       const teamResults = await Promise.allSettled(
@@ -1403,24 +1462,8 @@ async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOfficialMeta
           logger.warn({ err: result.reason }, "Failed to fetch Polymarket teams page");
           continue;
         }
-
         const batch = Array.isArray(result.value) ? result.value : [];
-        for (const item of batch) {
-          const team = item as PolymarketTeamLike;
-          const id = asString(team.id);
-          const name = asString(team.name);
-          if (!id || !name) continue;
-
-          teams.push({
-            id,
-            name,
-            league: asString(team.league),
-            logo: asString(team.logo),
-            abbreviation: asString(team.abbreviation),
-            alias: asString(team.alias),
-          });
-        }
-
+        pushTeams(batch);
         if (batch.length < TEAM_PAGE_LIMIT) break;
       }
     }
