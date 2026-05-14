@@ -149,13 +149,10 @@ export async function listSportsPolyMarkets(): Promise<(typeof sportPolyMarketsT
       return left.eventName.localeCompare(right.eventName);
     });
 
-  const openMarkets = sorted
-    .filter((market) =>
-      market.status === "open" &&
-      market.startsAt >= activeStart &&
-      latestPolymarketRelevance.has(market.externalMarketId),
-    )
-    ;
+  const openMarkets = sorted.filter((market) =>
+    market.status === "open" &&
+    market.startsAt >= activeStart,
+  );
   const settledMarkets = sorted.filter((market) => market.status === "settled");
   return [...openMarkets, ...settledMarkets].map((market) => ({
     ...market,
