@@ -23,7 +23,82 @@ import {
 import { GuidePager, type GuideStep } from "@/components/guide-pager";
 import { ErrorState, LoadingState } from "@/components/query-state";
 import { getCurrentStakePayout, getPoolMultiple, getProjectedPayout } from "@/lib/payout-preview";
-import { SportsPoly } from "@/pages/sports-poly";
+
+// ---------------------------------------------------------------------------
+// Polymarket → SportEvent adapter
+// ---------------------------------------------------------------------------
+
+interface PolyOutcome {
+  key: string;
+  label: string;
+  price: number | null;
+  poolSats: number;
+  isWinner: boolean | null;
+}
+
+interface PolyMarket {
+  id: number;
+  provider: string;
+  eventName: string;
+  homeTeam: string | null;
+  awayTeam: string | null;
+  homeBadge: string | null;
+  awayBadge: string | null;
+  leagueLogo: string | null;
+  league: string;
+  sport: string;
+  startsAt: string;
+  question: string;
+  subtitle: string | null;
+  sourceUrl: string | null;
+  status: "open" | "settled";
+  outcome: string | null;
+  resolvedValue: string | null;
+  settledAt: string | null;
+  outcomes: PolyOutcome[];
+}
+
+function polyToSportEvent(m: PolyMarket): SportEvent {
+  const homeOutcome = m.outcomes.find(o => o.key === "home");
+  const awayOutcome = m.outcomes.find(o => o.key === "away");
+  const drawOutcome = m.outcomes.find(o => o.key === "draw");
+
+  let outcome: "home" | "draw" | "away" | null = null;
+  if (m.outcome) {
+    if (m.outcome.toLowerCase() === m.homeTeam?.toLowerCase()) outcome = "home";
+    else if (m.outcome.toLowerCase() === m.awayTeam?.toLowerCase()) outcome = "away";
+    else outcome = "draw";
+  }
+
+  const isSettled = m.status === "settled";
+
+  return {
+    id: String(m.id),
+    event: m.eventName,
+    homeTeam: m.homeTeam ?? "",
+    awayTeam: m.awayTeam ?? "",
+    homeBadge: m.homeBadge,
+    awayBadge: m.awayBadge,
+    leagueLogo: m.leagueLogo,
+    leagueId: null,
+    league: m.league,
+    sport: m.sport,
+    startsAt: m.startsAt,
+    status: isSettled ? "finished" : "upcoming",
+    elapsed: null,
+    homeScore: null,
+    awayScore: null,
+    outcome,
+    marketId: m.id,
+    totalHomeSats: homeOutcome?.poolSats ?? 0,
+    totalDrawSats: drawOutcome?.poolSats ?? 0,
+    totalAwaySats: awayOutcome?.poolSats ?? 0,
+    marketStatus: m.status,
+    marketOutcome: m.outcome,
+    marketFinishedAt: m.settledAt,
+    marketSettledAt: m.settledAt,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -963,7 +1038,7 @@ function SportBetModal({ event, direction, sportKey, onClose, onRefetch }: Sport
     if (betStatus && betStatus.status !== "pending") return;
     pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(apiUrl(`/api/sports/bets/${paymentHash}`));
+        const res = await fetch(apiUrl(`/api/sports-poly/bets/${paymentHash}`));
         if (!res.ok) return;
         const data = (await res.json()) as SportBetStatus;
         setBetStatus(data);
@@ -1022,10 +1097,10 @@ function SportBetModal({ event, direction, sportKey, onClose, onRefetch }: Sport
     if (!event || !direction) return;
     setCreating(true);
     try {
-      const res = await fetch(apiUrl("/api/sports/bets"), {
+      const res = await fetch(apiUrl("/api/sports-poly/bets"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId: event.id, direction, amountSats: sats }),
+        body: JSON.stringify({ marketId: event.marketId, outcomeKey: direction, amountSats: sats }),
       });
       const data = await res.json() as { paymentHash?: string; paymentRequest?: string; error?: string };
       if (!res.ok || !data.paymentHash) {
@@ -1048,7 +1123,7 @@ function SportBetModal({ event, direction, sportKey, onClose, onRefetch }: Sport
 
   const submitPreimage = async (preimage: string) => {
     if (!paymentHash) return;
-    const res = await fetch(apiUrl(`/api/sports/bets/${paymentHash}/verify-preimage`), {
+    const res = await fetch(apiUrl(`/api/sports-poly/bets/${paymentHash}/verify`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ preimage }),
@@ -1057,7 +1132,7 @@ function SportBetModal({ event, direction, sportKey, onClose, onRefetch }: Sport
       const body = await res.json().catch(() => ({})) as { error?: string };
       throw new Error(body.error ?? "Verification failed");
     }
-    const statusRes = await fetch(apiUrl(`/api/sports/bets/${paymentHash}`));
+    const statusRes = await fetch(apiUrl(`/api/sports-poly/bets/${paymentHash}`));
     if (statusRes.ok) setBetStatus(await statusRes.json() as SportBetStatus);
   };
 
@@ -1553,7 +1628,7 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const reload = async () => {
-    const r = await fetch(apiUrl(`/api/sports/bets/${hash}`));
+    const r = await fetch(apiUrl(`/api/sports-poly/bets/${hash}`));
     if (r.ok) setBet(await r.json() as SportBetRecord);
   };
 
@@ -1572,13 +1647,13 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(apiUrl(`/api/sports/bets/${hash}`));
+        const res = await fetch(apiUrl(`/api/sports-poly/bets/${hash}`));
         if (!res.ok) { setNotFound(true); return; }
         const data = await res.json() as SportBetRecord;
         setBet(data);
         if (shouldPoll(data)) {
           pollRef.current = setInterval(async () => {
-            const r = await fetch(apiUrl(`/api/sports/bets/${hash}`));
+            const r = await fetch(apiUrl(`/api/sports-poly/bets/${hash}`));
             if (!r.ok) return;
             const d = await r.json() as SportBetRecord;
             setBet(d);
@@ -1660,7 +1735,7 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
     setLnPaying(true); setLnError(null);
     try {
       const res = await fetch(
-        `${API_BASE}/api/sports/withdraw/${bet.withdrawToken}/pay-to-address`,
+        `${API_BASE}/api/sports-poly/withdraw/${bet.withdrawToken}/pay-to-address`,
         { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ address: lnAddress.trim().toLowerCase() }) },
       );
@@ -1881,9 +1956,9 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
 function SeparatedSportsBetList({ hashes, onDismiss }: { hashes: string[]; onDismiss: (hash: string) => void }) {
   const statusQueries = useQueries({
     queries: hashes.map((hash) => ({
-      queryKey: [`/api/sports/bets/${hash}`],
+      queryKey: [`/api/sports-poly/bets/${hash}`],
       queryFn: async () => {
-        const r = await fetch(apiUrl(`/api/sports/bets/${hash}`));
+        const r = await fetch(apiUrl(`/api/sports-poly/bets/${hash}`));
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<SportBetRecord>;
       },
@@ -1935,7 +2010,530 @@ function SeparatedSportsBetList({ hashes, onDismiss }: { hashes: string[]; onDis
   );
 }
 
-
 export function Sports() {
-  return <SportsPoly />;
+  const [activeSport, setActiveSport] = useState<SportKey>("football");
+  const [activeLeague, setActiveLeague] = useState<string>("all");
+  const [activeMarketDate, setActiveMarketDate] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<ContentTab>("upcoming");
+  const [data, setData] = useState<{ upcoming: SportEvent[]; live: SportEvent[]; finished: SportEvent[]; suspended: boolean } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string>("Network error. Please try again.");
+  const [betModal, setBetModal] = useState<{ event: SportEvent; direction: Direction } | null>(null);
+  const [betListVersion, setBetListVersion] = useState(0);
+  const [userStakeByMarket, setUserStakeByMarket] = useState<Record<number, Partial<Record<Direction, number>>>>({});
+  const [bridgedImminentEvents, setBridgedImminentEvents] = useState<Record<string, SportEvent>>({});
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // One-time migration: move bets saved under the old monolithic key → football bucket
+  useEffect(() => { migrateLegacySportsBetHashes(); }, []);
+
+  const fetchData = useCallback((quiet = false) => {
+    if (!quiet) { setLoading(true); setError(false); setErrorMessage("Network error. Please try again."); }
+    fetch(apiUrl("/api/sports-poly/markets"))
+      .then(async (r) => {
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}`);
+        }
+        return r.json();
+      })
+      .then((d: PolyMarket[] | null) => {
+        const all = Array.isArray(d) ? d.map(polyToSportEvent) : [];
+        const sportName = SPORTS.find(s => s.key === activeSport)?.sportName ?? activeSport;
+        const filtered = all.filter(ev => {
+          if (activeSport === "football") return ev.sport === "Soccer";
+          if (activeSportDef.eventIdPrefix) return ev.id.startsWith(activeSportDef.eventIdPrefix);
+          return ev.sport === sportName;
+        });
+        const upcoming = filtered.filter(e => e.status === "upcoming").sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+        const finished = filtered.filter(e => e.status === "finished").sort((a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime());
+
+        const nextData = {
+          upcoming,
+          live: [],
+          finished,
+          suspended: false,
+        };
+
+        setData(nextData);
+
+        // Refresh the open bet modal with updated event data (pools, etc.)
+        setBetModal((current) => {
+          if (!current) return current;
+          const freshEvent = [...nextData.upcoming, ...nextData.live].find((e) => e.id === current.event.id);
+          return freshEvent ? { ...current, event: freshEvent } : current;
+        });
+
+        setBridgedImminentEvents((current) => {
+          const next = { ...current };
+          const fetchedAt = Date.now();
+
+          for (const event of nextData.upcoming) {
+            const kickoff = new Date(event.startsAt).getTime();
+            if (kickoff <= fetchedAt + EVENT_IMMINENT_MS) {
+              next[event.id] = event;
+            }
+          }
+
+          for (const event of [...nextData.live, ...nextData.finished]) {
+            delete next[event.id];
+          }
+
+          for (const [eventId, event] of Object.entries(next)) {
+            const kickoff = new Date(event.startsAt).getTime();
+            if (kickoff < fetchedAt - EVENT_IMMINENT_BRIDGE_MS) {
+              delete next[eventId];
+            }
+          }
+
+          return next;
+        });
+        setError(false);
+      })
+      .catch((err: unknown) => {
+        setError(true);
+        setErrorMessage(err instanceof Error ? err.message : "Network error. Please try again.");
+      })
+      .finally(() => setLoading(false));
+  }, [activeSport]);
+
+  useEffect(() => {
+    fetchData();
+    refreshTimerRef.current = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
+    return () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current); };
+  }, [fetchData]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUserStakes = async () => {
+      const hashes = activeSport === "basketball"
+        ? [...new Set([...getSportBetHashesForKey("basketball"), ...getSportBetHashesForKey("nba")])]
+        : getSportBetHashesForKey(activeSport);
+      if (hashes.length === 0) {
+        if (!cancelled) setUserStakeByMarket({});
+        return;
+      }
+
+      try {
+        const responses = await Promise.all(
+          hashes.map(async (hash) => {
+            const res = await fetch(apiUrl(`/api/sports-poly/bets/${hash}`));
+            if (!res.ok) return null;
+            const raw = await res.json();
+            // Poly bet response doesn't include market.id, so we match by eventName → marketId
+            const matchedMarket = data?.upcoming?.find(
+              (ev) => ev.event === raw.market?.eventName
+            ) ?? data?.finished?.find((ev) => ev.event === raw.market?.eventName);
+            return {
+              id: raw.id,
+              paymentHash: raw.paymentHash,
+              direction: raw.direction,
+              amountSats: raw.amountSats,
+              status: raw.status,
+              marketId: matchedMarket?.marketId ?? null,
+            } as SportBetStatus;
+          }),
+        );
+
+        if (cancelled) return;
+
+        const next: Record<number, Partial<Record<Direction, number>>> = {};
+        for (const bet of responses) {
+          if (!bet || bet.marketId === null || !isDirection(bet.direction)) continue;
+          if (bet.status === "pending" || bet.status === "expired") continue;
+          const current = next[bet.marketId] ?? {};
+          current[bet.direction] = (current[bet.direction] ?? 0) + bet.amountSats;
+          next[bet.marketId] = current;
+        }
+        setUserStakeByMarket(next);
+      } catch {
+        if (!cancelled) setUserStakeByMarket({});
+      }
+    };
+
+    loadUserStakes();
+    const timer = setInterval(loadUserStakes, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeSport, betListVersion, data]);
+
+  const activeCategoryDef = CATEGORIES.find((c) => c.sports.includes(activeSport)) ?? CATEGORIES[0]!;
+  const visibleCategories = CATEGORIES;
+  const subcategorySports = activeCategoryDef.sports
+    .map((sk) => SPORTS.find((s) => s.key === sk)!)
+    .filter(Boolean);
+  const showSubcategoryChips = (activeCategoryDef.showSubcategories ?? false) && subcategorySports.length > 0;
+
+  const activeSportDef = SPORTS.find((s) => s.key === activeSport)!;
+  const sportBetHashes = activeSport === "basketball"
+    ? [...new Set([...getSportBetHashesForKey("basketball"), ...getSportBetHashesForKey("nba")])]
+    : getSportBetHashesForKey(activeSport);
+  const now = Date.now();
+  const visibleMarketEvents = data
+    ? data.upcoming.filter(
+        (ev) =>
+          (activeSportDef.eventIdPrefix ? ev.id.startsWith(activeSportDef.eventIdPrefix) : ev.sport === activeSportDef.sportName) &&
+          ev.status === "upcoming" &&
+          new Date(ev.startsAt).getTime() > now,
+      )
+    : [];
+  const leagueOptionsMap = new Map<string, LeagueOption>();
+  for (const event of visibleMarketEvents) {
+    const option = getLeagueOption(event, activeSport);
+    if (!leagueOptionsMap.has(option.value) && option.label.trim().length > 0) {
+      leagueOptionsMap.set(option.value, option);
+    }
+  }
+  const leaguePriority = LEAGUE_PRIORITY[activeSport] ?? [];
+  const availableLeagues = [...leagueOptionsMap.values()].sort((a, b) => {
+    const aRank = leaguePriority.indexOf(a.sortKey);
+    const bRank = leaguePriority.indexOf(b.sortKey);
+    if (aRank !== -1 || bRank !== -1) {
+      if (aRank === -1) return 1;
+      if (bRank === -1) return -1;
+      return aRank - bRank;
+    }
+    return a.label.localeCompare(b.label);
+  });
+  const showLeagueFilter = availableLeagues.length > 0;
+  const leagueScopedMarketEvents = visibleMarketEvents.filter((ev) => activeLeague === "all" || getLeagueOption(ev, activeSport).value === activeLeague);
+  const marketDateOptionsMap = new Map<string, MarketDateOption>();
+  for (const event of leagueScopedMarketEvents) {
+    const option = getEventDateOption(event.startsAt);
+    const existing = marketDateOptionsMap.get(option.value);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      marketDateOptionsMap.set(option.value, { ...option, count: 1 });
+    }
+  }
+  const availableMarketDates = [...marketDateOptionsMap.values()].sort((a, b) => a.sortKey - b.sortKey);
+  const showDateFilter = availableMarketDates.length > 0;
+
+  useEffect(() => {
+    setActiveLeague("all");
+  }, [activeSport]);
+
+  useEffect(() => {
+    setActiveMarketDate("");
+  }, [activeSport, activeLeague]);
+
+  useEffect(() => {
+    if (activeLeague !== "all" && !availableLeagues.some((league) => league.value === activeLeague)) {
+      setActiveLeague("all");
+    }
+  }, [activeLeague, availableLeagues]);
+
+  useEffect(() => {
+    if (!availableMarketDates.some((option) => option.value === activeMarketDate)) {
+      setActiveMarketDate(availableMarketDates[0]?.value ?? "");
+    }
+  }, [activeMarketDate, availableMarketDates]);
+
+  const matchesActiveLeague = (ev: SportEvent) =>
+    activeLeague === "all" || getLeagueOption(ev, activeSport).value === activeLeague;
+  const matchesActiveMarketDate = (ev: SportEvent) =>
+    !activeMarketDate || getLocalDateKey(new Date(ev.startsAt)) === activeMarketDate;
+
+  return (
+    <div className="max-w-4xl mx-auto lg:max-w-6xl space-y-0">
+
+      {/* ── Category chips ── */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
+        {visibleCategories.map((cat) => {
+          const isActive = activeCategoryDef.key === cat.key;
+          return (
+            <button
+              key={cat.key}
+              onClick={() => {
+                const firstSport = cat.sports[0];
+                if (firstSport) setActiveSport(firstSport);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                isActive
+                  ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                  : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+              }`}
+            >
+              <span className="text-sm leading-none">{cat.icon}</span>
+              {cat.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Subcategory chips (visible when category has showSubcategories) ── */}
+      {showSubcategoryChips && (
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
+          {subcategorySports.map((sp) => (
+            <button
+              key={sp.key}
+              onClick={() => setActiveSport(sp.key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                activeSport === sp.key
+                  ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                  : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+              }`}
+            >
+              {sp.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {showLeagueFilter && (
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
+            {availableLeagues.length > 1 && (
+              <button
+                onClick={() => setActiveLeague("all")}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                  activeLeague === "all"
+                    ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                    : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+                }`}
+              >
+                All Leagues
+              </button>
+            )}
+            {availableLeagues.map((league) => (
+              <button
+                key={league.value}
+                onClick={() => setActiveLeague(league.value)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                  activeLeague === league.value || (availableLeagues.length === 1 && activeLeague === "all")
+                    ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                    : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+                }`}
+              >
+                {league.label}
+              </button>
+            ))}
+        </div>
+      )}
+
+      {showDateFilter && (
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
+          {availableMarketDates.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => setActiveMarketDate(option.value)}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-semibold font-mono tracking-wide whitespace-nowrap transition-all shrink-0 border ${
+                activeMarketDate === option.value
+                  ? "bg-yellow-400/20 text-yellow-300 border-yellow-400/50"
+                  : "bg-transparent text-muted-foreground border-border/40 hover:border-border hover:text-foreground"
+              }`}
+            >
+              {option.label} ({option.count})
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Content tabs: Guide | Upcoming | Results ── */}
+      <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40 mb-4">
+        {([
+          { key: "upcoming", label: "Markets" },
+          { key: "guide",    label: "Guide" },
+          { key: "myBets",   label: "My Bets" },
+          { key: "results",  label: "Results" },
+        ] as { key: ContentTab; label: string }[]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={`flex-1 py-1.5 rounded-md text-[11px] font-mono font-medium transition-colors ${
+              activeTab === t.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Guide ── */}
+      {activeTab === "guide" && (() => {
+        const props = { onDone: () => { setActiveTab("upcoming"); window.scrollTo({ top: 0, behavior: "smooth" }); } };
+        if (activeSportDef.key === "football")   return <FootballGuide {...props} />;
+        if (activeSportDef.key === "nba")        return <NBAGuide {...props} />;
+        if (activeSportDef.key === "mlb")        return <MLBGuide {...props} />;
+        if (activeSportDef.key === "mma")        return <MMAGuide {...props} />;
+        if (activeSportDef.key === "rugby")      return <RugbyGuide {...props} />;
+        if (activeSportDef.key === "basketball") return <BasketballGuide {...props} />;
+        return <NFLGuide {...props} />;
+      })()}
+
+      {/* ── My Bets ── */}
+      {activeTab === "myBets" && (
+        <div className="card-stack">
+          <div className="flex items-center justify-between gap-2 pb-1">
+            <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
+              {activeSportDef.icon} {activeSportDef.label} — My Bets
+            </p>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-background/70 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+              <Wallet className="h-3.5 w-3.5 text-emerald-400" />
+              {sportBetHashes.length} saved
+            </span>
+          </div>
+
+          {sportBetHashes.length === 0 ? (
+            <div className="rounded-xl border border-border/50 bg-background/60 p-6 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-border/50 bg-muted/40 text-muted-foreground">
+                <Wallet className="h-5 w-5 text-emerald-400" />
+              </div>
+              <p className="font-mono text-sm text-foreground">No saved {activeSportDef.label} bets yet.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Bets placed in this browser for {activeSportDef.label.toLowerCase()} will appear here automatically.
+              </p>
+            </div>
+          ) : (
+            <SeparatedSportsBetList
+              hashes={sportBetHashes}
+              onDismiss={(hash) => {
+                removeSportBetHashForKey(activeSport, hash);
+                setBetListVersion((current) => current + 1);
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── Upcoming Matches ── */}
+      {activeTab === "upcoming" && (
+        <>
+        <div className="card-stack">
+          {loading && !data && (
+            <LoadingState
+              label={`FETCHING ${activeSportDef.hasDraw ? "MATCHES" : "GAMES"}...`}
+              className="h-40"
+              spinnerClassName="h-5 w-5"
+              labelClassName="text-sm"
+            />
+          )}
+          {error && !loading && (
+            <ErrorState
+              title={`FAILED TO LOAD ${activeSportDef.hasDraw ? "MATCHES" : "GAMES"}`}
+              description={errorMessage}
+              onRetry={() => fetchData()}
+              compact
+              cardClassName="border-red-400/20 bg-background/60"
+            />
+          )}
+          {!error && data && (() => {
+            const isSuspended = data.suspended;
+            const visible = data.upcoming.filter(
+              (ev) =>
+                (activeSportDef.eventIdPrefix ? ev.id.startsWith(activeSportDef.eventIdPrefix) : ev.sport === activeSportDef.sportName) &&
+                ev.status === "upcoming" &&
+                matchesActiveLeague(ev) &&
+                matchesActiveMarketDate(ev) &&
+                new Date(ev.startsAt).getTime() > now
+            );
+            if (isSuspended)
+              return (
+                <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
+                  <AlertCircle className="h-7 w-7 text-amber-400" />
+                  <p className="font-mono text-sm text-amber-400">Sports data temporarily unavailable</p>
+                  <p className="font-mono text-xs opacity-60 text-center">
+                    The {activeSportDef.label} data provider is currently unreachable.<br/>Retrying automatically every 15 minutes.
+                  </p>
+                </div>
+              );
+            if (visible.length === 0)
+              return (
+                <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
+                  <span className="text-4xl">{activeSportDef.icon}</span>
+                  <p className="font-mono text-sm font-semibold">No {activeSportDef.label} {activeSportDef.hasDraw ? "matches" : "games"} available right now</p>
+                  <p className="font-mono text-xs text-center opacity-60 max-w-xs">
+                    There are no open betting markets for {activeSportDef.label} at the moment.<br/>
+                    Check back soon — new markets open regularly!
+                  </p>
+                </div>
+              );
+            return visible.map((ev) => (
+                  <UpcomingCard
+                    key={ev.id}
+                    ev={ev}
+                    sportDef={activeSportDef}
+                    userStakeByDirection={ev.marketId !== null ? userStakeByMarket[ev.marketId] : undefined}
+                    onBet={(dir) => setBetModal({ event: ev, direction: dir })}
+                  />
+                ));
+          })()}
+        </div>
+        <button
+          onClick={() => setActiveTab("guide")}
+          className="w-full text-center text-[11px] text-muted-foreground/60 hover:text-muted-foreground font-mono py-1 transition-colors"
+        >
+          New here? Read the guide →
+        </button>
+        </>
+      )}
+
+      {/* ── Recent Results ── */}
+      {activeTab === "results" && (
+        <div className="card-stack">
+          {loading && !data && (
+            <LoadingState
+              label="FETCHING RESULTS..."
+              className="h-40"
+              spinnerClassName="h-5 w-5"
+              labelClassName="text-sm"
+            />
+          )}
+          {error && !loading && (
+            <ErrorState
+              title="FAILED TO LOAD RESULTS"
+              description={errorMessage}
+              onRetry={() => fetchData()}
+              compact
+              cardClassName="border-red-400/20 bg-background/60"
+            />
+          )}
+          {!error && data && (() => {
+            const isSuspended = data.suspended;
+            const resultCandidates = [
+              ...data.live,
+              ...data.finished,
+              ...data.upcoming.filter((ev) => new Date(ev.startsAt).getTime() <= now),
+              ...Object.values(bridgedImminentEvents).filter((ev) => new Date(ev.startsAt).getTime() <= now),
+            ];
+            const seen = new Set<string>();
+            const visible = resultCandidates
+              .filter((ev) => {
+                if (seen.has(ev.id)) return false;
+                seen.add(ev.id);
+                return (activeSportDef.eventIdPrefix ? ev.id.startsWith(activeSportDef.eventIdPrefix) : ev.sport === activeSportDef.sportName) && matchesActiveLeague(ev);
+              })
+              .sort((left, right) => new Date(right.startsAt).getTime() - new Date(left.startsAt).getTime());
+            if (isSuspended)
+              return (
+                <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
+                  <AlertCircle className="h-7 w-7 text-amber-400" />
+                  <p className="font-mono text-sm text-amber-400">Sports data temporarily unavailable</p>
+                  <p className="font-mono text-xs opacity-60 text-center">
+                    The {activeSportDef.label} data provider is currently unreachable.<br/>Retrying automatically every 15 minutes.
+                  </p>
+                </div>
+              );
+            return visible.length === 0
+              ? <p className="text-center text-muted-foreground text-sm py-10 font-mono">No recent or live results.</p>
+              : visible.map((ev) => <ResultCard key={ev.id} ev={ev} sportDef={activeSportDef} />);
+          })()}
+        </div>
+      )}
+
+      <SportBetModal
+        event={betModal?.event ?? null}
+        direction={betModal?.direction ?? null}
+        sportKey={activeSport}
+        onRefetch={() => fetchData(false)}
+        onClose={() => {
+          setBetModal(null);
+          setBetListVersion((current) => current + 1);
+        }}
+      />
+    </div>
+  );
 }
