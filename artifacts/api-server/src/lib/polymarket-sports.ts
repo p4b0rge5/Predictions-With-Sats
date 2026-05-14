@@ -677,6 +677,92 @@ function getLeagueLogoFallback(
 
   return null;
 }
+// Team badge color palette — deterministic from team name
+const TEAM_BADGE_COLORS = [
+  "#1a73e8", "#2563eb", "#7c3aed", "#c026d3",
+  "#db2777", "#e11d48", "#dc2626", "#ea580c",
+  "#ca8a04", "#65a30d", "#059669", "#0d9488",
+  "#0891b2", "#0284c7", "#4338ca", "#7e22ce",
+];
+
+function hashCode(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function getTeamBadgeColor(name: string): string {
+  const code = hashCode(name);
+  return TEAM_BADGE_COLORS[code % TEAM_BADGE_COLORS.length];
+}
+
+function extractTeamInitials(name: string | null, maxChars = 2): string {
+  if (!name) return "?";
+
+  const cleaned = name
+    .replace(/^\d+\s+/, "")
+    .replace(/\b(?:fc|cf|sc|fk|sk|ec|ca|cd|ud|ac|afc|bc|bk|fbc|club|the|basket|re|de|y|esgrima|saudi|futebol|de\s+futebol|sporting|athletic)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Try to get first letters of significant words
+  const words = cleaned.split(" ").filter(w => w.length >= 1);
+  if (words.length >= maxChars) {
+    return words.slice(0, maxChars).map(w => w[0].toUpperCase()).join("");
+  }
+  // Use first characters of the name
+  return cleaned.substring(0, maxChars).toUpperCase();
+}
+
+function generateTeamBadgeUrl(name: string | null, size = 64): string {
+  if (!name) return "";
+
+  const initials = extractTeamInitials(name);
+  const color = getTeamBadgeColor(name);
+  const bgColor = color;
+  const radius = size / 2;
+  const fontSize = Math.round(size * 0.38);
+  const textX = size / 2;
+  const textY = size / 2 + fontSize * 0.35;
+
+  // Simple SVG with circle + initials
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  <circle cx="${radius}" cy="${radius}" r="${radius}" fill="${bgColor}"/>
+  <text x="${textX}" y="${textY}" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="bold" font-size="${fontSize}" fill="white" dominant-baseline="central">${initials}</text>
+</svg>`;
+
+  const encoded = encodeURIComponent(svg);
+  return `data:image/svg+xml,${encoded}`;
+}
+
+// Extended alias map: common alternate names → canonical name patterns
+const TEAM_NAME_ALIASES: Record<string, string> = {
+  // Basketball
+  "Virginia Cavaliers": "Cavaliers",
+  "Cavaliers": "Cavaliers",
+  // NHL
+  "Wild": "Minnesota Wild",
+  "Avalanche": "Colorado Avalanche",
+  "Canadiens": "Montreal Canadiens",
+  "Ducks": "Anaheim Ducks",
+  "Timberwolves": "Minnesota Timberwolves",
+  "Golden Knights": "Vegas Golden Knights",
+  "Sabres": "Buffalo Sabres",
+  "Spurs": "San Antonio Spurs",
+  "Pistons": "Detroit Pistons",
+  // Soccer — remove prefix abbreviations for matching
+  "CA River Plate": "River Plate",
+  "CF Cruz Azul": "Cruz Azul",
+  "CD Guadalajara": "Guadalajara",
+  "FC Bayern München": "Bayern Munich",
+  "FK Dinamo Moskva": "Dinamo Moscow",
+  "FK Lokomotiv Moskva": "Lokomotiv Moscow",
+  "PFK CSKA Moskva": "CSKA Moscow",
+  "CF Montréal": "Montreal",
+  "Pumas de la UNAM": "Pumas UNAM",
+};
 
 export async function enrichPolymarketOfficialPresentation(
   markets: PolymarketOfficialPresentationInput[],
@@ -686,20 +772,30 @@ export async function enrichPolymarketOfficialPresentation(
   const metadata = await fetchPolymarketOfficialMetadata();
   return markets.map((market) => {
     const usedIds = new Set<string>();
+
+    // Try direct teamId lookup, then fuzzy match, then alias fuzzy match
     const homeTeam =
       (market.homeTeamId ? metadata.teamById.get(market.homeTeamId) ?? null : null) ??
-      findBestOfficialTeam(market.homeTeam, market.league, market.sport, metadata.teams, usedIds);
+      findBestOfficialTeam(market.homeTeam, market.league, market.sport, metadata.teams, usedIds) ??
+      findBestOfficialTeam(resolveTeamAlias(market.homeTeam), market.league, market.sport, metadata.teams, usedIds);
     if (homeTeam) usedIds.add(homeTeam.id);
+
     const awayTeam =
       (market.awayTeamId ? metadata.teamById.get(market.awayTeamId) ?? null : null) ??
-      findBestOfficialTeam(market.awayTeam, market.league, market.sport, metadata.teams, usedIds);
+      findBestOfficialTeam(market.awayTeam, market.league, market.sport, metadata.teams, usedIds) ??
+      findBestOfficialTeam(resolveTeamAlias(market.awayTeam), market.league, market.sport, metadata.teams, usedIds);
 
     return {
-      homeBadge: homeTeam?.logo ?? null,
-      awayBadge: awayTeam?.logo ?? null,
+      homeBadge: homeTeam?.logo ?? generateTeamBadgeUrl(market.homeTeam),
+      awayBadge: awayTeam?.logo ?? generateTeamBadgeUrl(market.awayTeam),
       leagueLogo: getLeagueLogoFallback(market.leagueLogo, metadata, market.league, market.sport, market.sourceUrl),
     };
   });
+}
+
+function resolveTeamAlias(name: string | null): string | null {
+  if (!name) return null;
+  return TEAM_NAME_ALIASES[name] ?? null;
 }
 
 function extractEventSlugFromSourceUrl(sourceUrl: string | null): string | null {
@@ -921,14 +1017,48 @@ function parseExactDateCandidate(value: string | null): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/**
+ * Reverse lookup: map a human-readable league label → compact code.
+ * Built from LEAGUE_PRESENTATION_BY_CODE at runtime.
+ */
+function buildLeagueLabelToCode(): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const [code, info] of Object.entries(LEAGUE_PRESENTATION_BY_CODE)) {
+    if (info.label) {
+      const key = normalizeComparable(info.label)
+        .replace(/\b(?:league|playoffs|women|men)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (key) result.set(key, code.toLowerCase());
+    }
+  }
+  return result;
+}
+
+const LEAGUE_LABEL_TO_CODE = buildLeagueLabelToCode();
+
 function normalizeLeagueKey(value: string | null): string {
   const raw = (value ?? "").trim().toLowerCase();
-  const presentation = LEAGUE_PRESENTATION_BY_CODE[raw]?.label ?? value ?? "";
 
-  return normalizeComparable(presentation)
+  // If it's a known compact code, use its presentation label as the canonical key
+  const presentation = LEAGUE_PRESENTATION_BY_CODE[raw]?.label;
+  if (presentation) {
+    return normalizeComparable(presentation)
+      .replace(/\b(?:league|playoffs|women|men)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // If it looks like a human-readable label, try to resolve to the compact code
+  const normalized = normalizeComparable(raw)
     .replace(/\b(?:league|playoffs|women|men)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  const code = LEAGUE_LABEL_TO_CODE.get(normalized);
+  if (code) return code;
+
+  // Fall back to the normalized form
+  return normalized;
 }
 
 function inferSportFromGatewayLeagueCode(value: string | null): string | null {
@@ -1006,6 +1136,9 @@ function scoreOfficialTeamMatch(
     teamTokenOverlapScore(teamName, candidate.abbreviation),
   );
   if (nameScore === 0) return 0;
+
+  // If name match is exact (6) or very strong (5), allow the match even without league confirmation
+  if (nameScore >= 5) return nameScore;
 
   const marketLeagueKey = normalizeLeagueKey(marketLeague);
   const candidateLeagueKey = normalizeLeagueKey(candidate.league);
