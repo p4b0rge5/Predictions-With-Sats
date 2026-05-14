@@ -65,3 +65,6 @@ artifacts/api-server/.gamma_cache/
 
 build/
 *.log
+# Deployment SSH keys (secrets)
+docs/ssh-key-prod
+docs/ssh-key-prod.pub
