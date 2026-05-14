@@ -155,8 +155,8 @@ export async function listSportsPolyMarkets(): Promise<(typeof sportPolyMarketsT
       market.startsAt >= activeStart &&
       latestPolymarketRelevance.has(market.externalMarketId),
     )
-    .slice(0, 200);
-  const settledMarkets = sorted.filter((market) => market.status === "settled").slice(0, 150);
+    ;
+  const settledMarkets = sorted.filter((market) => market.status === "settled");
   return [...openMarkets, ...settledMarkets].map((market) => ({
     ...market,
     sport: normalizeStoredSport(
