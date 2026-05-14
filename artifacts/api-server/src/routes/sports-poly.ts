@@ -35,13 +35,27 @@ const router: IRouter = Router();
 const MIN_AMOUNT_SATS = 250;
 const PAYOUT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 
+// In-memory cache for /sports-poly/markets response (5 min TTL).
+// The enrich step calls ~50 Polymarket API endpoints on cache miss.
+// Serving cached data keeps the page responsive between the periodic pollers.
+const MARKETS_CACHE_TTL_MS = 5 * 60 * 1000;
+let marketsCache: { data: unknown; expiresAt: number } | null = null;
+
 function encodeLnurl(url: string): string {
   const words = bech32.toWords(Buffer.from(url, "utf8"));
   return bech32.encode("lnurl", words, 1500);
 }
 
-router.get("/sports-poly/markets", async (_req, res): Promise<void> => {
+router.get("/sports-poly/markets", async (req, res): Promise<void> => {
+  const { force } = req.query as { force?: string };
+  const forceRefresh = force === "1" || force === "true";
   try {
+    // Serve from cache if available (unless ?force=1)
+    if (!forceRefresh && marketsCache && marketsCache.expiresAt > Date.now()) {
+      res.json(marketsCache.data);
+      return;
+    }
+
     const markets = await listSportsPolyMarkets();
     const normalized = markets.map((market) => {
       const sport = normalizeStoredSport(
@@ -96,9 +110,18 @@ router.get("/sports-poly/markets", async (_req, res): Promise<void> => {
       };
     });
 
+    // Cache the result
+    marketsCache = { data: enriched, expiresAt: Date.now() + MARKETS_CACHE_TTL_MS };
+
     res.json(enriched);
   } catch (err) {
     logger.error({ err }, "GET /api/sports-poly/markets error");
+    // Serve stale cache on error
+    if (marketsCache) {
+      logger.warn("Serving stale sports-poly/markets cache after error");
+      res.json(marketsCache.data);
+      return;
+    }
     res.json([]);
   }
 });
