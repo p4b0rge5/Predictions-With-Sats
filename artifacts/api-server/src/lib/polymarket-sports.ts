@@ -764,12 +764,185 @@ const TEAM_NAME_ALIASES: Record<string, string> = {
   "Pumas de la UNAM": "Pumas UNAM",
 };
 
+// Lightweight team logo cache: team name → logo URL (persisted across enrich calls)
+const teamLogoCache = new Map<string, string>();
+
+// Background scraping state
+let backgroundScrapeRunning = false;
+
+/**
+ * Background lazy scraper: fetch Polymarket event pages for teams without cached logos,
+ * extract team_logos URLs, and populate teamLogoCache.
+ * Runs in background (fire-and-forget), does NOT block the response.
+ */
+async function scrapeLogosFromEventPage(
+  sourceUrl: string,
+  homeTeam: string | null,
+  awayTeam: string | null,
+): Promise<void> {
+  // Check if we already have these teams cached
+  const homeKey = homeTeam?.trim().toLowerCase();
+  const awayKey = awayTeam?.trim().toLowerCase();
+  const needHome = homeKey && !teamLogoCache.has(homeKey);
+  const needAway = awayKey && !teamLogoCache.has(awayKey);
+  if (!needHome && !needAway) return;
+
+  try {
+    const html = await fetch(sourceUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; PWSats/1.0)" },
+      signal: AbortSignal.timeout(3_000),
+    }).then(r => r.text());
+
+    const logoMatches = html.match(/https:\/\/polymarket-upload[^"]*team_logos[^"]*\.(?:png|jpg|svg)/gi) || [];
+
+    // For each team that needs a logo, try to match against extracted logo filenames
+    const teamsNeedingLogos: Array<{ name: string; key: string }> = [];
+    if (needHome && homeTeam) teamsNeedingLogos.push({ name: homeTeam, key: homeKey! });
+    if (needAway && awayTeam) teamsNeedingLogos.push({ name: awayTeam, key: awayKey! });
+
+    // Group logos by filename pattern
+    const logoEntries: Array<{ url: string; abbr1: string; abbr2: string }> = [];
+    for (const logoUrl of logoMatches) {
+      const filenameMatch = logoUrl.match(/\/([a-z]+)_([a-z]+)_(\d+)\.\w+$/i);
+      if (filenameMatch) {
+        logoEntries.push({ url: logoUrl, abbr1: filenameMatch[1], abbr2: filenameMatch[2] });
+      }
+    }
+
+    // Try to match each team against each logo entry
+    for (const team of teamsNeedingLogos) {
+      const nameLower = team.key;
+      // Clean the team name: remove common prefixes and suffixes
+      const cleaned = nameLower
+        .replace(/\b(?:cf|fc|cd|ca|fk|sk|ec|ud|ac|afc|bc|fbc|sc|bk|re|de|y|esgrima|saudi|futebol|basket|real|de\s+fútbol)\b/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const words = cleaned.split(" ").filter(w => w.length >= 2);
+      // Also build the full name without spaces
+      const nameNoSpaces = cleaned.replace(/\s+/g, "");
+
+      for (const entry of logoEntries) {
+        const abbr2 = entry.abbr2.toLowerCase();
+        let matched = false;
+
+        // Strategy 1: abbr2 is a direct substring of cleaned name or nameNoSpaces
+        if (cleaned.includes(abbr2) || nameNoSpaces.includes(abbr2)) {
+          matched = true;
+        }
+
+        // Strategy 2: First word starts with first 3 chars of abbr2 (e.g., "guadalajara" starts with "gua")
+        if (!matched && words.length >= 1) {
+          const abbrStart = abbr2.substring(0, 3);
+          if (words[0].startsWith(abbrStart)) {
+            matched = true;
+          }
+        }
+
+        // Strategy 3: Build abbreviation from first letters of words, check against abbr2
+        // e.g., "cruz azul" → first letters "ca", but abbr2 = "caz" (c + a + z)
+        // Check if first letter of each word matches progressively through abbr2
+        if (!matched) {
+          let abbrIdx = 0;
+          for (const word of words) {
+            if (abbrIdx < abbr2.length && word[0].toLowerCase() === abbr2[abbrIdx]) {
+              abbrIdx++;
+            }
+          }
+          // If we consumed most of the abbreviation, it's a match
+          if (abbrIdx >= abbr2.length * 0.6) {
+            matched = true;
+          }
+        }
+
+        // Strategy 4: abbr2 starts with same first 2 letters as first word
+        if (!matched && words.length >= 1) {
+          const wordStart = words[0].substring(0, 2);
+          const abbrStart2 = abbr2.substring(0, 2);
+          if (wordStart === abbrStart2) {
+            matched = true;
+          }
+        }
+
+        // Strategy 5: Levenshtein-like — abbr2 chars appear in order across the name
+        if (!matched) {
+          const allLetters = nameNoSpaces;
+          let abbrIdx = 0;
+          for (const ch of allLetters) {
+            if (ch === abbr2[abbrIdx]) abbrIdx++;
+            if (abbrIdx === abbr2.length) break;
+          }
+          if (abbrIdx >= abbr2.length - 1) {
+            matched = true;
+          }
+        }
+
+        if (matched) {
+          teamLogoCache.set(team.key, entry.url);
+          break; // Found a match for this team, move to next team
+        }
+      }
+    }
+  } catch {
+    // Silently fail — next call will retry
+  }
+}
+
+/**
+ * Start background scraping for markets that need team logos.
+ * Fire-and-forget: starts scraping a few event pages but does NOT block.
+ */
+function startBackgroundLogoScrape(markets: PolymarketOfficialPresentationInput[]): void {
+  if (backgroundScrapeRunning) return;
+
+  // Find markets without cached logos and with sourceUrl
+  const needsScrape = markets.filter(m => {
+    const hk = m.homeTeam?.trim().toLowerCase();
+    const ak = m.awayTeam?.trim().toLowerCase();
+    const needHome = hk && !teamLogoCache.has(hk);
+    const needAway = ak && !teamLogoCache.has(ak);
+    return (needHome || needAway) && m.sourceUrl;
+  });
+
+  if (needsScrape.length === 0) return;
+
+  // Collect unique sourceUrls — scrape all of them with concurrency limit
+  const uniqueUrls = new Set(needsScrape.map(m => m.sourceUrl!).filter(Boolean));
+  const urlsToScrape = Array.from(uniqueUrls);
+
+  backgroundScrapeRunning = true;
+
+  // Fire-and-forget: no await, runs in background with concurrency limit
+  (async () => {
+    try {
+      const concurrency = 5;
+      let idx = 0;
+      while (idx < urlsToScrape.length) {
+        const batch = urlsToScrape.slice(idx, idx + concurrency);
+        idx += concurrency;
+        await Promise.all(batch.map(async (url) => {
+          const marketsForUrl = needsScrape.filter(m => m.sourceUrl === url);
+          const first = marketsForUrl[0];
+          await scrapeLogosFromEventPage(url, first.homeTeam, first.awayTeam);
+        }));
+      }
+    } finally {
+      backgroundScrapeRunning = false;
+    }
+  })();
+}
+
 export async function enrichPolymarketOfficialPresentation(
   markets: PolymarketOfficialPresentationInput[],
 ): Promise<PolymarketOfficialPresentation[]> {
   if (markets.length === 0) return [];
 
+  // Start background scraping for uncached logos (fire-and-forget)
+  startBackgroundLogoScrape(markets);
+
   const metadata = await fetchPolymarketOfficialMetadata();
+
+  // Enrich each market — try official metadata first, then cached logos, then SVG fallback
   return markets.map((market) => {
     const usedIds = new Set<string>();
 
@@ -785,9 +958,15 @@ export async function enrichPolymarketOfficialPresentation(
       findBestOfficialTeam(market.awayTeam, market.league, market.sport, metadata.teams, usedIds) ??
       findBestOfficialTeam(resolveTeamAlias(market.awayTeam), market.league, market.sport, metadata.teams, usedIds);
 
+    // Check background scrape cache for logos
+    const homeCacheKey = market.homeTeam?.trim().toLowerCase();
+    const awayCacheKey = market.awayTeam?.trim().toLowerCase();
+    const cachedHomeBadge = homeCacheKey ? teamLogoCache.get(homeCacheKey) ?? null : null;
+    const cachedAwayBadge = awayCacheKey ? teamLogoCache.get(awayCacheKey) ?? null : null;
+
     return {
-      homeBadge: homeTeam?.logo ?? generateTeamBadgeUrl(market.homeTeam),
-      awayBadge: awayTeam?.logo ?? generateTeamBadgeUrl(market.awayTeam),
+      homeBadge: homeTeam?.logo ?? cachedHomeBadge ?? generateTeamBadgeUrl(market.homeTeam),
+      awayBadge: awayTeam?.logo ?? cachedAwayBadge ?? generateTeamBadgeUrl(market.awayTeam),
       leagueLogo: getLeagueLogoFallback(market.leagueLogo, metadata, market.league, market.sport, market.sourceUrl),
     };
   });
