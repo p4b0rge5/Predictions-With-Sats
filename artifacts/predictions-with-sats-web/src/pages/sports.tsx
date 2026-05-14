@@ -23,6 +23,7 @@ import {
 import { GuidePager, type GuideStep } from "@/components/guide-pager";
 import { ErrorState, LoadingState } from "@/components/query-state";
 import { getCurrentStakePayout, getPoolMultiple, getProjectedPayout } from "@/lib/payout-preview";
+import { SportsPoly } from "@/pages/sports-poly";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1935,6 +1936,7 @@ function SeparatedSportsBetList({ hashes, onDismiss }: { hashes: string[]; onDis
 }
 
 export function Sports() {
+  const [dataSource, setDataSource] = useState<"espn" | "poly">("espn");
   const [activeSport, setActiveSport] = useState<SportKey>("football");
   const [activeLeague, setActiveLeague] = useState<string>("all");
   const [activeMarketDate, setActiveMarketDate] = useState<string>("");
@@ -2142,6 +2144,31 @@ export function Sports() {
 
   return (
     <div className="max-w-4xl mx-auto lg:max-w-6xl space-y-0">
+
+      {/* ── Data Source Toggle: ESPN ↔ Polymarket ── */}
+      <div className="flex items-center gap-0 p-0.5 rounded-md bg-muted/50 border border-border/40 w-fit self-start mb-3">
+        {(["espn", "poly"] as const).map((src) => (
+          <button
+            key={src}
+            type="button"
+            onClick={() => setDataSource(src)}
+            className={`px-3 py-1 rounded text-[11px] font-mono font-bold uppercase tracking-wider transition-colors ${
+              dataSource === src
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {src === "espn" ? "📡 ESPN" : "🏆 Polymarket"}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Polymarket mode ── */}
+      {dataSource === "poly" && <SportsPoly />}
+
+      {/* ── ESPN mode ── */}
+      {dataSource === "espn" && (
+      <>
 
       {/* ── Category chips ── */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3">
@@ -2436,6 +2463,8 @@ export function Sports() {
           setBetListVersion((current) => current + 1);
         }}
       />
+      </>
+      )}
     </div>
   );
 }
