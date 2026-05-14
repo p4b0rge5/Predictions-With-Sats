@@ -20,6 +20,15 @@ import {
   normalizeStoredSport,
 } from "../lib/polymarket-sports";
 import { enrichSportsPolyPresentation } from "../lib/sports-poly-presentation";
+import {
+  fetchPolymarketGames,
+  getPolymarketSports,
+  getEventById,
+  checkEventSettlement,
+  getLeagueLabel,
+  getLeagueLogo,
+  normalizePolymarketSport,
+} from "../lib/polymarket-games";
 
 const router: IRouter = Router();
 
@@ -91,6 +100,184 @@ router.get("/sports-poly/markets", async (_req, res): Promise<void> => {
   } catch (err) {
     logger.error({ err }, "GET /api/sports-poly/markets error");
     res.json([]);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// List Polymarket sports leagues (available leagues)
+// ---------------------------------------------------------------------------
+
+router.get("/sports-poly/leagues", async (_req, res): Promise<void> => {
+  try {
+    const sports = await getPolymarketSports();
+    const result = sports.map((s) => ({
+      slug: s.sport,
+      label: getLeagueLabel(s.sport),
+      logo: s.image ?? getLeagueLogo(s.sport),
+      seriesId: s.series,
+      sport: normalizePolymarketSport(s.sport, s.sport),
+    }));
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "GET /api/sports-poly/leagues error");
+    res.json([]);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// List games (match events) from Polymarket — for all leagues
+// ---------------------------------------------------------------------------
+
+router.get("/sports-poly/games", async (req, res): Promise<void> => {
+  const { league, force } = req.query as { league?: string; force?: string };
+
+  try {
+    const result = await fetchPolymarketGames(force === "1" || force === "true");
+    const games = result.events.map((g) => ({
+      id: g.id,
+      externalId: g.externalId,
+      slug: g.slug,
+      title: g.title,
+      subtitle: g.subtitle,
+      homeTeam: g.homeTeam,
+      awayTeam: g.awayTeam,
+      homeBadge: g.homeBadge,
+      awayBadge: g.awayBadge,
+      league: g.league,
+      seriesSlug: g.seriesSlug,
+      sportSlug: g.sportSlug,
+      leagueLogo: getLeagueLogo(g.seriesSlug ?? g.league),
+      sport: g.sport,
+      startsAt: g.startsAt,
+      endDate: g.endDate,
+      status: g.status,
+      closed: g.closed,
+      winningOutcome: g.winningOutcome,
+      resolvedValue: g.resolvedValue,
+      settledAt: g.settledAt,
+      sourceUrl: g.sourceUrl,
+      resolutionSource: g.resolutionSource,
+      volume: g.volume,
+      openInterest: g.openInterest,
+      marketCount: g.markets.length,
+    }));
+
+    // Filter by league if specified (match on sportSlug like "epl", "bra2", etc.)
+    const filtered = league
+      ? games.filter((g) =>
+          (g.sportSlug && g.sportSlug.toLowerCase() === league.toLowerCase()) ||
+          (g.seriesSlug && g.seriesSlug.toLowerCase() === league.toLowerCase()) ||
+          (g.league && g.league.toLowerCase() === league.toLowerCase()),
+        )
+      : games;
+
+    const settledFiltered = league
+      ? result.settled.filter((g) =>
+          (g.sportSlug && g.sportSlug.toLowerCase() === league.toLowerCase()) ||
+          (g.seriesSlug && g.seriesSlug.toLowerCase() === league.toLowerCase()) ||
+          (g.league && g.league.toLowerCase() === league.toLowerCase()),
+        )
+      : result.settled;
+
+    res.json({
+      games: filtered,
+      settled: settledFiltered.map((g) => ({
+        id: g.id,
+        title: g.title,
+        homeTeam: g.homeTeam,
+        awayTeam: g.awayTeam,
+        homeBadge: g.homeBadge,
+        awayBadge: g.awayBadge,
+        league: g.league,
+        sportSlug: g.sportSlug,
+        status: g.status,
+        winningOutcome: g.winningOutcome,
+        resolvedValue: g.resolvedValue,
+        settledAt: g.settledAt,
+      })),
+      leagueCount: result.leagueCount,
+      suspended: result.suspended,
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /api/sports-poly/games error");
+    res.json({ games: [], settled: [], leagueCount: 0, suspended: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Get single game by external event ID
+// ---------------------------------------------------------------------------
+
+router.get("/sports-poly/games/:eventId", async (req, res): Promise<void> => {
+  const { eventId } = req.params;
+
+  try {
+    const event = await getEventById(eventId);
+    if (!event) {
+      res.status(404).json({ error: "Event not found" });
+      return;
+    }
+
+    res.json({
+      id: event.id,
+      externalId: event.externalId,
+      slug: event.slug,
+      title: event.title,
+      subtitle: event.subtitle,
+      description: event.description,
+      homeTeam: event.homeTeam,
+      awayTeam: event.awayTeam,
+      homeBadge: event.homeBadge,
+      awayBadge: event.awayBadge,
+      league: getLeagueLabel(event.seriesSlug ?? event.league),
+      leagueLogo: getLeagueLogo(event.seriesSlug ?? event.league),
+      sport: event.sport,
+      startsAt: event.startsAt,
+      endDate: event.endDate,
+      status: event.status,
+      closed: event.closed,
+      winningOutcome: event.winningOutcome,
+      resolvedValue: event.resolvedValue,
+      settledAt: event.settledAt,
+      teams: event.teams,
+      markets: event.markets.map((m) => ({
+        id: m.id,
+        question: m.question,
+        slug: m.slug,
+        outcomes: m.outcomes,
+        outcomePrices: m.outcomePrices,
+        volume: m.volume,
+        liquidity: m.liquidity,
+      })),
+      sourceUrl: event.sourceUrl,
+      resolutionSource: event.resolutionSource,
+      volume: event.volume,
+      openInterest: event.openInterest,
+    });
+  } catch (err) {
+    logger.error({ err, eventId }, "GET /api/sports-poly/games/:eventId error");
+    res.status(500).json({ error: "Failed to fetch event" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Check settlement status for a game
+// ---------------------------------------------------------------------------
+
+router.get("/sports-poly/games/:eventId/settlement", async (req, res): Promise<void> => {
+  const { eventId } = req.params;
+
+  try {
+    const result = await checkEventSettlement(eventId);
+    if (!result) {
+      res.status(404).json({ error: "Event not found" });
+      return;
+    }
+
+    res.json(result);
+  } catch (err) {
+    logger.error({ err, eventId }, "GET /api/sports-poly/games/:eventId/settlement error");
+    res.status(500).json({ error: "Failed to check settlement" });
   }
 });
 
