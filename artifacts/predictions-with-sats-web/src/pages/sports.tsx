@@ -456,7 +456,7 @@ function TeamBadge({ src, name, size = "sm" }: { src: string | null; name: strin
     <img
       src={src}
       alt={name}
-      className={`${dim} object-cover rounded-full shrink-0`}
+      className={`${dim} object-contain shrink-0`}
       onLoad={(e) => {
         const img = e.currentTarget;
         if (img.naturalWidth === 0 || img.naturalHeight === 0) setError(true);
@@ -1813,7 +1813,7 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
             {bet.market.homeBadge && (
               <img
                 src={bet.market.homeBadge} alt=""
-                className="h-4 w-4 object-cover rounded-full"
+                className="h-4 w-4 object-contain"
                 onLoad={(e) => { const img = e.currentTarget; if (img.naturalWidth === 0 || img.naturalHeight === 0) { (img as HTMLImageElement).style.display = "none"; } }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
               />
@@ -1826,7 +1826,7 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
             {bet.market.awayBadge && (
               <img
                 src={bet.market.awayBadge} alt=""
-                className="h-4 w-4 object-cover rounded-full"
+                className="h-4 w-4 object-contain"
                 onLoad={(e) => { const img = e.currentTarget; if (img.naturalWidth === 0 || img.naturalHeight === 0) { (img as HTMLImageElement).style.display = "none"; } }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
               />
