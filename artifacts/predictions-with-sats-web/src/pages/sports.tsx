@@ -452,7 +452,18 @@ function TeamBadge({ src, name, size = "sm" }: { src: string | null; name: strin
       </div>
     );
   }
-  return <img src={src} alt={name} className={`${dim} object-contain shrink-0`} onError={() => setError(true)} />;
+  return (
+    <img
+      src={src}
+      alt={name}
+      className={`${dim} object-contain shrink-0`}
+      onLoad={(e) => {
+        const img = e.currentTarget;
+        if (img.naturalWidth === 0 || img.naturalHeight === 0) setError(true);
+      }}
+      onError={() => setError(true)}
+    />
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1803,6 +1814,7 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
               <img
                 src={bet.market.homeBadge} alt=""
                 className="h-4 w-4 object-contain"
+                onLoad={(e) => { const img = e.currentTarget; if (img.naturalWidth === 0 || img.naturalHeight === 0) { (img as HTMLImageElement).style.display = "none"; } }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
               />
             )}
@@ -1815,6 +1827,7 @@ export function SportBetStatusCard({ hash, onDismiss }: { hash: string; onDismis
               <img
                 src={bet.market.awayBadge} alt=""
                 className="h-4 w-4 object-contain"
+                onLoad={(e) => { const img = e.currentTarget; if (img.naturalWidth === 0 || img.naturalHeight === 0) { (img as HTMLImageElement).style.display = "none"; } }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
               />
             )}
