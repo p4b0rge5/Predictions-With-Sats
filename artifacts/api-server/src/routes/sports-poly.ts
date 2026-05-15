@@ -38,7 +38,7 @@ const PAYOUT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 // In-memory cache for /sports-poly/markets response (5 min TTL).
 // The enrich step calls ~50 Polymarket API endpoints on cache miss.
 // Serving cached data keeps the page responsive between the periodic pollers.
-const MARKETS_CACHE_TTL_MS = 5 * 60 * 1000;
+const MARKETS_CACHE_TTL_MS = 15 * 60 * 1000;
 let marketsCache: { data: unknown; expiresAt: number } | null = null;
 
 function encodeLnurl(url: string): string {

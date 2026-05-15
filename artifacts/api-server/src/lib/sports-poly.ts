@@ -9,7 +9,7 @@ import {
 import { logger } from "./logger";
 
 const PLATFORM_FEE = 0.02;
-const SYNC_TTL_MS = 5 * 60 * 1000;
+const SYNC_TTL_MS = 15 * 60 * 1000;
 
 let lastSuccessfulSyncAt = 0;
 let activeSync: Promise<void> | null = null;

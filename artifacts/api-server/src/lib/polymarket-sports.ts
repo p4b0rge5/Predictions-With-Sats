@@ -9,8 +9,8 @@ const GAMMA_API_BASE = process.env.POLYMARKET_GAMMA_API_BASE ?? "https://gamma-a
 const SPORTS_TAG_SLUG = process.env.POLYMARKET_SPORTS_TAG_SLUG ?? "sports";
 const SPORTS_ROOT_TAG_ID = process.env.POLYMARKET_SPORTS_TAG_ID?.trim() || null;
 const PAGE_LIMIT = 100;
-const MAX_ACTIVE_PAGES = 8;
-const MAX_CLOSED_PAGES = 4;
+const MAX_ACTIVE_PAGES = 4;
+const MAX_CLOSED_PAGES = 2;
 const FUTURE_DAYS = 5;
 const MARKET_FETCH_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -997,7 +997,7 @@ async function fetchJson<T>(url: string): Promise<T> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(8_000),
     });
 
     if (res.ok) {
@@ -1885,7 +1885,8 @@ export async function fetchPolymarketSportsMarkets(): Promise<ExternalSportPolyM
 
   const scopedTagIds = tagIds.length > 0 ? tagIds : [null];
 
-  for (const tagId of scopedTagIds) {
+  // Fetch active markets in parallel per tagId to avoid blocking the event loop
+  const activePromises = scopedTagIds.map(async (tagId: string | null) => {
     for (let page = 0; page < MAX_ACTIVE_PAGES; page += 1) {
       const offset = page * PAGE_LIMIT;
       let batch: unknown[] | null;
@@ -1906,9 +1907,12 @@ export async function fetchPolymarketSportsMarkets(): Promise<ExternalSportPolyM
       collectBatch(batch);
       if (batch.length < PAGE_LIMIT) break;
     }
-  }
+  });
 
-  for (const tagId of scopedTagIds) {
+  await Promise.allSettled(activePromises);
+
+  // Fetch closed markets in parallel per tagId to avoid blocking the event loop
+  const closedPromises = scopedTagIds.map(async (tagId: string | null) => {
     for (let page = 0; page < MAX_CLOSED_PAGES; page += 1) {
       const offset = page * PAGE_LIMIT;
       let batch: unknown[] | null;
@@ -1928,7 +1932,9 @@ export async function fetchPolymarketSportsMarkets(): Promise<ExternalSportPolyM
       collectBatch(batch);
       if (batch.length < PAGE_LIMIT) break;
     }
-  }
+  });
+
+  await Promise.allSettled(closedPromises);
 
   const groupedMarkets = Array.from(grouped.values())
     .filter(hasSupportedMatchOutcomes)

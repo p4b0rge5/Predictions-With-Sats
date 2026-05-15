@@ -4,7 +4,7 @@ import { logger } from "./logger";
 import { runSportsPolySettlementCycle, addToSportsPolyPool } from "./sports-poly";
 
 const PAYMENT_POLL_INTERVAL_MS = 5_000;
-const SETTLEMENT_POLL_INTERVAL_MS = 60 * 60 * 1000;
+const SETTLEMENT_POLL_INTERVAL_MS = 2 * 60 * 60 * 1000;
 const MAX_POLL_AGE_MS = 24 * 60 * 60 * 1000;
 
 async function checkLud21(verifyUrl: string): Promise<boolean> {
