@@ -253,7 +253,7 @@ function TeamBadge({ src, name, size = "sm" }: { src: string | null; name: strin
       <img
         src={src}
         alt={name}
-        className={`${size === "lg" ? "w-12 h-12" : "w-8 h-8"} object-contain shrink-0`}
+        className={`${size === "lg" ? "w-12 h-12" : "w-8 h-8"} object-cover rounded-full shrink-0`}
         onLoad={(e) => {
           const img = e.currentTarget;
           if (img.naturalWidth === 0 || img.naturalHeight === 0) {
