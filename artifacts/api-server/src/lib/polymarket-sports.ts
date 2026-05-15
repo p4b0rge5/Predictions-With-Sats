@@ -14,45 +14,45 @@ const MAX_CLOSED_PAGES = 4;
 const FUTURE_DAYS = 5;
 const MARKET_FETCH_CACHE_TTL_MS = 10 * 60 * 1000;
 
-const LEAGUE_PRESENTATION_BY_CODE: Record<string, { label: string; logo: string | null }> = {
-  arg: { label: "Argentine Primera", logo: null },
-  bl2: { label: "2. Bundesliga", logo: "https://polymarket-upload.s3.us-east-2.amazonaws.com/league-bun.jpg" },
-  bra: { label: "Brasileirao Serie A", logo: null },
-  bkbbl: { label: "BBL", logo: null },
-  bkaba: { label: "ABA League", logo: null },
-  bkarg: { label: "Liga Nacional", logo: null },
-  bkcba: { label: "CBA", logo: null },
-  bkfr1: { label: "LNB Pro A", logo: null },
-  bkjpn: { label: "B.League", logo: null },
-  bkkbl: { label: "KBL", logo: null },
-  bkligend: { label: "Liga Endesa", logo: null },
-  bkseriea: { label: "Lega Basket Serie A", logo: null },
-  bun: { label: "Bundesliga", logo: "https://polymarket-upload.s3.us-east-2.amazonaws.com/league-bun.jpg" },
-  cfb: { label: "College Football", logo: "https://polymarket-upload.s3.us-east-2.amazonaws.com/espn+college+football+logo.png" },
-  den: { label: "Danish Superliga", logo: null },
-  epl: { label: "Premier League", logo: "https://polymarket-upload.s3.us-east-2.amazonaws.com/Repetitive-markets/premier+league.jpg" },
-  ere: { label: "Eredivisie", logo: null },
-  es2: { label: "LaLiga 2", logo: "https://polymarket-upload.s3.us-east-2.amazonaws.com/league-lal.png" },
-  euroleague: { label: "EuroLeague", logo: null },
-  fl1: { label: "Ligue 1", logo: "https://polymarket-upload.s3.us-east-2.amazonaws.com/league-fl1.png" },
-  fr2: { label: "Ligue 2", logo: "https://polymarket-upload.s3.us-east-2.amazonaws.com/league-fl1.png" },
-  j1: { label: "J1 League", logo: null },
-  j2: { label: "J2 League", logo: null },
-  j1100: { label: "J1 League", logo: null },
-  j2100: { label: "J2 League", logo: null },
-  lal: { label: "La Liga", logo: "https://polymarket-upload.s3.us-east-2.amazonaws.com/league-lal.png" },
-  mex: { label: "Liga MX", logo: null },
-  mlb: { label: "MLB", logo: "https://polymarket-upload.s3.us-east-2.amazonaws.com/Repetitive-markets/MLB.jpg" },
-  mls: { label: "MLS", logo: null },
-  nfl: { label: "NFL", logo: "https://polymarket-upload.s3.us-east-2.amazonaws.com/nfl.png" },
-  nhl: { label: "NHL", logo: null },
-  nor: { label: "Eliteserien", logo: null },
-  por: { label: "Primeira Liga", logo: null },
-  rus: { label: "Russian Premier League", logo: null },
-  sea: { label: "Serie A", logo: "https://polymarket-upload.s3.us-east-2.amazonaws.com/Serie-A-Logo.png" },
-  sud: { label: "Copa Sudamericana", logo: null },
-  tur: { label: "Super Lig", logo: null },
-  ucl: { label: "UEFA Champions League", logo: null },
+const LEAGUE_PRESENTATION_BY_CODE: Record<string, { label: string }> = {
+  arg: { label: "Argentine Primera" },
+  bl2: { label: "2. Bundesliga" },
+  bra: { label: "Brasileirao Serie A" },
+  bkbbl: { label: "BBL" },
+  bkaba: { label: "ABA League" },
+  bkarg: { label: "Liga Nacional" },
+  bkcba: { label: "CBA" },
+  bkfr1: { label: "LNB Pro A" },
+  bkjpn: { label: "B.League" },
+  bkkbl: { label: "KBL" },
+  bkligend: { label: "Liga Endesa" },
+  bkseriea: { label: "Lega Basket Serie A" },
+  bun: { label: "Bundesliga" },
+  cfb: { label: "College Football" },
+  den: { label: "Danish Superliga" },
+  epl: { label: "Premier League" },
+  ere: { label: "Eredivisie" },
+  es2: { label: "LaLiga 2" },
+  euroleague: { label: "EuroLeague" },
+  fl1: { label: "Ligue 1" },
+  fr2: { label: "Ligue 2" },
+  j1: { label: "J1 League" },
+  j2: { label: "J2 League" },
+  j1100: { label: "J1 League" },
+  j2100: { label: "J2 League" },
+  lal: { label: "La Liga" },
+  mex: { label: "Liga MX" },
+  mlb: { label: "MLB" },
+  mls: { label: "MLS" },
+  nfl: { label: "NFL" },
+  nhl: { label: "NHL" },
+  nor: { label: "Eliteserien" },
+  por: { label: "Primeira Liga" },
+  rus: { label: "Russian Premier League" },
+  sea: { label: "Serie A" },
+  sud: { label: "Copa Sudamericana" },
+  tur: { label: "Super Lig" },
+  ucl: { label: "UEFA Champions League" },
 };
 
 export interface ExternalSportPolyOutcome {
@@ -244,7 +244,9 @@ interface DirectSportsMarket {
 }
 
 function asString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+  if (typeof value === "string" && value.trim().length > 0) return value.trim();
+  if (typeof value === "number" && isFinite(value)) return String(value);
+  return null;
 }
 
 function asNumber(value: unknown): number | null {
@@ -611,14 +613,14 @@ export function normalizeStoredLeague(
   if (league !== "Sports" && !/^polymarket sports$/i.test(league)) {
     return {
       league,
-      leagueLogo: code ? LEAGUE_PRESENTATION_BY_CODE[code]?.logo ?? null : null,
+      leagueLogo: null,
     };
   }
 
   if (code && LEAGUE_PRESENTATION_BY_CODE[code]) {
     return {
       league: LEAGUE_PRESENTATION_BY_CODE[code].label,
-      leagueLogo: LEAGUE_PRESENTATION_BY_CODE[code].logo,
+      leagueLogo: null,
     };
   }
 
@@ -764,185 +766,14 @@ const TEAM_NAME_ALIASES: Record<string, string> = {
   "Pumas de la UNAM": "Pumas UNAM",
 };
 
-// Lightweight team logo cache: team name → logo URL (persisted across enrich calls)
-const teamLogoCache = new Map<string, string>();
-
-// Background scraping state
-let backgroundScrapeRunning = false;
-
-/**
- * Background lazy scraper: fetch Polymarket event pages for teams without cached logos,
- * extract team_logos URLs, and populate teamLogoCache.
- * Runs in background (fire-and-forget), does NOT block the response.
- */
-async function scrapeLogosFromEventPage(
-  sourceUrl: string,
-  homeTeam: string | null,
-  awayTeam: string | null,
-): Promise<void> {
-  // Check if we already have these teams cached
-  const homeKey = homeTeam?.trim().toLowerCase();
-  const awayKey = awayTeam?.trim().toLowerCase();
-  const needHome = homeKey && !teamLogoCache.has(homeKey);
-  const needAway = awayKey && !teamLogoCache.has(awayKey);
-  if (!needHome && !needAway) return;
-
-  try {
-    const html = await fetch(sourceUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; PWSats/1.0)" },
-      signal: AbortSignal.timeout(3_000),
-    }).then(r => r.text());
-
-    const logoMatches = html.match(/https:\/\/polymarket-upload[^"]*team_logos[^"]*\.(?:png|jpg|svg)/gi) || [];
-
-    // For each team that needs a logo, try to match against extracted logo filenames
-    const teamsNeedingLogos: Array<{ name: string; key: string }> = [];
-    if (needHome && homeTeam) teamsNeedingLogos.push({ name: homeTeam, key: homeKey! });
-    if (needAway && awayTeam) teamsNeedingLogos.push({ name: awayTeam, key: awayKey! });
-
-    // Group logos by filename pattern
-    const logoEntries: Array<{ url: string; abbr1: string; abbr2: string }> = [];
-    for (const logoUrl of logoMatches) {
-      const filenameMatch = logoUrl.match(/\/([a-z]+)_([a-z]+)_(\d+)\.\w+$/i);
-      if (filenameMatch) {
-        logoEntries.push({ url: logoUrl, abbr1: filenameMatch[1], abbr2: filenameMatch[2] });
-      }
-    }
-
-    // Try to match each team against each logo entry
-    for (const team of teamsNeedingLogos) {
-      const nameLower = team.key;
-      // Clean the team name: remove common prefixes and suffixes
-      const cleaned = nameLower
-        .replace(/\b(?:cf|fc|cd|ca|fk|sk|ec|ud|ac|afc|bc|fbc|sc|bk|re|de|y|esgrima|saudi|futebol|basket|real|de\s+fútbol)\b/gi, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      const words = cleaned.split(" ").filter(w => w.length >= 2);
-      // Also build the full name without spaces
-      const nameNoSpaces = cleaned.replace(/\s+/g, "");
-
-      for (const entry of logoEntries) {
-        const abbr2 = entry.abbr2.toLowerCase();
-        let matched = false;
-
-        // Strategy 1: abbr2 is a direct substring of cleaned name or nameNoSpaces
-        if (cleaned.includes(abbr2) || nameNoSpaces.includes(abbr2)) {
-          matched = true;
-        }
-
-        // Strategy 2: First word starts with first 3 chars of abbr2 (e.g., "guadalajara" starts with "gua")
-        if (!matched && words.length >= 1) {
-          const abbrStart = abbr2.substring(0, 3);
-          if (words[0].startsWith(abbrStart)) {
-            matched = true;
-          }
-        }
-
-        // Strategy 3: Build abbreviation from first letters of words, check against abbr2
-        // e.g., "cruz azul" → first letters "ca", but abbr2 = "caz" (c + a + z)
-        // Check if first letter of each word matches progressively through abbr2
-        if (!matched) {
-          let abbrIdx = 0;
-          for (const word of words) {
-            if (abbrIdx < abbr2.length && word[0].toLowerCase() === abbr2[abbrIdx]) {
-              abbrIdx++;
-            }
-          }
-          // If we consumed most of the abbreviation, it's a match
-          if (abbrIdx >= abbr2.length * 0.6) {
-            matched = true;
-          }
-        }
-
-        // Strategy 4: abbr2 starts with same first 2 letters as first word
-        if (!matched && words.length >= 1) {
-          const wordStart = words[0].substring(0, 2);
-          const abbrStart2 = abbr2.substring(0, 2);
-          if (wordStart === abbrStart2) {
-            matched = true;
-          }
-        }
-
-        // Strategy 5: Levenshtein-like — abbr2 chars appear in order across the name
-        if (!matched) {
-          const allLetters = nameNoSpaces;
-          let abbrIdx = 0;
-          for (const ch of allLetters) {
-            if (ch === abbr2[abbrIdx]) abbrIdx++;
-            if (abbrIdx === abbr2.length) break;
-          }
-          if (abbrIdx >= abbr2.length - 1) {
-            matched = true;
-          }
-        }
-
-        if (matched) {
-          teamLogoCache.set(team.key, entry.url);
-          break; // Found a match for this team, move to next team
-        }
-      }
-    }
-  } catch {
-    // Silently fail — next call will retry
-  }
-}
-
-/**
- * Start background scraping for markets that need team logos.
- * Fire-and-forget: starts scraping a few event pages but does NOT block.
- */
-function startBackgroundLogoScrape(markets: PolymarketOfficialPresentationInput[]): void {
-  if (backgroundScrapeRunning) return;
-
-  // Find markets without cached logos and with sourceUrl
-  const needsScrape = markets.filter(m => {
-    const hk = m.homeTeam?.trim().toLowerCase();
-    const ak = m.awayTeam?.trim().toLowerCase();
-    const needHome = hk && !teamLogoCache.has(hk);
-    const needAway = ak && !teamLogoCache.has(ak);
-    return (needHome || needAway) && m.sourceUrl;
-  });
-
-  if (needsScrape.length === 0) return;
-
-  // Collect unique sourceUrls — scrape all of them with concurrency limit
-  const uniqueUrls = new Set(needsScrape.map(m => m.sourceUrl!).filter(Boolean));
-  const urlsToScrape = Array.from(uniqueUrls);
-
-  backgroundScrapeRunning = true;
-
-  // Fire-and-forget: no await, runs in background with concurrency limit
-  (async () => {
-    try {
-      const concurrency = 5;
-      let idx = 0;
-      while (idx < urlsToScrape.length) {
-        const batch = urlsToScrape.slice(idx, idx + concurrency);
-        idx += concurrency;
-        await Promise.all(batch.map(async (url) => {
-          const marketsForUrl = needsScrape.filter(m => m.sourceUrl === url);
-          const first = marketsForUrl[0];
-          await scrapeLogosFromEventPage(url, first.homeTeam, first.awayTeam);
-        }));
-      }
-    } finally {
-      backgroundScrapeRunning = false;
-    }
-  })();
-}
-
 export async function enrichPolymarketOfficialPresentation(
   markets: PolymarketOfficialPresentationInput[],
 ): Promise<PolymarketOfficialPresentation[]> {
   if (markets.length === 0) return [];
 
-  // Start background scraping for uncached logos (fire-and-forget)
-  startBackgroundLogoScrape(markets);
-
   const metadata = await fetchPolymarketOfficialMetadata();
 
-  // Enrich each market — try official metadata first, then cached logos, then SVG fallback
+  // Enrich each market — official metadata logo or SVG fallback
   return markets.map((market) => {
     const usedIds = new Set<string>();
 
@@ -958,15 +789,9 @@ export async function enrichPolymarketOfficialPresentation(
       findBestOfficialTeam(market.awayTeam, market.league, market.sport, metadata.teams, usedIds) ??
       findBestOfficialTeam(resolveTeamAlias(market.awayTeam), market.league, market.sport, metadata.teams, usedIds);
 
-    // Check background scrape cache for logos
-    const homeCacheKey = market.homeTeam?.trim().toLowerCase();
-    const awayCacheKey = market.awayTeam?.trim().toLowerCase();
-    const cachedHomeBadge = homeCacheKey ? teamLogoCache.get(homeCacheKey) ?? null : null;
-    const cachedAwayBadge = awayCacheKey ? teamLogoCache.get(awayCacheKey) ?? null : null;
-
     return {
-      homeBadge: homeTeam?.logo ?? cachedHomeBadge ?? generateTeamBadgeUrl(market.homeTeam),
-      awayBadge: awayTeam?.logo ?? cachedAwayBadge ?? generateTeamBadgeUrl(market.awayTeam),
+      homeBadge: homeTeam?.logo ?? generateTeamBadgeUrl(market.homeTeam),
+      awayBadge: awayTeam?.logo ?? generateTeamBadgeUrl(market.awayTeam),
       leagueLogo: getLeagueLogoFallback(market.leagueLogo, metadata, market.league, market.sport, market.sourceUrl),
     };
   });
@@ -1182,9 +1007,44 @@ let marketFetchCache:
   | null = null;
 
 const OFFICIAL_METADATA_TTL_MS = 6 * 60 * 60 * 1000;
-const OFFICIAL_TEAMS_GATEWAY_URL = "https://gateway.polymarket.us/v1/sports/teams";
 const TEAM_PAGE_LIMIT = 500;
 const TEAM_MAX_PAGES = 15;
+
+/**
+ * Map application league codes → Gamma API league codes.
+ * Many codes in SPORTS_LEAGUES don't match what the Gamma API expects.
+ * For leagues that don't exist in Polymarket at all, they are simply omitted —
+ * those leagues return empty results and rely on SVG badge fallback.
+ */
+const GAMMA_LEAGUE_ALIAS: Record<string, string> = {
+  // Women's college basketball → uses same teams as cbb
+  wcbb: "cbb",
+  // Call of Duty
+  cod: "codmw",
+  // French leagues
+  ligue1: "fl1",
+  fr1: "fl1",
+  // Italian leagues
+  seriea: "sea",
+  // Rugby leagues
+  nrl: "rl",
+  urc: "ruurc",
+  // Korean basketball
+  kbl: "bkkbl",
+  // Greek basketball
+  gr1: "bkgr1",
+  // Basketball Brazil
+  bbl: "bkbbl",
+  // J-League
+  j1: "j1100",
+  j2: "j2100",
+  // Cricket — IPL and Pakistan
+  criplcl: "ipl",
+  crafpl: "craus",
+  // Table tennis
+  wttc: "wttmen",
+};
+
 const SPORTS_LEAGUES = [
   "lal", "epl", "mls", "bun", "fif", "fifa",
   "nba", "nfl", "nhl", "mlb", "wnba",
@@ -1209,12 +1069,12 @@ const SPORTS_LEAGUES = [
   "mex", "cfl", "ufl", "npb", "kbo",
   "ahl", "khl", "shl",
   "rugby", "urc", "nrl", "superrugby",
-  "euroleague", "bbl", "acb", "lba", "bkarg", "bkfr1", "bkjpn", "bkkbl", "bkcba", "kbl",
+  "euroleague", "bkbbl", "bkaba", "bkligend", "bbl", "acb", "lba", "bkarg", "bkfr1", "bkjpn", "bkkbl", "bkcba", "kbl",
   "mmua", "pfl", "bellator", "one",
   "pga", "liv", "golf",
   "bbl", "wbbl",
   "challenger", "itf",
-  "j1", "j2", "es1", "lmx", "liga", "spl", "csl", "saudi",
+  "j1", "j2", "ere", "es1", "es2", "lmx", "liga", "spl", "csl", "saudi",
   "fl1", "bra", "arg",
 ].filter((v, i, a) => a.indexOf(v) === i);
 
@@ -1366,7 +1226,7 @@ function scoreOfficialTeamMatch(
   return nameScore + leagueScore;
 }
 
-async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOfficialMetadata> {
+export async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOfficialMetadata> {
   const now = Date.now();
   if (officialMetadataCache && officialMetadataCache.expiresAt > now) {
     return officialMetadataCache.value;
@@ -1394,13 +1254,14 @@ async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOfficialMeta
         const team = item as PolymarketTeamLike;
         const id = asString(team.id);
         const name = asString(team.name);
+        const logo = asString(team.logo);
         if (!id || !name || seenIds.has(id)) continue;
         seenIds.add(id);
         teams.push({
           id,
           name,
           league: asString(team.league),
-          logo: asString(team.logo),
+          logo,
           abbreviation: asString(team.abbreviation),
           alias: asString(team.alias),
         });
@@ -1408,10 +1269,18 @@ async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOfficialMeta
     };
 
     try {
-      // Primary: fetch from Gamma API by known sports leagues (fast, targeted)
+      // Primary: fetch from Gamma API by known sports leagues.
+      // Resolve league codes through GAMMA_LEAGUE_ALIAS so that codes like
+      // "ligue1", "wcbb", "cod", etc. map to the Gamma API's expected names.
+      const resolvedLeagues = SPORTS_LEAGUES.map((league) =>
+        GAMMA_LEAGUE_ALIAS[league] ?? league,
+      );
+      // De-duplicate resolved codes to avoid double-fetching (e.g., both "arg"
+      // and "arg" may appear, or "fl1" may be reached via both "fl1" and "fr1").
+      const uniqueResolved = Array.from(new Set(resolvedLeagues));
       const leagueBatches = await Promise.allSettled(
-        SPORTS_LEAGUES.map((league) =>
-          fetchJson<unknown>(`${GAMMA_API_BASE}/teams?league=${league}&limit=${TEAM_PAGE_LIMIT}`),
+        uniqueResolved.map((gammaLeague) =>
+          fetchJson<unknown>(`${GAMMA_API_BASE}/teams?league=${gammaLeague}&limit=${TEAM_PAGE_LIMIT}`),
         ),
       );
 
@@ -1424,22 +1293,11 @@ async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOfficialMeta
       logger.warn({ err }, "Failed to fetch teams by league from Polymarket Gamma API");
     }
 
-    // Secondary: Polymarket Gateway (fills gaps with legacy IDs/aliases)
-    try {
-      const gatewayPayload = await fetchJson<unknown>(OFFICIAL_TEAMS_GATEWAY_URL);
-      const gatewayTeams =
-        gatewayPayload &&
-        typeof gatewayPayload === "object" &&
-        Array.isArray((gatewayPayload as { teams?: unknown }).teams)
-          ? (gatewayPayload as { teams: unknown[] }).teams
-          : [];
-      pushTeams(gatewayTeams);
-    } catch (err) {
-      logger.warn({ err }, "Failed to fetch teams from Polymarket Gateway");
-    }
+    logger.info({ totalTeams: teams.length }, "Primary league batch fetch complete");
 
     // Tertiary: Gamma sidecar if still empty
     if (teams.length === 0) {
+      logger.info("Sidecar or paginated fallback needed, attempting...");
       try {
         const sidecarTeams = await fetchGammaSidecarTeams();
         if (sidecarTeams) pushTeams(sidecarTeams);
@@ -1468,6 +1326,8 @@ async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOfficialMeta
       }
     }
 
+    logger.info({ totalTeams: teams.length, afterFallback: true }, "After sidecar/paginated fallback");
+
     const sportsMeta = await sportsPromise;
     const sportImageBySlug = new Map<string, string>();
     const sportImageByLabel = new Map<string, string>();
@@ -1485,6 +1345,71 @@ async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOfficialMeta
         if (rawSport) sportImageBySlug.set(rawSport.toLowerCase(), image);
         if (rawSeries) sportImageBySlug.set(rawSeries.toLowerCase(), image);
         if (normalizedLabel) sportImageByLabel.set(normalizedLabel.toLowerCase(), image);
+      }
+    }
+
+    // Remove player prop entries: entries with no logo URL.
+    // Real teams always have a logo URL from Polymarket's team_logos system.
+    // Player entries (e.g. "Alex DeBrincat" in NHL) and other synthetic entries
+    // have no logo, and letting them in causes fuzzy name matching to match
+    // player names instead of team names.
+    // Edge case: some legacy entries have no logo — keep those only if they have
+    // a non-trivial abbreviation (≥3 chars, not all lowercase initials).
+    const beforeFilter = teams.length;
+    const filteredTeams = teams.filter(t => {
+      if (t.logo) return true;
+      // Allow entries with meaningful abbreviations (real team codes like "EDM", "VGK")
+      // but reject player-style abbreviations (lowercase initials like "aledeb").
+      if (t.abbreviation && t.abbreviation.length >= 3 && /[A-Z]/.test(t.abbreviation)) {
+        return true;
+      }
+      return false;
+    });
+    teams.length = 0;
+    teams.push(...filteredTeams);
+    if (filteredTeams.length < beforeFilter) {
+      logger.info({ before: beforeFilter, after: filteredTeams.length }, "Filtered player entries from metadata");
+    }
+
+    // Post-filter: check for leagues that lost ALL their entries
+    // (likely the Gamma API has no teams for this league code).
+    // For these leagues, try a fresh Gamma API fetch using the alias map.
+    const leagueEntryCount = new Map<string, number>();
+    for (const t of teams) {
+      const l = t.league ?? "unknown";
+      leagueEntryCount.set(l, (leagueEntryCount.get(l) ?? 0) + 1);
+    }
+    const emptyOrThin = SPORTS_LEAGUES.filter(l => {
+      const gammaLeague = GAMMA_LEAGUE_ALIAS[l] ?? l;
+      const count = leagueEntryCount.get(gammaLeague) ?? 0;
+      return count === 0;
+    });
+    if (emptyOrThin.length > 0) {
+      logger.info({ emptyOrThin, counts: Object.fromEntries(leagueEntryCount) }, "Re-fetching empty leagues from Gamma API");
+      const reFetchBatches = await Promise.allSettled(
+        emptyOrThin.map((league) => {
+          const gammaLeague = GAMMA_LEAGUE_ALIAS[league] ?? league;
+          return fetchJson<unknown>(
+            `${GAMMA_API_BASE}/teams?league=${gammaLeague}&limit=${TEAM_PAGE_LIMIT}`,
+          );
+        }),
+      );
+
+      for (const [index, result] of reFetchBatches.entries()) {
+        if (result.status !== "fulfilled") continue;
+        const retry = Array.isArray(result.value) ? result.value : [];
+        if (retry.length === 0) continue;
+        const league = emptyOrThin[index];
+        const gammaLeague = GAMMA_LEAGUE_ALIAS[league] ?? league;
+        const clean = retry.filter((item) => {
+          const t = item as PolymarketTeamLike;
+          const logo = asString(t.logo);
+          const abbr = asString(t.abbreviation);
+          if (logo) return true;
+          if (abbr && abbr.length >= 3 && /[A-Z]/.test(abbr)) return true;
+          return false;
+        });
+        pushTeams(clean);
       }
     }
 

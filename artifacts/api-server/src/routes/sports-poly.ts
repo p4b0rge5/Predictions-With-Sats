@@ -688,3 +688,31 @@ router.post("/sports-poly/withdraw/:token/pay-to-address", async (req, res): Pro
 });
 
 export default router;
+
+// ---------------------------------------------------------------------------
+// Debug: expose metadata stats
+// ---------------------------------------------------------------------------
+router.get("/sports-poly/debug-metadata", async (_req, res): Promise<void> => {
+  const mod = await import("../lib/polymarket-sports");
+  const metadata = await mod.fetchPolymarketOfficialMetadata?.();
+
+  if (!metadata) {
+    res.json({ error: "Metadata not available" });
+    return;
+  }
+
+  const leagueCounts: Record<string, number> = {};
+  for (const t of metadata.teams) {
+    const l = t.league ?? "unknown";
+    leagueCounts[l] = (leagueCounts[l] ?? 0) + 1;
+  }
+
+  const sortedLeagues = Object.entries(leagueCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([league, count]) => ({ league, count }));
+
+  res.json({
+    total: metadata.teams.length,
+    leagues: sortedLeagues,
+  });
+});
