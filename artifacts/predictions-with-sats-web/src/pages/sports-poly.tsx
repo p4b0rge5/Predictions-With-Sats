@@ -34,7 +34,7 @@ import { ErrorState, LoadingState } from "@/components/query-state";
 import { getProjectedPayout } from "@/lib/payout-preview";
 
 type ContentTab = "guide" | "markets" | "myBets" | "results";
-type SportsPolyCategoryKey = "soccer" | "nba" | "nfl" | "nhl" | "mlb" | "mma" | "rugby" | "tennis" | "golf";
+type SportsPolyCategoryKey = "soccer" | "nba" | "nfl" | "nhl" | "mlb" | "mma" | "rugby" | "tennis" | "golf" | "cricket" | "esports";
 type InputMode = "sats" | "usd";
 
 interface SportsPolyOutcome {
@@ -172,6 +172,8 @@ const SPORTS_POLY_CATEGORIES: Array<{
   { key: "rugby", label: "Rugby", sportNames: ["Rugby"], icon: "🏉", cardClass: "surface-tint-emerald", resultCardClass: "surface-tint-emerald-soft" },
   { key: "tennis", label: "Tennis", sportNames: ["Tennis"], icon: "🎾", cardClass: "surface-tint-cyan", resultCardClass: "surface-tint-cyan-soft" },
   { key: "golf", label: "Golf", sportNames: ["Golf"], icon: "⛳", cardClass: "surface-tint-blue", resultCardClass: "surface-tint-blue-soft" },
+  { key: "cricket", label: "Cricket", sportNames: ["Cricket"], icon: "🏏", cardClass: "surface-tint-amber", resultCardClass: "surface-tint-amber-soft" },
+  { key: "esports", label: "Esports", sportNames: ["Esports"], icon: "🎮", cardClass: "surface-tint-purple", resultCardClass: "surface-tint-purple-soft" },
 ];
 
 function formatSats(value: number) {
@@ -247,13 +249,13 @@ function teamInitials(name: string | null | undefined) {
 
 function TeamBadge({ src, name, size = "sm" }: { src: string | null; name: string; size?: "sm" | "lg" }) {
   const [error, setError] = useState(false);
-  const dim = size === "lg" ? "w-12 h-12 text-sm" : "w-8 h-8 text-[10px]";
+  const dim = size === "lg" ? "w-12 h-12 text-sm" : "w-10 h-10 text-[11px]";
   if (src && !error) {
     return (
       <img
         src={src}
         alt={name}
-        className={`${size === "lg" ? "w-12 h-12" : "w-8 h-8"} object-contain shrink-0`}
+        className={`${size === "lg" ? "w-12 h-12" : "w-10 h-10"} object-contain shrink-0`}
         onLoad={(e) => {
           const img = e.currentTarget;
           if (img.naturalWidth === 0 || img.naturalHeight === 0) {

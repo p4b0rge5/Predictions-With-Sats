@@ -87,11 +87,19 @@ const LEAGUE_PRESENTATION_BY_CODE: Record<string, { label: string }> = {
   criclcl: { label: "Legends League Cricket" },
   cricpsl: { label: "Pakistan Super League" },
   // Esports
+  codmw: { label: "Call of Duty" },
+  cs2: { label: "Counter-Strike 2" },
+  dota2: { label: "Dota 2" },
+  hok: { label: "Honor of Kings" },
   lcs: { label: "League of Legends Championship Series" },
+  lol: { label: "League of Legends" },
   lpl: { label: "LPL" },
   mlbb: { label: "Mobile Legends: Bang Bang" },
+  ow: { label: "Overwatch" },
   pubg: { label: "PUBG" },
   r6siege: { label: "Rainbow Six Siege" },
+  rl: { label: "Rocket League" },
+  val: { label: "Valorant" },
   wildrift: { label: "League of Legends: Wild Rift" },
   chess: { label: "Chess" },
   // Hockey
@@ -353,6 +361,7 @@ function normalizeSportLabel(value: string | null): string | null {
   if (normalized === "tennis") return "Tennis";
   if (normalized === "golf") return "Golf";
   if (normalized === "cricket") return "Cricket";
+  if (normalized === "esports" || normalized === "gaming" || normalized === "esport") return "Esports";
   return null;
 }
 
@@ -381,6 +390,8 @@ function inferSportFromSlugContext(slugContext: string): string | null {
   if (/(?:^|\s)(?:ten|atp|wta|challenger)-/.test(source)) return "Tennis";
   if (/(?:^|\s)(?:golf|pga|liv)-/.test(source)) return "Golf";
   if (/(?:^|\s)(?:rug|urc|sixnations|superrugby)-/.test(source)) return "Rugby";
+  if (/(?:^|\s)(?:codmw|cs2|dota2|hok|lol|lpl|mlbb|ow|pubg|r6siege|rl|val|wildrift|lcs)-/.test(source)) return "Esports";
+  if (/(?:^|\s)(?:cricbpl|criccpl|criclcl|cricpsl|crick|t20|bbl|ipl|cricket)-/.test(source)) return "Cricket";
   if (
     /(?:^|\s)(?:arg|aus|aut|bel|bl2|bra|chi|col|cro|cze|den|ecu|eng|epl|ere|es1|es2|fin|fra|fr1|fr2|ger|ger2|gre|hun|irl|isa|isb|itsa|itsb|j1|j2|j[0-9]+|kor|lat|lib|mls|mex|ned|nor|par|per|pol|por|rom|rus|sco|srb|sud|sui|svk|svn|swe|tur|ucl|uefa|uru|ven)-/.test(source)
   ) {
@@ -618,6 +629,7 @@ function inferSport(
   if (source.includes("tennis")) return "Tennis";
   if (source.includes("golf")) return "Golf";
   if (source.includes("cricket")) return "Cricket";
+  if (source.includes("valorant") || source.includes("rocket league") || source.includes("rainbow six") || source.includes("mobile legends") || source.includes("call of duty") || source.includes("counter-strike") || source.includes("dota") || source.includes("overwatch") || source.includes("honor of kings") || source.includes("pubg")) return "Esports";
   if (/(^|[^a-z])(epl|bun|lal|sea|fl1|mls|ucl|fifwc|uefa|serie-a)([^a-z]|$)/.test(source)) return "Soccer";
   if (source.includes("soccer")) return "Soccer";
   if (source.includes("football")) return "Soccer";
@@ -1098,6 +1110,11 @@ const GAMMA_LEAGUE_ALIAS: Record<string, string> = {
   efl: "efl",
   // Rugby
   ruurc: "ruurc",
+  // Esports — legacy names
+  csgo: "cs2",
+  starcraft2: "sc2",
+  valorant: "val",
+  rl: "rl",
 };
 
 const SPORTS_LEAGUES = [
@@ -1128,7 +1145,8 @@ const SPORTS_LEAGUES = [
   "cricpsl", "cricsm", "criccsat20w", "crichkt20w", "crict20plw",
   "crint", "crwncl", "crwt20wcgq", "csa", "sasa", "she",
   // ─── Esports ──────────────────────────────────────────
-  "lcs", "lpl", "mlbb", "pubg", "r6siege", "wildrift", "chess",
+  "lcs", "lol", "lpl", "mlbb", "ow", "pubg", "r6siege", "rl", "val", "wildrift", "chess",
+  "cod", "codmw", "cs2", "dota2", "hok",
   // ─── Combat sports ────────────────────────────────────
   "zuffa", "wbc",
   // ─── Hockey (additional leagues) ──────────────────────
@@ -1136,8 +1154,7 @@ const SPORTS_LEAGUES = [
   // ─── Other sports ─────────────────────────────────────
   "f1", "pll", "powerslap", "mwoh", "wwoh",
   // ─── Legacy entries ───────────────────────────────────
-  "sea", "cod", "cs2",
-  "lol", "csgo", "valorant", "dota2", "rl", "ow", "starcraft2",
+  "sea", "csgo", "starcraft2",
   "crban", "crbtnmlyhkg20", "crafgwi20", "crafpl", "craus",
   "criplcl", "cricpakt20cup", "cricps", "cricss", "cricthunderbolt", "cricwncl",
   "crind", "crnew", "crpak", "crsou", "cru19wc", "cruae",
