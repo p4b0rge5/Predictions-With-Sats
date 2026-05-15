@@ -125,6 +125,63 @@ export async function publishSportMarketSettled(market: {
 }
 
 // ---------------------------------------------------------------------------
+// Sports-Poly Market: New market created
+// ---------------------------------------------------------------------------
+
+export async function publishSportsPolyMarketCreated(market: {
+  id: number;
+  homeTeam: string | null;
+  awayTeam: string | null;
+  league: string;
+  sport: string;
+  startsAt: Date | string;
+  question: string;
+  homeBadge?: string | null;
+  awayBadge?: string | null;
+  leagueLogo?: string | null;
+  outcomes?: Array<{ key: string; label: string; price: number | null; poolSats: number }>;
+}): Promise<void> {
+  if (!isEnabled()) return;
+
+  try {
+    const d = typeof market.startsAt === "string" ? new Date(market.startsAt) : market.startsAt;
+    const dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    const timeStr = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+
+    const home = market.homeTeam ?? "Home";
+    const away = market.awayTeam ?? "Away";
+
+    // Build outcomes display from outcomes array (multi-option), or fall back to two-way
+    let outcomesText: string;
+    let betOptions: string;
+    const emojis = ["🟢", "🔵", "🟡", "🟠", "🔴", "🟣", "⚪", "⚫"];
+
+    if (market.outcomes && market.outcomes.length > 0) {
+      outcomesText = market.outcomes
+        .map((o, i) => `${emojis[i % emojis.length]} ${o.label}`)
+        .join("\n");
+      betOptions = `Pick your outcome`;
+    } else {
+      outcomesText = `🟢 ${home}\n🔵 ${away}`;
+      betOptions = "Home or Away";
+    }
+
+    const text = `⚡ New market!\n\n${home} vs ${away}\n\n${outcomesText}\n\n🏆 ${market.league}\n📅 ${dateStr} at ${timeStr} UTC\n\nBet ${betOptions} with Bitcoin Lightning\n\npwsats.com`;
+
+    const tags = [
+      ["t", "pwsats"],
+      ["t", "bitcoin"],
+      ["t", "lightning"],
+      ["t", market.sport.toLowerCase().replace(/[\s/]+/g, "_")],
+    ];
+
+    await publishNostrEvent(text, tags, 1);
+  } catch (err) {
+    logger.warn({ err, marketId: market.id }, "Failed to publish sports-poly market to Nostr");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Weather Market: New market
 // ---------------------------------------------------------------------------
 

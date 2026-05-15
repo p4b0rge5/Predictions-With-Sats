@@ -7,6 +7,7 @@ import {
   type ExternalSportPolyMarket,
 } from "./polymarket-sports";
 import { logger } from "./logger";
+import { publishSportsPolyMarketCreated } from "./nostr-publisher";
 
 const PLATFORM_FEE = 0.02;
 const SYNC_TTL_MS = 15 * 60 * 1000;
@@ -102,7 +103,29 @@ export async function getOrSyncSportsPolyMarkets(force = false): Promise<void> {
           .set(values)
           .where(eq(sportPolyMarketsTable.id, existing.id));
       } else {
-        await db.insert(sportPolyMarketsTable).values(values);
+        const [newMarket] = await db
+          .insert(sportPolyMarketsTable)
+          .values(values)
+          .returning();
+
+        // Publish to Nostr for promotion (fire-and-forget, never blocks sync)
+        publishSportsPolyMarketCreated({
+          id: newMarket.id,
+          homeTeam: newMarket.homeTeam,
+          awayTeam: newMarket.awayTeam,
+          league: newMarket.league,
+          sport: newMarket.sport,
+          startsAt: newMarket.startsAt,
+          question: newMarket.question,
+          outcomes: mergedOutcomes.map((o) => ({
+            key: o.key,
+            label: o.label,
+            price: o.price,
+            poolSats: o.poolSats,
+          })),
+        }).catch((err) =>
+          logger.warn({ err, marketId: newMarket.id }, "Nostr publish failed for new sports-poly market"),
+        );
       }
     }
 
