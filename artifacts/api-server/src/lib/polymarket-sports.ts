@@ -53,6 +53,57 @@ const LEAGUE_PRESENTATION_BY_CODE: Record<string, { label: string }> = {
   sud: { label: "Copa Sudamericana" },
   tur: { label: "Super Lig" },
   ucl: { label: "UEFA Champions League" },
+  // Additional soccer leagues
+  acn: { label: "Africa Cup of Nations" },
+  aus: { label: "A-League" },
+  caf: { label: "CAF Competitions" },
+  cde: { label: "Coupe de France" },
+  cdr: { label: "Copa del Rey" },
+  chi: { label: "Chinese Super League" },
+  col1: { label: "Categoría Primera A" },
+  cze1: { label: "Czech First League" },
+  dfb: { label: "DFB-Pokal" },
+  efl: { label: "EFL Championship" },
+  egy1: { label: "Egyptian Premier League" },
+  elc: { label: "Emirati Arabian Gulf League" },
+  fifwc: { label: "FIFA World Cup" },
+  ind: { label: "Indian Super League" },
+  itsb: { label: "Serie B" },
+  jap: { label: "J1 League" },
+  kor: { label: "K League 1" },
+  mar1: { label: "Botola Pro" },
+  ukr1: { label: "Ukrainian Premier League" },
+  // Basketball
+  ncaab: { label: "NCAA Basketball" },
+  bkbsl: { label: "BSL" },
+  bkcl: { label: "Basketball Champions League" },
+  bknbl: { label: "NBL" },
+  bkvtb: { label: "VTB United League" },
+  // Cricket
+  cricbpl: { label: "Bangladesh Premier League" },
+  criccpl: { label: "Caribbean Premier League" },
+  cricsa20: { label: "SA20" },
+  cricilt20: { label: "ILT20" },
+  criclcl: { label: "Legends League Cricket" },
+  cricpsl: { label: "Pakistan Super League" },
+  // Esports
+  lcs: { label: "League of Legends Championship Series" },
+  lpl: { label: "LPL" },
+  mlbb: { label: "Mobile Legends: Bang Bang" },
+  pubg: { label: "PUBG" },
+  r6siege: { label: "Rainbow Six Siege" },
+  wildrift: { label: "League of Legends: Wild Rift" },
+  chess: { label: "Chess" },
+  // Hockey
+  cehl: { label: "Czech Extraliga" },
+  dehl: { label: "DEL" },
+  snhl: { label: "Swedish Hockey League" },
+  // Other
+  f1: { label: "Formula 1" },
+  pll: { label: "Professional Luta League" },
+  zuffa: { label: "UFC" },
+  wbc: { label: "WBC Boxing" },
+  powerslap: { label: "Power Slap" },
 };
 
 export interface ExternalSportPolyOutcome {
@@ -1043,6 +1094,10 @@ const GAMMA_LEAGUE_ALIAS: Record<string, string> = {
   crafpl: "craus",
   // Table tennis
   wttc: "wttmen",
+  // Soccer — continental / domestic cups
+  efl: "efl",
+  // Rugby
+  ruurc: "ruurc",
 };
 
 const SPORTS_LEAGUES = [
@@ -1052,6 +1107,35 @@ const SPORTS_LEAGUES = [
   "cbb", "cfb", "wcbb",
   "atp", "wta",
   "ufc",
+  // ─── Global soccer leagues ───────────────────────────
+  // FIFA / continental
+  "fifwc", "acn", "afc", "caf", "ofc", "con", "ccc", "ssc", "uef",
+  // Domestic cups / second tiers
+  "dfb", "cde", "cdr", "efl", "itsb", "elc",
+  // International leagues (Americas)
+  "aus", "col1", "mar1", "per1", "bol1",
+  // International leagues (Europe/Middle East/Africa)
+  "cze1", "egy1", "ukr1", "ind", "creng",
+  // International leagues (Asia)
+  "chi", "jap", "kor",
+  // ─── Basketball (international) ───────────────────────
+  "ncaab", "cwbb",
+  "bkbsl", "bkcl", "bkgr1", "bknbl", "bkvtb",
+  "bkfibaqaf", "bkfibaqam", "bkfibaqas", "bkfibaqeu",
+  // ─── Cricket ──────────────────────────────────────────
+  "cricbpl", "criccpl", "cricsa20", "cricilt20", "criclcl", "crict20blast",
+  "crict20lpl", "crictbcl", "crwpl20", "cricbbl", "cricmlc", "cricnt20c",
+  "cricpsl", "cricsm", "criccsat20w", "crichkt20w", "crict20plw",
+  "crint", "crwncl", "crwt20wcgq", "csa", "sasa", "she",
+  // ─── Esports ──────────────────────────────────────────
+  "lcs", "lpl", "mlbb", "pubg", "r6siege", "wildrift", "chess",
+  // ─── Combat sports ────────────────────────────────────
+  "zuffa", "wbc",
+  // ─── Hockey (additional leagues) ──────────────────────
+  "cehl", "dehl", "snhl",
+  // ─── Other sports ─────────────────────────────────────
+  "f1", "pll", "powerslap", "mwoh", "wwoh",
+  // ─── Legacy entries ───────────────────────────────────
   "sea", "cod", "cs2",
   "lol", "csgo", "valorant", "dota2", "rl", "ow", "starcraft2",
   "crban", "crbtnmlyhkg20", "crafgwi20", "crafpl", "craus",
