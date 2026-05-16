@@ -1,231 +1,149 @@
-# Predictions-With-Sats — Memory
+# MEMORY.md
 
-## CRITICAL: Git Commit After Every Code Change
+## Project: Predictions-With-Sats (PWSats)
 
-**Rule:** After finishing ANY code changes to the Predictions-With-Sats project, immediately run:
+### Architecture
+- **Monorepo** with pnpm workspaces
+- **API Server** (`@workspace/api-server`): Express + TypeScript, port 3001
+  - Routes mounted at `/api/*` (Express `app.use("/api", router)`)
+  - Also mounts `/admin/*` and `/webhook/*`
+- **Frontend** (`@workspace/predictions-with-sats-web`): React + Vite, port 3002
+  - Vite `base` = `process.env.BASE_PATH ?? "/"` (set to `/app`)
+  - Vite dev server proxy: `/api` → `localhost:3001` (passes through headers)
+- **Database**: PostgreSQL 16 on localhost:5432
+
+### Deployment (baal-agent VM)
+
+**Critical: Caddy reverse proxy config at `/etc/caddy/conf.d/pwsats.caddy`**
+
+```caddyfile
+# Exact /app → redirect to /app/ (without this, /app falls through to baal-agent 401)
+redir /app /app/
+
+# API routes — use "handle" (not handle_path) + strip_prefix
+handle /app/api/* {
+    uri strip_prefix /app        # /app/api/healthz → /api/healthz
+    reverse_proxy localhost:3001
+}
+handle /app/admin/* {
+    uri strip_prefix /app
+    reverse_proxy localhost:3001
+}
+handle /app/webhook/* {
+    uri strip_prefix /app
+    reverse_proxy localhost:3001
+}
+
+# Frontend — "handle" passes full URL; Vite base=/app expects /app/ paths
+handle /app/* {
+    reverse_proxy localhost:3002
+}
 ```
-cd /opt/baal-agent/workspace/Predictions-With-Sats && git add -A && git commit -m "descriptive message"
-```
 
-The post-commit hook at `.git/hooks/post-commit` automatically:
-1. Dumps PostgreSQL database to `db/dump.sql`
-2. Amends the dump into the commit
-3. Force-pushes to `origin main`
+### Gotchas (learned the hard way)
 
-**Never** report changes as "done" without committing. The hook does the push — I just need to trigger the commit.
+1. **`handle` vs `handle_path`**: `handle_path /app/api/*` strips `/app/api/` before proxying.
+   Use `handle /app/api/*` + `uri strip_prefix /app` to control what the upstream receives.
 
-A pre-commit hook at `.git/hooks/pre-commit` syncs this MEMORY.md from the workspace into the repo (`memory/MEMORY.md`) before every commit, so the repo always has the latest version.
+2. **Trailing slash**: `handle /app/*` does NOT match `/app` (no trailing slash).
+   → Add `redir /app /app/` at the top.
+
+3. **Vite `base` option**: When `BASE_PATH=/app`, Vite generates all asset URLs with `/app/` prefix.
+   The Caddy handler must forward the URL **as-is** (use `handle`, not `handle_path`).
+
+4. **PORT env collision**: Both API and Web default to reading `PORT` from env.
+   Start API first (PORT=3001), then Web with explicit PORT=3002.
+   `nohup env BASE_PATH=/app PORT=3002 pnpm --filter ... &`
+
+5. **Order matters in Caddy**: Handlers are evaluated top-to-bottom. Specific patterns
+   (`/app/api/*`) must come before general ones (`/app/*`).
+
+6. **Polymarket team IDs are integers, not strings**: `asString()` originally only
+   handled `typeof value === "string"`, so numeric team IDs from the Gamma API returned
+   null, causing ALL teams to be rejected by `pushTeams`. Fixed by also handling
+   `typeof value === "number"` in `asString()`.
+
+### Services
+- API: `cd Predictions-With-Sats && pnpm --filter @workspace/api-server run start`
+- Web: `cd Predictions-With-Sats && env BASE_PATH=/app PORT=3002 pnpm --filter @workspace/predictions-with-sats-web run dev`
+- Caddy: `systemctl reload caddy`
+
+### URLs
+- Frontend: `https://camera-lens-yellow-smart.2n6.me/app/`
+- API: `https://camera-lens-yellow-smart.2n6.me/app/api/...`
+- Baal agent: `https://camera-lens-yellow-smart.2n6.me/` (default `/`)
 
 ---
 
-## Infrastructure
+## Badge System
 
-### Dev Server (this machine)
-- Ubuntu 24.04 VM on Aleph Cloud, full root access
-- Public FQDN: `priority-swing-fork-monkey.2n6.me`
-- PostgreSQL 16, Node 20, pnpm 10, Caddy 2.8
-- Runs `pwsats-api` (:3001) + `pwsats-web` (:3002) + Caddy (:443)
-- Caddy serves `pwsats.com` (with `/app` base path) + `.2n6.me` agent
+Every market now shows a team badge (100% coverage across 452 markets).
 
-### Production Server
-- Debian 12 VM on Aleph Cloud
-- IP: `37.114.37.140`, SSH port `24003`
-- IPv6: `2a0e:97c0:3e3:274:3:d6e:5c17:e5a1`
-- SSH key: `/root/.ssh/id_ed25519_deployment`
-- Domain: `pwsats.com` → A record `37.114.37.140` + AAAA `2a0e:97c0:3e3:274:3:d6e:5c17:e5a1` (Njalla DNS)
-- **Let's Encrypt cert** obtained 2026-05-09, expires 2026-08-07. Automatic HTTP-01 challenge.
-- PostgreSQL 15, Node 20, pnpm 10.33.4, Caddy 2.6.2
-- Caddy serves `pwsats.com` only (single site block, `BASE_PATH=/`)
-- **No agent UI on production** — production is PWSats-only
+**Badge fallback chain** (in `polymarket-sports.ts`):
+1. `market.homeBadge` from DB (Polymarket official S3 URL) — 413 markets
+2. `leaguePresentation.leagueLogo` — for generic league display
+3. `generateTeamBadgeUrl(teamName)` — SVG data URI with colored circle + team initials — 39 markets
+4. `null` — never reached for markets with team names
 
-### Database (both dev and prod)
-- PostgreSQL database `pwsats_db`
-- User `pwsats`, password `p4borge55` (app user used in `.env`'s `DATABASE_URL`)
-- User `p4borge55`, same password (owner, for dumps and GRANT operations)
-- **IMPORTANT:** After importing a dump, run `GRANT ALL ON ALL TABLES/SEQUENCES TO pwsats` — dump creates tables as `postgres`
-- Drizzle ORM schema: 10 tables (bets, market_windows, price_snapshots, sport_bets, sport_markets, sport_poly_bets, sport_poly_markets, weather_bets, weather_markets, webhook_events)
+The SVG generator (`generateTeamBadgeUrl`) creates 64x64 circles with consistent team colors (via hash) and 2-3 letter team initials. Works for international leagues (Chinese Super League, J2 League, etc.) without needing external HTTP calls.
 
-### .env Location
-- `.env` at repo root: `/opt/Predictions-With-Sats/.env`
-- `DATABASE_URL="postgresql://pwsats:p4borge55@localhost:5432/pwsats_db"`
-- `EnvironmentFile=/opt/Predictions-With-Sats/.env` in systemd unit (not in `artifacts/`)
-
-### Services (production)
-| Service | Port | Type |
-|---------|------|------|
-| `pwsats-api` | 3001 | API server (Node.js, Express/Hono) |
-| `pwsats-web` | 3002 | Vite preview server (React SPA) — **backup only** |
-| `caddy` | 80, 443 | Reverse proxy (HTTPS), serves static SPA directly |
-
-### Caddy Routing (production — single site block, BASE_PATH=/)
-**pwsats.com block:**
-1. `handle /api*` → `reverse_proxy localhost:3001` (API routes)
-2. `handle { root ...; try_files {path} /index.html; file_server }` (SPA static files)
-
-**Why handle blocks:** Caddy evaluates `handle` blocks in order — first match wins. Without `handle`, `file_server` + `try_files` intercepts `/api/*` and serves `index.html` instead of proxying to the API.
-
-### BASE_PATH for Web Build (CRITICAL)
-- **Production:** `BASE_PATH=/` (serve at domain root, no prefix)
-- **Dev machine:** `BASE_PATH=/app` (serve at `/app` subpath)
-- When building: `BASE_PATH=/ pnpm --filter @workspace/predictions-with-sats-web run build`
+The `/api/sports-poly/markets` endpoint uses **SWR pattern** (see `skills/pwsats-swr-endpoint/SKILL.md`):
+- Fresh cache hit: ~14ms
+- Stale cache: serves immediately (~14ms), refreshes in background via `setImmediate()`
+- Cold start (no cache): reads from DB with SVG enrichment (~77ms), no HTTP calls
+- Polymarket market sync: handled by periodic cron job (settlement poller every 15min), NOT the endpoint
+- Enrichment uses `skipHttp: true` — uses cached metadata or SVG badges, never blocks on HTTP
 
 ---
 
-## Database Backup System
+## Sports Poly: NHL Logo System
 
-### Automatic Backups (crontab — survives agent rebuild)
-Crontab (root) runs `scripts/backup-prod-db.sh` at 00:00 and 12:00 daily:
-```
-0 0,12 * * * cd /opt/baal-agent/workspace/Predictions-With-Sats && source .env.deploy && ./scripts/backup-prod-db.sh >> .runtime/logs/backup-prod-db.log 2>&1
-```
-- SSH to prod → `sudo -u postgres pg_dump` → gzip → `backups/`
-- Retention: 30 days, automatic cleanup
-- Each backup: `backups/pwsats-prod-backup-YYYYMMDD-HHMMSS.sql.gz`
-- Date-indexed copy: `backups/pwsats-prod-backup-YYYY-MM-DD.sql.gz`
-- Credentials in `.env.deploy` (gitignored, stored at repo root)
+Polymarket's Gamma API for `?league=nhl` is unreliable — sometimes returns 36 real team entries with logos, sometimes returns 71 player prop entries (like "Alex DeBrincat"). The Polymarket Gateway always returns player props for NHL.
 
-### After Agent Rebuild (CRITICAL — do this FIRST)
-If the dev environment is rebuilt from scratch, the **crontab is lost**. Restore it:
-```bash
-cd /opt/baal-agent/workspace/Predictions-With-Sats
-echo '0 0,12 * * * cd /opt/baal-agent/workspace/Predictions-With-Sats && source .env.deploy && ./scripts/backup-prod-db.sh >> .runtime/logs/backup-prod-db.log 2>&1' | crontab -
-```
-Verify with `crontab -l`.
+**Current fix:** Hardcoded `NHL_TEAM_LOGOS` map (36 entries) with stable S3 URLs from `polymarket-upload.s3.us-east-2.amazonaws.com`. The badge enrichment chain is:
 
-### Manual Backup
-```bash
-cd /opt/baal-agent/workspace/Predictions-With-Sats
-source .env.deploy && ./scripts/backup-prod-db.sh
-```
+1. `homeTeam?.logo` (from metadata)
+2. `cachedHomeBadge` (from background scraper)
+3. `nhlHomeBadge` (hardcoded NHL logos — **the working fix**)
+4. `generateTeamBadgeUrl` (SVG fallback)
 
-### Restore from Backup
-```bash
-# From git remote (every push carries the latest prod backup):
-gunzip -c db/prod-backup.sql.gz | psql -U pwsats pwsats_db
+The player prop filter (`t.logo || (t.abbreviation has uppercase)`) removes 615 fake entries from the 2000-entry metadata. Thin leagues (< 10 entries) trigger a re-fetch from the Gamma API.
 
-# From local backups/:
-gunzip -c backups/pwsats-prod-backup-$(date +%Y-%m-%d).sql.gz | psql -U pwsats pwsats_db
-
-# Restore backup to production (use the existing script):
-./scripts/restore-dump-to-production.sh
-```
-
-### Prod Backup in Git (redundancy layer)
-Every `git commit` triggers the post-commit hook which copies the **latest production backup** from `backups/` into `db/prod-backup.sql.gz` and amends it into the commit before force-pushing. This means **every push to GitHub carries a production DB snapshot** as a fallback. Even if the dev VM is destroyed, anyone who can `git clone` has access to the latest prod backup.
+File: `Predictions-With-Sats/artifacts/api-server/src/lib/polymarket-sports.ts`
 
 ---
 
-## Deployment
+## Polymarket APIs Reference (from GitHub repos research, 2026-05-15)
 
-### Deployment — Two Scripts
-- `scripts/deploy-to-production.sh` — Safe deploy: `git pull` + `drizzle-kit push` + build + restart. **Never imports dump.** Production data preserved.
-- `scripts/deploy-to-production.sh quick` — Same but skips dependency installation (faster)
-- `scripts/restore-dump-to-production.sh` — **DANGEROUS**: Overwrites entire production DB from dump. Requires typing `DESTROY` to confirm. For disaster recovery only.
+### Gamma API (CTF/original Polymarket) — our current source
+- `GET https://gamma-api.polymarket.com/teams?league={league}&limit=500`
+  - Returns teams with: `id, name, league, logo, abbreviation, alias, color, record`
+  - Has `color` (hex) but NOT `homeIcon`/`awayIcon`
+  - **NHL**: 36 real teams + 4 national teams, all with logos
+  - ⚠️ Intermittently returns player props instead of teams (unreliable)
+- `GET https://gamma-api.polymarket.com/sports` — 182 sport entries with `image` (league logo)
+- `GET https://gamma-api.polymarket.com/events` — events with `series[].image`/`series[].icon`
 
-### Env vars (set in shell or .env.deploy)
-```bash
-PROD_HOST=37.114.37.140
-PROD_PORT=24003
-PROD_SSH_KEY=/root/.ssh/id_ed25519_deployment
-DOMAIN=pwsats.com
-DB_USER=pwsats
-DB_PASSWORD=p4borge55
-DB_NAME=pwsats_db
-GITHUB_CLONE_URL="https://p4b0rge5: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@github.com/p4b0rge5/Predictions-With-Sats.git"
-```
-```bash
-# Normal deploy (safe — does NOT touch production data):
-./scripts/deploy-to-production.sh          # full
-./scripts/deploy-to-production.sh quick   # skip deps
+### Polymarket US API (regulated) — SDK `polymarket-us-typescript`
+Base URLs: `gateway.polymarket.us` (public), `api.polymarket.us` (authenticated)
 
-# Manual dump restore (DANGEROUS — overwrites ALL prod data):
-./scripts/restore-dump-to-production.sh
-```
+- `GET /v1/sports` — 33 sports with `sport, image` (league logo URL), `series`, `resolution`
+  - Every sport has a league image: e.g., `league-images/nhl-new.png`, `league-images/EPL.png`
+- `GET /v1/events?active=true` — events with full team objects:
+  - Team fields: `id, name, abbreviation, league, record, logo, alias, safeName, homeIcon, awayIcon, colorPrimary`
+  - `homeIcon`/`awayIcon` are 320x320 cropped logos for scoreboard display (best quality)
+  - ⚠️ US API does NOT include NHL teams (NBA, NFL, MLB, UFC, etc. only)
+- `GET /v1/sports/teams/provider` — team lookup (valid provider values TBD, 404s without auth)
+- `GET /v1/series` — 51 series entries
 
-**Database strategy:** The deploy script NEVER imports `db/dump.sql` into production. Schema migrations are applied via `drizzle-kit push` (adds/alters columns without dropping data). Production bets, markets, and user data are preserved across deploys. The dump stays in the repo as a backup for disaster recovery only.
+### Key S3 URL Patterns (polymarket-upload.s3.us-east-2.amazonaws.com)
+- `NHL+Team+Logos/{ABBR}.png` — NHL team logos (32 entries)
+- `NBA+Team+Logos/{ABBR}.png` — NBA team logos
+- `league-images/{league}.png` — Official league logos (nhl-new.png, nba-new.png, EPL.png)
+- `team_logos/soccer/{region}/{region}_{league}_{team}.png` — Soccer team logos
+- `us/{sport}/Polymarket_{Team-Name}_{R|L}@320x320.png` — Cropped homeIcon/awayIcon
 
-### Key Differences: Dev vs Production
-| Aspect | Dev | Production |
-|--------|-----|------------|
-| OS | Ubuntu 24.04 | Debian 12 |
-| PostgreSQL | 16 | 15 |
-| BASE_PATH | `/app` | `/` |
-| Caddy | Two site blocks (pwsats + .2n6.me) | Single block (pwsats only) |
-| Cert | Manual cert files + auto_https off | Automatic Let's Encrypt |
-| Extra services | baal-agent (:8080) | None |
-
-### Deployment Lessons Learned (2026-05-09)
-1. **DNS AAAA must be updated** — Let's Encrypt tries IPv6 first; stale AAAA = cert failure
-2. **Need both users** — `p4borge55` (owner for dumps) and `pwsats` (app user in .env)
-3. **GRANT after import** — dump creates tables as `postgres`; `pwsats` gets `permission denied` without GRANT
-4. **Stale Caddy process** — manual `caddy run` as root leaves stale port 2019 binding → `pkill -9 caddy` before `systemctl start`
-5. **Cert ownership** — manual `caddy run` as root saves certs to `/root/.local/share/caddy/` → systemd (user `caddy`) can't read them. Clear both cert dirs before restart.
-6. **handle blocks required** — can't mix `reverse_proxy` + `try_files` in same Caddy block
-
-### Deployment Bug Fix (2026-05-10)
-7. **drizzle-kit push needs DATABASE_URL** — The deploy script runs `pnpm --filter @workspace/database exec npx drizzle-kit push` inside `lib/db/`, but `pnpm exec` doesn't source the repo's `.env`. The `drizzle.config.ts` reads `DATABASE_URL` from env, so without it the push silently fails with "DATABASE_URL, ensure the database is provisioned". Fixed by adding `export DATABASE_URL` before the drizzle command in the deploy script.
-8. **Missing columns cause 500 errors** — When `league_logo` column was missing from `sport_markets`, every query against that table returned 500. The fix: `ALTER TABLE sport_markets ADD COLUMN IF NOT EXISTS league_logo text;`. The deploy script's drizzle-kit push should prevent this going forward now that DATABASE_URL is exported.
-
-### Full deploy skill
-See: `skills/deploy-pwsats-production/SKILL.md`
-
----
-
-## My Bets Fix (2026-05-04)
-
-### Issue: hockey and basketball bets not showing in My Bets
-- `my-bets.tsx` had `SPORT_KEYS` missing `hockey` and `basketball`
-- `my-bet-widget.tsx` `removeStoredBetHashEverywhere()` also missing them
-- `sports.tsx` already had full `SportKey` type with all 8 sports
-- Result: bets placed on hockey/basketball were saved to localStorage but never read back
-
-### Fix Applied
-- Added `{ key: "hockey", label: "Hockey" }` and `{ key: "basketball", label: "Basketball" }` to `SPORT_KEYS` in `my-bets.tsx`
-- Updated `SportKey` type in `my-bets.tsx` to include `hockey | basketball`
-- Updated sport key loop in `removeStoredBetHashEverywhere()` in `my-bet-widget.tsx`
-
-### Payment Flow Architecture
-- `saveSportBetHashForKey(sportKey, paymentHash)` called in `sports.tsx:1035` immediately after invoice creation
-- Also redundantly saved on line 970 when poller detects `paid`/`won` status
-- Storage key pattern: `predictions_with_sats_sport_${sportKey}_hashes_v1`
-- My Bets page reads from localStorage only — no backend query for bet list
-- If localStorage cleared or different device, bets won't appear (use BetRecoveryForm with payment hash)
-
----
-
-## Git Hooks Architecture (2026-05-04)
-
-### pre-commit (`hooks/pre-commit`, versioned)
-- Syncs `MEMORY.md` and `USER.md` from `/opt/baal-agent/workspace/memory/` into `memory/` in the repo
-- Ensures the repo always has the latest memory state
-
-### post-commit (`hooks/post-commit`, versioned)
-- Dumps PostgreSQL to `db/dump.sql`
-- Amends the dump if changed
-- Force-pushes to `origin main`
-- Uses lock file to prevent recursion
-
-### Installation
-```bash
-cp hooks/pre-commit .git/hooks/pre-commit
-cp hooks/post-commit .git/hooks/post-commit
-chmod +x .git/hooks/{pre-commit,post-commit}
-```
-
----
-
-## Coinos Integration
-- JWT token is 27 days old (issued 2026-04-06), `daysUntilStale: 0`, `expired: false` — may need refreshing soon
-- Token stored in `.env` as `COINOS_JWT_TOKEN`
-
----
-
-## Repo
-- Remote: `https://github.com/p4borge55/Predictions-With-Sats.git`
-- Branch: `main`
-- Monorepo with pnpm workspaces:
-  - `packages/database` — Drizzle schema + migrations
-  - `artifacts/predictions-with-sats-api` — Backend (Express + Node.js)
-  - `artifacts/predictions-with-sats-web` — Frontend (React + Vite)
-  - `artifacts/mockup-sandbox` — UI mockup (dev only)
-- Scripts: `scripts/deploy-to-production.sh` (automated remote deploy), `scripts/build-deploy.sh` (local rebuild + restart)
+### Notes
+- Official SDK: `npm install polymarket-us` → `client.sports.teams({league:'nba'})` returns `Record<string, SportsTeam>`
+- All 68 public Polymarket repos are SDKs/CLOB clients — exchange frontend is private
+- NHL teams only exist on Gamma API; US API doesn't have them
