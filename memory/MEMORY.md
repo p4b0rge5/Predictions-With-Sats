@@ -87,12 +87,7 @@ Every market now shows a team badge (100% coverage across 452 markets).
 
 The SVG generator (`generateTeamBadgeUrl`) creates 64x64 circles with consistent team colors (via hash) and 2-3 letter team initials. Works for international leagues (Chinese Super League, J2 League, etc.) without needing external HTTP calls.
 
-The `/api/sports-poly/markets` endpoint uses **SWR pattern** (see `skills/pwsats-swr-endpoint/SKILL.md`):
-- Fresh cache hit: ~14ms
-- Stale cache: serves immediately (~14ms), refreshes in background via `setImmediate()`
-- Cold start (no cache): reads from DB with SVG enrichment (~77ms), no HTTP calls
-- Polymarket market sync: handled by periodic cron job (settlement poller every 15min), NOT the endpoint
-- Enrichment uses `skipHttp: true` — uses cached metadata or SVG badges, never blocks on HTTP
+The `/api/sports-poly/markets` endpoint serves from 15-minute in-memory cache. Cold start requires Polymarket sync (~200 HTTP calls + enrichment).
 
 ---
 
