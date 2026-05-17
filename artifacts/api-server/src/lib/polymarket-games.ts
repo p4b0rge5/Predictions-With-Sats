@@ -535,7 +535,7 @@ function resolveOutcomeKey(
 
   // Yes/No market for a team
   if (o === "yes") {
-    if (homeTeamName && o.includes(homeTeamName.toLowerCase()) || question.toLowerCase().includes(homeTeamName?.toLowerCase())) return "home";
+    if (homeTeamName && (o.includes(homeTeamName.toLowerCase()) || question.toLowerCase().includes(homeTeamName.toLowerCase()))) return "home";
     if (awayTeamName && question.toLowerCase().includes(awayTeamName.toLowerCase())) return "away";
   }
 

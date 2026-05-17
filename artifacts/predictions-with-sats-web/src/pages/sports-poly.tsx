@@ -1225,11 +1225,11 @@ export function SportsPoly() {
     isLoading,
     error,
     refetch,
-  } = useQuery<SportsPolyMarket[]>({
+  } = useQuery({
     queryKey: ["/api/sports-poly/markets", activeCategory],
     queryFn: () => fetchSportsPolyMarkets(activeCategory, "today"),
     refetchInterval: 60_000,
-    keepPreviousData: true,
+    placeholderData: (previous) => previous,
   });
 
   const openMarkets = (markets ?? []).filter((market) => market.status === "open");

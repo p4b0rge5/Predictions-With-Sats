@@ -55,6 +55,8 @@ interface PolyMarket {
   outcome: string | null;
   resolvedValue: string | null;
   settledAt: string | null;
+  homeScore: number | null;
+  awayScore: number | null;
   outcomes: PolyOutcome[];
 }
 
@@ -85,8 +87,8 @@ function polyToSportEvent(m: PolyMarket): SportEvent {
     startsAt: m.startsAt,
     status: isSettled ? "finished" : "upcoming",
     elapsed: null,
-    homeScore: null,
-    awayScore: null,
+    homeScore: m.homeScore,
+    awayScore: m.awayScore,
     outcome,
     marketId: m.id,
     totalHomeSats: homeOutcome?.poolSats ?? 0,

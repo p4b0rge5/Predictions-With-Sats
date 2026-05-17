@@ -151,6 +151,8 @@ export interface ExternalSportPolyMarket {
   awayScore: number | null;
   period: string | null;
   outcomes: ExternalSportPolyOutcome[];
+  homeScore: number | null;
+  awayScore: number | null;
   relevanceRank?: number;
 }
 
@@ -1860,6 +1862,8 @@ function normalizeDirectMoneylineMarket(raw: PolymarketMarketLike, sourceRank: n
       settledAt,
       outcomes: normalizedOutcomes,
       relevanceRank: sourceRank,
+      homeScore: null,
+      awayScore: null,
     },
   };
 }
@@ -1948,6 +1952,8 @@ function toGroupedSportsMarket(items: GroupableSportsOutcome[], relevanceRank: n
     resolvedValue: winner?.label ?? null,
     settledAt: winningItem?.settledAt ?? null,
     outcomes,
+    homeScore: null,
+    awayScore: null,
     relevanceRank,
   };
 }

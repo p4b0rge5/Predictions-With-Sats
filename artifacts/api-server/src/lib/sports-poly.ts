@@ -96,6 +96,8 @@ export async function getOrSyncSportsPolyMarkets({ force = false, block = false 
         resolvedValue: externalMarket.resolvedValue,
         status: externalMarket.winningOutcome ? "settled" : externalMarket.status,
         settledAt: externalMarket.winningOutcome ? (externalMarket.settledAt ?? existing?.settledAt ?? new Date()) : null,
+        homeScore: externalMarket.homeScore ?? existing?.homeScore ?? null,
+        awayScore: externalMarket.awayScore ?? existing?.awayScore ?? null,
       } as const;
 
       if (existing) {
