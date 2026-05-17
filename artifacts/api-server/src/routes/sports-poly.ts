@@ -133,6 +133,10 @@ router.get("/sports-poly/markets", async (req, res): Promise<void> => {
         dbHomeBadge: market.homeBadgeUrl ?? null,
         dbAwayBadge: market.awayBadgeUrl ?? null,
         dbLeagueLogo: market.leagueLogoUrl ?? null,
+        // Live scores from Polymarket Sports WebSocket
+        homeScore: market.homeScore ?? null,
+        awayScore: market.awayScore ?? null,
+        period: market.period ?? null,
       };
     });
 
@@ -516,6 +520,9 @@ router.get("/sports-poly/bets/:hash", async (req, res): Promise<void> => {
           status: market.status,
           outcome: market.winningOutcome ?? null,
           resolvedValue: market.resolvedValue ?? null,
+          homeScore: market.homeScore ?? null,
+          awayScore: market.awayScore ?? null,
+          period: market.period ?? null,
           outcomes: Array.isArray(market.outcomes) ? market.outcomes : [],
         }
       : null,

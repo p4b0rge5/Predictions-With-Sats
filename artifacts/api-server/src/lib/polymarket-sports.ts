@@ -147,6 +147,9 @@ export interface ExternalSportPolyMarket {
   winningOutcome: string | null;
   resolvedValue: string | null;
   settledAt: Date | null;
+  homeScore: number | null;
+  awayScore: number | null;
+  period: string | null;
   outcomes: ExternalSportPolyOutcome[];
   relevanceRank?: number;
 }

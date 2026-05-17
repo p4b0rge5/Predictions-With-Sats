@@ -1,4 +1,5 @@
 import {
+  integer,
   pgTable,
   serial,
   text,
@@ -41,6 +42,9 @@ export const sportPolyMarketsTable = pgTable("sport_poly_markets", {
   awayBadgeUrl: text("away_badge_url"),
   leagueLogoUrl: text("league_logo_url"),
   enrichedAt: timestamp("enriched_at", { withTimezone: true }),
+  homeScore: integer("home_score"),
+  awayScore: integer("away_score"),
+  period: text("period"),
 });
 
 export type SportPolyMarket = typeof sportPolyMarketsTable.$inferSelect;
