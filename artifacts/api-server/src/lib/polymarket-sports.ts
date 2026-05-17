@@ -1345,7 +1345,7 @@ function inferSportFromGatewayLeagueCode(value: string | null): string | null {
   const code = (value ?? "").toLowerCase().trim();
   if (!code) return null;
 
-  if (["nba", "wnba", "euroleague", "cbb", "bbl", "acb", "lba"].includes(code)) return "Basketball";
+  if (["nba", "wnba", "euroleague", "cbb", "bbl", "acb", "lba", "bkbsl", "bkcl", "bkgr1", "bknbl", "bkvtb"].includes(code)) return "Basketball";
   if (["mlb", "npb", "kbo"].includes(code)) return "Baseball";
   if (["nhl", "ahl", "khl", "shl"].includes(code)) return "Hockey";
   if (["nfl", "cfb", "cfl", "ufl"].includes(code)) return "American Football";
@@ -1354,7 +1354,7 @@ function inferSportFromGatewayLeagueCode(value: string | null): string | null {
   if (["atp", "wta", "challenger", "itf"].includes(code)) return "Tennis";
   if (["pga", "liv", "golf"].includes(code)) return "Golf";
   if (
-    /^(arg|bl2|bra|bun|den|epl|ere|es1|es2|fl1|fr2|j1|j2|lal|liga|lmx|mex|mls|nor|por|rus|sea|sud|tur|ucl|uefa|saudi|spl|csl)$/.test(code)
+    /^(arg|bl2|bra|bun|den|epl|ere|es1|es2|fl1|fr2|itc|j1|j2|lal|liga|lmx|mex|mls|nor|por|rus|sea|sud|tur|ucl|uefa|saudi|spl|csl)$/.test(code)
   ) {
     return "Soccer";
   }
