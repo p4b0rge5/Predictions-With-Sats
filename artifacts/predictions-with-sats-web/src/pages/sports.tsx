@@ -63,12 +63,11 @@ function polyToSportEvent(m: PolyMarket): SportEvent {
   const awayOutcome = m.outcomes.find(o => o.key === "away");
   const drawOutcome = m.outcomes.find(o => o.key === "draw");
 
+  const rawOutcome = m.outcome ?? null;
   let outcome: "home" | "draw" | "away" | null = null;
-  if (m.outcome) {
-    if (m.outcome.toLowerCase() === m.homeTeam?.toLowerCase()) outcome = "home";
-    else if (m.outcome.toLowerCase() === m.awayTeam?.toLowerCase()) outcome = "away";
-    else outcome = "draw";
-  }
+  if (rawOutcome === "home") outcome = "home";
+  else if (rawOutcome === "away") outcome = "away";
+  else if (rawOutcome === "draw") outcome = "draw";
 
   const isSettled = m.status === "settled";
 
