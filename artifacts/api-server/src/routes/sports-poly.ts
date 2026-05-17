@@ -14,6 +14,7 @@ import {
   addToSportsPolyPool,
   getOutcomeForSportsPolyMarket,
   listSportsPolyMarkets,
+  type ListSportsPolyOptions,
 } from "../lib/sports-poly";
 import {
   normalizeStoredLeague,
@@ -35,28 +36,63 @@ const router: IRouter = Router();
 const MIN_AMOUNT_SATS = 250;
 const PAYOUT_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 
-// In-memory cache for /sports-poly/markets response (5 min TTL).
-// The enrich step calls ~50 Polymarket API endpoints on cache miss.
-// Serving cached data keeps the page responsive between the periodic pollers.
-const MARKETS_CACHE_TTL_MS = 15 * 60 * 1000;
-let marketsCache: { data: unknown; expiresAt: number } | null = null;
+// In-memory cache keyed by filter params (5 min TTL).
+const MARKETS_CACHE_TTL_MS = 5 * 60 * 1000;
+let marketsCache: Record<string, { data: unknown; expiresAt: number }> = {};
 
 function encodeLnurl(url: string): string {
   const words = bech32.toWords(Buffer.from(url, "utf8"));
   return bech32.encode("lnurl", words, 1500);
 }
 
+// Map category key to DB sport value
+const CATEGORY_TO_SPORT: Record<string, string> = {
+  soccer: "Soccer",
+  nba: "Basketball",
+  nfl: "American Football",
+  nhl: "Hockey",
+  mlb: "Baseball",
+  mma: "MMA",
+  rugby: "Rugby",
+  tennis: "Tennis",
+  golf: "Golf",
+  cricket: "Cricket",
+  esports: "Esports",
+};
+
 router.get("/sports-poly/markets", async (req, res): Promise<void> => {
-  const { force } = req.query as { force?: string };
+  const { force, sport, window, category } = req.query as {
+    force?: string;
+    sport?: string;
+    window?: "today" | "week";
+    category?: string;
+  };
   const forceRefresh = force === "1" || force === "true";
+
+  // Build filter options from query params
+  const filterOpts: ListSportsPolyOptions = {};
+  if (category && CATEGORY_TO_SPORT[category]) {
+    filterOpts.sportFilter = CATEGORY_TO_SPORT[category];
+  } else if (sport) {
+    filterOpts.sportFilter = sport;
+  }
+  if (window === "today" || window === "week") {
+    filterOpts.window = window;
+  }
+
+  const cacheKey = `${filterOpts.sportFilter ?? "all"}:${filterOpts.window ?? "week"}`;
+
   try {
     // Serve from cache if available (unless ?force=1)
-    if (!forceRefresh && marketsCache && marketsCache.expiresAt > Date.now()) {
-      res.json(marketsCache.data);
+    const cached = marketsCache[cacheKey];
+    if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
+      res.json(cached.data as unknown[]);
       return;
     }
 
-    const markets = await listSportsPolyMarkets();
+    // listSportsPolyMarkets now fires sync in background — doesn't block
+    const markets = await listSportsPolyMarkets(filterOpts);
+
     const normalized = markets.map((market) => {
       const sport = normalizeStoredSport(
         market.sport,
@@ -93,33 +129,76 @@ router.get("/sports-poly/markets", async (req, res): Promise<void> => {
         resolvedValue: market.resolvedValue ?? null,
         settledAt: market.settledAt?.toISOString() ?? null,
         outcomes: Array.isArray(market.outcomes) ? market.outcomes : [],
+        // Carry DB-stored badge URLs for fallback
+        dbHomeBadge: market.homeBadgeUrl ?? null,
+        dbAwayBadge: market.awayBadgeUrl ?? null,
+        dbLeagueLogo: market.leagueLogoUrl ?? null,
       };
     });
 
-    const presentation = await enrichSportsPolyPresentation(normalized);
-    const enriched = normalized.map((market, index) => {
-      const display = presentation[index];
+    // Fast path: if all markets already have DB-stored badges, skip enrichment
+    const allHaveBadges = normalized.length > 0 && normalized.every(
+      m => m.dbHomeBadge && m.dbAwayBadge
+    );
 
-      return {
+    let enriched: typeof normalized;
+
+    if (allHaveBadges) {
+      enriched = normalized.map((market) => ({
         ...market,
-        homeBadge: display.homeBadge,
-        awayBadge: display.awayBadge,
-        leagueLogo: display.leagueLogo,
-        league: display.league,
-        startsAt: display.startsAt.toISOString(),
-      };
-    });
+        homeBadge: market.dbHomeBadge,
+        awayBadge: market.dbAwayBadge,
+        leagueLogo: market.dbLeagueLogo ?? market.leagueLogo,
+        startsAt: market.startsAt.toISOString(),
+      }));
+    } else {
+      // Slow path: enrich with Polymarket metadata (badge lookup)
+      const presentation = await enrichSportsPolyPresentation(
+        normalized.map(({ dbHomeBadge, dbAwayBadge, dbLeagueLogo, ...rest }) => rest)
+      );
+
+      enriched = normalized.map((market, index) => {
+        const display = presentation[index];
+
+        const homeBadge = display.homeBadge ?? market.dbHomeBadge;
+        const awayBadge = display.awayBadge ?? market.dbAwayBadge;
+        const leagueLogo = display.leagueLogo ?? market.dbLeagueLogo;
+
+        // Async: store badges in DB for next time (don't block)
+        if (homeBadge || awayBadge || leagueLogo) {
+          db.update(sportPolyMarketsTable)
+            .set({
+              homeBadgeUrl: homeBadge ?? market.homeBadgeUrl ?? null,
+              awayBadgeUrl: awayBadge ?? market.awayBadgeUrl ?? null,
+              leagueLogoUrl: leagueLogo ?? market.leagueLogoUrl ?? null,
+              enrichedAt: new Date(),
+            })
+            .where(eq(sportPolyMarketsTable.id, market.id))
+            .catch((err) => logger.warn({ err, marketId: market.id }, "Failed to save badge to DB"));
+        }
+
+        return {
+          ...market,
+          homeBadge,
+          awayBadge,
+          leagueLogo,
+          league: display.league ?? market.league,
+          startsAt: display.startsAt.toISOString(),
+        };
+      });
+    }
 
     // Cache the result
-    marketsCache = { data: enriched, expiresAt: Date.now() + MARKETS_CACHE_TTL_MS };
+    marketsCache[cacheKey] = { data: enriched, expiresAt: Date.now() + MARKETS_CACHE_TTL_MS };
 
     res.json(enriched);
   } catch (err) {
     logger.error({ err }, "GET /api/sports-poly/markets error");
     // Serve stale cache on error
-    if (marketsCache) {
+    const stale = marketsCache[cacheKey];
+    if (stale) {
       logger.warn("Serving stale sports-poly/markets cache after error");
-      res.json(marketsCache.data);
+      res.json(stale.data as unknown[]);
       return;
     }
     res.json([]);
@@ -148,7 +227,7 @@ router.get("/sports-poly/leagues", async (_req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
-// List games (match events) from Polymarket — for all leagues
+// List games (match events) from Polymarket
 // ---------------------------------------------------------------------------
 
 router.get("/sports-poly/games", async (req, res): Promise<void> => {
@@ -185,7 +264,6 @@ router.get("/sports-poly/games", async (req, res): Promise<void> => {
       marketCount: g.markets.length,
     }));
 
-    // Filter by league if specified (match on sportSlug like "epl", "bra2", etc.)
     const filtered = league
       ? games.filter((g) =>
           (g.sportSlug && g.sportSlug.toLowerCase() === league.toLowerCase()) ||
@@ -226,10 +304,6 @@ router.get("/sports-poly/games", async (req, res): Promise<void> => {
     res.json({ games: [], settled: [], leagueCount: 0, suspended: true });
   }
 });
-
-// ---------------------------------------------------------------------------
-// Get single game by external event ID
-// ---------------------------------------------------------------------------
 
 router.get("/sports-poly/games/:eventId", async (req, res): Promise<void> => {
   const { eventId } = req.params;
@@ -283,10 +357,6 @@ router.get("/sports-poly/games/:eventId", async (req, res): Promise<void> => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Check settlement status for a game
-// ---------------------------------------------------------------------------
-
 router.get("/sports-poly/games/:eventId/settlement", async (req, res): Promise<void> => {
   const { eventId } = req.params;
 
@@ -303,6 +373,10 @@ router.get("/sports-poly/games/:eventId/settlement", async (req, res): Promise<v
     res.status(500).json({ error: "Failed to check settlement" });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Betting routes (unchanged)
+// ---------------------------------------------------------------------------
 
 router.post("/sports-poly/bets", async (req, res): Promise<void> => {
   const { marketId, outcomeKey, amountSats } = req.body as {
@@ -397,6 +471,20 @@ router.get("/sports-poly/bets/:hash", async (req, res): Promise<void> => {
       ? encodeLnurl(`${publicBase}/api/sports-poly/withdraw/${bet.withdrawToken}`)
       : null;
 
+  // Use DB-stored badges
+  const sport = market ? normalizeStoredSport(
+    market.sport,
+    market.league,
+    market.eventName,
+    market.question,
+    market.sourceUrl ?? null,
+  ) : "Sports";
+  const leaguePresentation = market ? normalizeStoredLeague(
+    market.league,
+    market.sourceUrl ?? null,
+    sport,
+  ) : { league: "Sports", leagueLogo: null };
+
   res.json({
     id: bet.id,
     paymentHash: bet.paymentHash,
@@ -411,55 +499,25 @@ router.get("/sports-poly/bets/:hash", async (req, res): Promise<void> => {
     createdAt: bet.createdAt.toISOString(),
     paidAt: bet.paidAt?.toISOString() ?? null,
     market: market
-      ? await (async () => {
-          const sport = normalizeStoredSport(
-            market.sport,
-            market.league,
-            market.eventName,
-            market.question,
-            market.sourceUrl ?? null,
-          );
-          const leaguePresentation = normalizeStoredLeague(
-            market.league,
-            market.sourceUrl ?? null,
-            sport,
-          );
-
-          const [display] = await enrichSportsPolyPresentation([{
-            eventName: market.eventName,
-            homeTeam: market.homeTeam,
-            awayTeam: market.awayTeam,
-            homeTeamId: market.homeTeamId ?? null,
-            awayTeamId: market.awayTeamId ?? null,
-            homeBadge: null,
-            awayBadge: null,
-            leagueLogo: leaguePresentation.leagueLogo,
-            league: leaguePresentation.league,
-            sport,
-            startsAt: market.startsAt,
-            sourceUrl: market.sourceUrl ?? null,
-          }]);
-
-          return {
-            provider: market.provider,
-            eventName: market.eventName,
-            homeTeam: market.homeTeam,
-            awayTeam: market.awayTeam,
-            homeBadge: display.homeBadge,
-            awayBadge: display.awayBadge,
-            leagueLogo: display.leagueLogo,
-            league: display.league,
-            sport,
-            startsAt: display.startsAt.toISOString(),
-            question: market.question,
-            subtitle: market.subtitle ?? null,
-            sourceUrl: market.sourceUrl ?? null,
-            status: market.status,
-            outcome: market.winningOutcome ?? null,
-            resolvedValue: market.resolvedValue ?? null,
-            outcomes: Array.isArray(market.outcomes) ? market.outcomes : [],
-          };
-        })()
+      ? {
+          provider: market.provider,
+          eventName: market.eventName,
+          homeTeam: market.homeTeam,
+          awayTeam: market.awayTeam,
+          homeBadge: market.homeBadgeUrl ?? null,
+          awayBadge: market.awayBadgeUrl ?? null,
+          leagueLogo: market.leagueLogoUrl ?? leaguePresentation.leagueLogo,
+          league: leaguePresentation.league,
+          sport,
+          startsAt: market.startsAt.toISOString(),
+          question: market.question,
+          subtitle: market.subtitle ?? null,
+          sourceUrl: market.sourceUrl ?? null,
+          status: market.status,
+          outcome: market.winningOutcome ?? null,
+          resolvedValue: market.resolvedValue ?? null,
+          outcomes: Array.isArray(market.outcomes) ? market.outcomes : [],
+        }
       : null,
   });
 });
@@ -568,7 +626,7 @@ router.get("/sports-poly/withdraw/:token/callback", async (req, res): Promise<vo
     .limit(1);
 
   if (!bet || bet.status !== "won") {
-    res.json({ status: "ERROR", reason: "Payout not found or not claimable" });
+    res.json({ status: "ERROR", reason: "Bet not found or not claimable" });
     return;
   }
 
@@ -670,7 +728,7 @@ router.post("/sports-poly/withdraw/:token/pay-to-address", async (req, res): Pro
   const [updated] = await db
     .update(sportPolyBetsTable)
     .set({ withdrawStatus: "claimed", claimedAt: new Date() })
-    .where(and(eq(sportPolyBetsTable.withdrawToken, token), eq(sportPolyBetsTable.withdrawStatus, "unclaimed")))
+    .where(and(eq(sportPolyBetsTable.id, bet.id), eq(sportPolyBetsTable.withdrawStatus, "unclaimed")))
     .returning();
 
   if (!updated) { res.status(409).json({ error: "Payout already claimed." }); return; }

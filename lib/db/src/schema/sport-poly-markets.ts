@@ -37,6 +37,10 @@ export const sportPolyMarketsTable = pgTable("sport_poly_markets", {
   status: text("status").notNull().default("open"),
   settledAt: timestamp("settled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  homeBadgeUrl: text("home_badge_url"),
+  awayBadgeUrl: text("away_badge_url"),
+  leagueLogoUrl: text("league_logo_url"),
+  enrichedAt: timestamp("enriched_at", { withTimezone: true }),
 });
 
 export type SportPolyMarket = typeof sportPolyMarketsTable.$inferSelect;

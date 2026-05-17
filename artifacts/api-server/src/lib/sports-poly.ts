@@ -1,5 +1,5 @@
 import { db, sportPolyBetsTable, sportPolyMarketsTable, type SportPolyOutcomeRecord } from "@workspace/db";
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, lte } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import {
   fetchPolymarketSportsMarkets,
@@ -55,10 +55,11 @@ function getWinningOutcome(market: typeof sportPolyMarketsTable.$inferSelect): s
   return market.winningOutcome ?? null;
 }
 
-export async function getOrSyncSportsPolyMarkets(force = false): Promise<void> {
+// Kick off sync but NEVER block the caller unless `block=true`.
+export async function getOrSyncSportsPolyMarkets({ force = false, block = false } = {}): Promise<void> {
   if (!force && Date.now() - lastSuccessfulSyncAt < SYNC_TTL_MS) return;
   if (activeSync) {
-    if (force) return activeSync;
+    if (force && block) return activeSync;
     return;
   }
 
@@ -108,7 +109,6 @@ export async function getOrSyncSportsPolyMarkets(force = false): Promise<void> {
           .values(values)
           .returning();
 
-        // Publish to Nostr for promotion (fire-and-forget, never blocks sync)
         publishSportsPolyMarketCreated({
           id: newMarket.id,
           homeTeam: newMarket.homeTeam,
@@ -139,22 +139,51 @@ export async function getOrSyncSportsPolyMarkets(force = false): Promise<void> {
       activeSync = null;
     });
 
-  return activeSync;
+  // Block only if explicitly requested (e.g. cron job)
+  if (force && block) return activeSync;
+  // Otherwise: fire-and-forget — don't await
 }
 
-export async function listSportsPolyMarkets(): Promise<(typeof sportPolyMarketsTable.$inferSelect)[]> {
-  await getOrSyncSportsPolyMarkets();
+export interface ListSportsPolyOptions {
+  /** Filter by sport name: "Soccer", "Basketball", etc. */
+  sportFilter?: string;
+  /** "today" = 24h window, "week" (default) = 7 days */
+  window?: "today" | "week";
+}
+
+export async function listSportsPolyMarkets(
+  opts: ListSportsPolyOptions = {},
+): Promise<(typeof sportPolyMarketsTable.$inferSelect)[]> {
+  // Start sync in background — don't block on it
+  getOrSyncSportsPolyMarkets();
+
+  const { sportFilter, window: windowMode = "week" } = opts;
 
   const windowStart = new Date();
   windowStart.setUTCHours(0, 0, 0, 0);
   const windowEnd = new Date(windowStart);
-  windowEnd.setUTCDate(windowEnd.getUTCDate() + 6);
+  if (windowMode === "today") {
+    windowEnd.setUTCDate(windowEnd.getUTCDate() + 1);
+  } else {
+    windowEnd.setUTCDate(windowEnd.getUTCDate() + 6);
+  }
 
   const activeStart = new Date(Date.now() - 5 * 86_400_000);
+
+  // Build query conditions
+  const conditions = [
+    gte(sportPolyMarketsTable.startsAt, windowStart),
+    lte(sportPolyMarketsTable.startsAt, windowEnd),
+  ];
+
+  if (sportFilter) {
+    conditions.push(eq(sportPolyMarketsTable.sport, sportFilter));
+  }
+
   const markets = await db
     .select()
     .from(sportPolyMarketsTable)
-    .where(gte(sportPolyMarketsTable.startsAt, windowStart))
+    .where(and(...conditions))
     .orderBy(sportPolyMarketsTable.startsAt, sportPolyMarketsTable.eventName);
 
   const sorted = [...markets]
@@ -168,7 +197,6 @@ export async function listSportsPolyMarkets(): Promise<(typeof sportPolyMarketsT
       if (left.startsAt.getTime() !== right.startsAt.getTime()) {
         return left.startsAt.getTime() - right.startsAt.getTime();
       }
-
       return left.eventName.localeCompare(right.eventName);
     });
 
@@ -177,6 +205,7 @@ export async function listSportsPolyMarkets(): Promise<(typeof sportPolyMarketsT
     market.startsAt >= activeStart,
   );
   const settledMarkets = sorted.filter((market) => market.status === "settled");
+
   return [...openMarkets, ...settledMarkets].map((market) => ({
     ...market,
     sport: normalizeStoredSport(
@@ -271,7 +300,7 @@ export async function settleResolvedSportsPolyMarkets(): Promise<void> {
 }
 
 export async function runSportsPolySettlementCycle(): Promise<void> {
-  await getOrSyncSportsPolyMarkets(true);
+  await getOrSyncSportsPolyMarkets({ force: true, block: true });
 }
 
 export async function addToSportsPolyPool(
