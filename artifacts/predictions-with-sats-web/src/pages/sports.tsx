@@ -1552,9 +1552,7 @@ function ResultCard({ ev, sportDef }: { ev: SportEvent; sportDef: SportDef }) {
               <span className={ev.outcome === "away" ? "text-blue-400" : ""}>{ev.awayScore}</span>
             </>
           ) : (
-            <span className="text-foreground">
-              {getResolvedOutcomeLabel(ev)}
-            </span>
+            <span className="text-muted-foreground">–</span>
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-1 min-w-0 justify-end">
