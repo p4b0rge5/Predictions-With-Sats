@@ -14,6 +14,7 @@
 import { db, sportPolyMarketsTable } from "@workspace/db";
 import { eq, and, ilike } from "drizzle-orm";
 import { logger } from "./logger";
+import WebSocket from "ws";
 
 const WS_URL = "wss://sports-api.polymarket.com/ws";
 const PING_INTERVAL_MS = 4_000;
