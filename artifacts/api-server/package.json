@@ -24,7 +24,8 @@
     "pg-native": "^3.7.0",
     "pino": "^9",
     "pino-http": "^10",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
