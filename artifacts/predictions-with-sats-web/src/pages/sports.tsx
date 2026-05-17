@@ -1545,9 +1545,17 @@ function ResultCard({ ev, sportDef }: { ev: SportEvent; sportDef: SportDef }) {
           <span className="text-xs font-semibold truncate">{ev.homeTeam}</span>
         </div>
         <div className="flex items-center gap-1.5 font-mono font-bold text-sm shrink-0">
-          <span className={ev.outcome === "home" ? "text-green-400" : ""}>{ev.homeScore}</span>
-          <span className="text-muted-foreground">–</span>
-          <span className={ev.outcome === "away" ? "text-blue-400" : ""}>{ev.awayScore}</span>
+          {ev.homeScore != null && ev.awayScore != null ? (
+            <>
+              <span className={ev.outcome === "home" ? "text-green-400" : ""}>{ev.homeScore}</span>
+              <span className="text-muted-foreground">–</span>
+              <span className={ev.outcome === "away" ? "text-blue-400" : ""}>{ev.awayScore}</span>
+            </>
+          ) : (
+            <span className="text-foreground">
+              {getResolvedOutcomeLabel(ev)}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5 flex-1 min-w-0 justify-end">
           <span className="text-xs font-semibold truncate text-right">{ev.awayTeam}</span>
