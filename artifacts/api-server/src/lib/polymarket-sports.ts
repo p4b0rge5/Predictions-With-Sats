@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { logger } from "./logger";
 import {
   fetchGammaSidecarEventBySlug,
@@ -1069,9 +1071,115 @@ let marketFetchCache:
     }
   | null = null;
 
-const OFFICIAL_METADATA_TTL_MS = 6 * 60 * 60 * 1000;
+const OFFICIAL_METADATA_TTL_MS = 24 * 60 * 60 * 1000;
 const TEAM_PAGE_LIMIT = 500;
 const TEAM_MAX_PAGES = 15;
+
+// Concurrency limiter: max 5 parallel team fetches to avoid 429 rate-limiting
+const MAX_CONCURRENT_TEAM_FETCHES = 5;
+
+// Persist team metadata to disk so restarts don't re-fetch everything from Gamma API
+const METADATA_CACHE_DIR = join(process.cwd(), "data");
+const METADATA_CACHE_FILE = join(METADATA_CACHE_DIR, "polymarket-metadata.json");
+const METADATA_DISK_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48h on-disk TTL
+
+function loadMetadataFromDisk(): PolymarketOfficialMetadata | null {
+  try {
+    if (!existsSync(METADATA_CACHE_FILE)) return null;
+    const raw = readFileSync(METADATA_CACHE_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    if (Date.now() - (parsed.fetchedAt ?? 0) > METADATA_DISK_MAX_AGE_MS) {
+      logger.info({ age: Date.now() - parsed.fetchedAt }, "Disk metadata too old, ignoring");
+      return null;
+    }
+    const teams: PolymarketOfficialTeam[] = Array.isArray(parsed.teams) ? parsed.teams : [];
+    const value: PolymarketOfficialMetadata = {
+      teams,
+      teamById: new Map<string, PolymarketOfficialTeam>(teams.map((t) => [t.id, t])),
+      sportImageBySlug: new Map<string, string>(parsed.sportImageBySlug ?? []),
+      sportImageByLabel: new Map<string, string>(parsed.sportImageByLabel ?? []),
+    };
+    logger.info({ teamCount: teams.length, fileAge: Date.now() - parsed.fetchedAt }, "Loaded metadata from disk cache");
+    return value;
+  } catch (err) {
+    logger.warn({ err }, "Failed to load metadata from disk");
+    return null;
+  }
+}
+
+function saveMetadataToDisk(value: PolymarketOfficialMetadata): void {
+  try {
+    const serializable = {
+      fetchedAt: Date.now(),
+      teams: value.teams,
+      sportImageBySlug: Array.from(value.sportImageBySlug.entries()),
+      sportImageByLabel: Array.from(value.sportImageByLabel.entries()),
+    };
+    writeFileSync(METADATA_CACHE_FILE, JSON.stringify(serializable), "utf8");
+    logger.info({ teamCount: value.teams.length }, "Saved metadata to disk cache");
+  } catch (err) {
+    logger.warn({ err }, "Failed to save metadata to disk");
+  }
+}
+
+async function fetchWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  maxConcurrent: number,
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = [];
+  let index = 0;
+
+  async function worker() {
+    while (index < tasks.length) {
+      const current = index++;
+      const task = tasks[current];
+      if (!task) continue;
+      try {
+        results.push({ status: "fulfilled", value: await task() });
+      } catch (e) {
+        results.push({ status: "rejected", reason: e } as PromiseRejectedResult);
+      }
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < Math.min(maxConcurrent, tasks.length); i++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
+async function fetchTeamWithRetry(url: string): Promise<unknown> {
+  let lastStatus: number | null = null;
+  const maxAttempts = 5;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (res.ok) {
+      return res.json() as Promise<unknown>;
+    }
+
+    lastStatus = res.status;
+    if (res.status === 429 && attempt < maxAttempts - 1) {
+      const retryAfterSeconds = Number(res.headers.get("retry-after") ?? "");
+      const retryDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? retryAfterSeconds * 1000
+        : 2000 * Math.pow(2, attempt);
+      logger.debug({ attempt: attempt + 1, delayMs: retryDelayMs, url: url.substring(0, 80) }, "Rate limited, retrying team fetch");
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      continue;
+    }
+
+    break;
+  }
+
+  throw new Error(`Polymarket HTTP ${lastStatus ?? "unknown"} for ${url}`);
+}
 
 /**
  * Map application league codes → Gamma API league codes.
@@ -1334,6 +1442,16 @@ export async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOffic
   }
   if (officialMetadataPromise) return officialMetadataPromise;
 
+  // Try loading from disk before fetching from Gamma API
+  const diskMetadata = loadMetadataFromDisk();
+  if (diskMetadata) {
+    officialMetadataCache = {
+      expiresAt: now + OFFICIAL_METADATA_TTL_MS,
+      value: diskMetadata,
+    };
+    return diskMetadata;
+  }
+
   officialMetadataPromise = (async () => {
     const sportsPromise = (async () => {
       const sidecarSports = await fetchGammaSidecarSports();
@@ -1379,11 +1497,10 @@ export async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOffic
       // De-duplicate resolved codes to avoid double-fetching (e.g., both "arg"
       // and "arg" may appear, or "fl1" may be reached via both "fl1" and "fr1").
       const uniqueResolved = Array.from(new Set(resolvedLeagues));
-      const leagueBatches = await Promise.allSettled(
-        uniqueResolved.map((gammaLeague) =>
-          fetchJson<unknown>(`${GAMMA_API_BASE}/teams?league=${gammaLeague}&limit=${TEAM_PAGE_LIMIT}`),
-        ),
+      const tasks = uniqueResolved.map((gammaLeague) => () =>
+        fetchTeamWithRetry(`${GAMMA_API_BASE}/teams?league=${gammaLeague}&limit=${TEAM_PAGE_LIMIT}`),
       );
+      const leagueBatches = await fetchWithConcurrency(tasks, MAX_CONCURRENT_TEAM_FETCHES);
 
       for (const result of leagueBatches) {
         if (result.status !== "fulfilled") continue;
@@ -1410,11 +1527,10 @@ export async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOffic
     // Final fallback: paginated Gamma /teams
     if (teams.length === 0) {
       const teamPages = Array.from({ length: TEAM_MAX_PAGES }, (_, index) => index);
-      const teamResults = await Promise.allSettled(
-        teamPages.map((page) =>
-          fetchJson<unknown>(`${GAMMA_API_BASE}/teams?limit=${TEAM_PAGE_LIMIT}&offset=${page * TEAM_PAGE_LIMIT}`),
-        ),
+      const pageTasks = teamPages.map((page) => () =>
+        fetchTeamWithRetry(`${GAMMA_API_BASE}/teams?limit=${TEAM_PAGE_LIMIT}&offset=${page * TEAM_PAGE_LIMIT}`),
       );
+      const teamResults = await fetchWithConcurrency(pageTasks, MAX_CONCURRENT_TEAM_FETCHES);
 
       for (const result of teamResults) {
         if (result.status !== "fulfilled") {
@@ -1487,14 +1603,11 @@ export async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOffic
     });
     if (emptyOrThin.length > 0) {
       logger.info({ emptyOrThin, counts: Object.fromEntries(leagueEntryCount) }, "Re-fetching empty leagues from Gamma API");
-      const reFetchBatches = await Promise.allSettled(
-        emptyOrThin.map((league) => {
-          const gammaLeague = GAMMA_LEAGUE_ALIAS[league] ?? league;
-          return fetchJson<unknown>(
-            `${GAMMA_API_BASE}/teams?league=${gammaLeague}&limit=${TEAM_PAGE_LIMIT}`,
-          );
-        }),
-      );
+      const reFetchTasks = emptyOrThin.map((league) => {
+        const gammaLeague = GAMMA_LEAGUE_ALIAS[league] ?? league;
+        return () => fetchTeamWithRetry(`${GAMMA_API_BASE}/teams?league=${gammaLeague}&limit=${TEAM_PAGE_LIMIT}`);
+      });
+      const reFetchBatches = await fetchWithConcurrency(reFetchTasks, MAX_CONCURRENT_TEAM_FETCHES);
 
       for (const [index, result] of reFetchBatches.entries()) {
         if (result.status !== "fulfilled") continue;
@@ -1525,6 +1638,8 @@ export async function fetchPolymarketOfficialMetadata(): Promise<PolymarketOffic
       expiresAt: now + OFFICIAL_METADATA_TTL_MS,
       value,
     };
+
+    saveMetadataToDisk(value);
 
     return value;
   })()
