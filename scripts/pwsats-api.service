@@ -1,0 +1,25 @@
+[Unit]
+Description=Predictions With Sats - API Server
+After=network-online.target postgresql@16-main.service
+Wants=postgresql@16-main.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/baal-agent/workspace/pwsats-local/artifacts/api-server
+EnvironmentFile=/opt/baal-agent/workspace/pwsats-local/.env
+ExecStart=/usr/bin/node --enable-source-maps ./dist/index.mjs
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pwsats-api
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
