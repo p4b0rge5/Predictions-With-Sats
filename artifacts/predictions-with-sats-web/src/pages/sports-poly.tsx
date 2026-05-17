@@ -64,6 +64,9 @@ interface SportsPolyMarket {
   outcome: string | null;
   resolvedValue: string | null;
   settledAt: string | null;
+  homeScore: number | null;
+  awayScore: number | null;
+  period: string | null;
   outcomes: SportsPolyOutcome[];
 }
 
@@ -838,12 +841,26 @@ function SportsPolyMarketCard({
           <div className="flex-1 min-w-0 flex flex-col items-center gap-1.5">
             <TeamBadge src={market.homeBadge} name={market.homeTeam ?? "Home"} />
             <span className="max-w-full truncate text-xs font-semibold text-center leading-tight">{market.homeTeam ?? "Home"}</span>
+            {market.homeScore !== null && market.awayScore !== null ? (
+              <span className="text-xl font-black font-mono text-foreground">{market.homeScore}</span>
+            ) : null}
             <span className="text-[9px] text-muted-foreground font-mono">HOME</span>
           </div>
-          <span className="text-base font-bold font-mono text-muted-foreground">VS</span>
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="text-base font-bold font-mono text-muted-foreground">VS</span>
+            {market.period !== null && market.homeScore !== null ? (
+              <span className="text-[9px] font-bold font-mono text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">{market.period}</span>
+            ) : null}
+            {isSettled && market.homeScore !== null ? (
+              <span className="text-[9px] font-bold font-mono text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded">FINAL</span>
+            ) : null}
+          </div>
           <div className="flex-1 min-w-0 flex flex-col items-center gap-1.5">
             <TeamBadge src={market.awayBadge} name={market.awayTeam ?? "Away"} />
             <span className="max-w-full truncate text-xs font-semibold text-center leading-tight">{market.awayTeam ?? "Away"}</span>
+            {market.homeScore !== null && market.awayScore !== null ? (
+              <span className="text-xl font-black font-mono text-foreground">{market.awayScore}</span>
+            ) : null}
             <span className="text-[9px] text-muted-foreground font-mono">AWAY</span>
           </div>
         </div>
@@ -851,6 +868,17 @@ function SportsPolyMarketCard({
         <div className="space-y-1">
           <p className="truncate text-sm font-mono font-semibold">{market.eventName}</p>
           <p className="truncate text-[11px] text-muted-foreground font-mono">{market.question}</p>
+          {market.homeScore !== null && market.awayScore !== null ? (
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-black font-mono text-foreground">{market.homeScore} - {market.awayScore}</span>
+              {market.period !== null && !isSettled ? (
+                <span className="text-[9px] font-bold font-mono text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">{market.period}</span>
+              ) : null}
+              {isSettled ? (
+                <span className="text-[9px] font-bold font-mono text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded">FINAL</span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       )}
 
