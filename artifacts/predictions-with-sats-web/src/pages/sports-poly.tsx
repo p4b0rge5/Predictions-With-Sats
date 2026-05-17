@@ -325,8 +325,12 @@ function getLiquidityLabel(outcome: SportsPolyOutcome, outcomes: SportsPolyOutco
   return `${((outcome.poolSats / totalPool) * 100).toFixed(1)}% liquidity`;
 }
 
-async function fetchSportsPolyMarkets(): Promise<SportsPolyMarket[]> {
-  const res = await fetch(`${API_BASE}/api/sports-poly/markets`);
+async function fetchSportsPolyMarkets(category?: string, window?: string): Promise<SportsPolyMarket[]> {
+  const params = new URLSearchParams();
+  if (category) params.set("category", category);
+  if (window) params.set("window", window);
+  const url = `${API_BASE}/api/sports-poly/markets${params.toString() ? "?" + params.toString() : ""}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<SportsPolyMarket[]>;
 }
@@ -1194,9 +1198,10 @@ export function SportsPoly() {
     error,
     refetch,
   } = useQuery<SportsPolyMarket[]>({
-    queryKey: ["/api/sports-poly/markets"],
-    queryFn: fetchSportsPolyMarkets,
+    queryKey: ["/api/sports-poly/markets", activeCategory],
+    queryFn: () => fetchSportsPolyMarkets(activeCategory, "today"),
     refetchInterval: 60_000,
+    keepPreviousData: true,
   });
 
   const openMarkets = (markets ?? []).filter((market) => market.status === "open");
