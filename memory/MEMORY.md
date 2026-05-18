@@ -1,144 +1,114 @@
 # MEMORY.md
 
-## Project: Predictions-With-Sats (PWSats)
+## Project: Predictions With Sats (pwsats-local)
+- **Repo**: https://github.com/p4b0rge5/Predictions-With-Sats
+- **NO local clone on this agent server.** Repository stays only on dev server and prod. Never clone on this agent VM.
+- **Current HEAD**: `b4e16d14` (fix: add ws dependency to api-server package.json) — reverted from fb8d4ecc on 2026-05-18
 
-### Architecture
-- **Monorepo** with pnpm workspaces
-- **API Server** (`@workspace/api-server`): Express + TypeScript, port 3001
-  - Routes mounted at `/api/*` (Express `app.use("/api", router)`)
-  - Also mounts `/admin/*` and `/webhook/*`
-- **Frontend** (`@workspace/predictions-with-sats-web`): React + Vite, port 3002
-  - Vite `base` = `process.env.BASE_PATH ?? "/"` (set to `/app`)
-  - Vite dev server proxy: `/api` → `localhost:3001` (passes through headers)
-- **Database**: PostgreSQL 16 on localhost:5432
+## Server Access
 
-### Deployment (baal-agent VM)
+### Dev Server
+- **Host**: `root@2602:294:0:66d:3:fa3e:5395:3001` (Aleph Cloud, IPv6)
+- **Hostname**: `7i7fhfjqb6ejin5g6xqjelkezp3u7ymgeceicsynkleiadf7g3ma`
+- **SSH key**: `/opt/baal-agent/workspace/.ssh/id_ed25519`
+- **Caddy domain**: `when-verb-torch-gas.2n6.me` (import `/etc/caddy/conf.d/*.caddy`)
+- **Caddy snippets**: `/etc/caddy/conf.d/pwsats.caddy` (handles `/api/*`, `/app/*`, `/assets/*`)
+- **Project path**: `/opt/baal-agent/workspace/pwsats-local`
+- **PostgreSQL**: `postgresql://pwsats:p4borge55@localhost:5432/pwsats_dev`
+- **Services**: `pwsats-api` (port 3001). No separate web service — Caddy serves static files directly.
 
-**Critical: Caddy reverse proxy config at `/etc/caddy/conf.d/pwsats.caddy`**
+### Prod Server
+- **Host**: `root@37.114.37.140` port **24003** (OVH)
+- **Hostname**: `bvxfyf7fuoufzgtih7zpxgowawty7oi5i5amg6hdrj4hilk3y7gq`
+- **Domain**: `pwsats.com`
+- **SSH key**: `~/.ssh/prd_key` on the **dev server** (NOT accessible from agent VM directly)
+- **Access**: Must SSH from dev → prod. No direct access from agent VM.
+  ```bash
+  # Step 1: Agent VM → Dev server
+  ssh -i /opt/baal-agent/workspace/.ssh/id_ed25519 root@2602:294:0:66d:3:fa3e:5395:3001
+  # Step 2: Dev server → Prod server
+  ssh -i ~/.ssh/prd_key -p 24003 root@37.114.37.140
+  ```
+- **Project path**: `/opt/Predictions-With-Sats`
+- **Caddy**: Self-managed at `/etc/caddy/Caddyfile` (serves `pwsats.com`, proxies `/api*` → localhost:3001)
+- **PostgreSQL**: `postgresql://pwsats:p4borge55@localhost:5432/pwsats_db`
+- **Services**: `pwsats-api` (port 3001), `pwsats-web` (vite preview port 3002), `caddy`
+- **Note**: Prod runs `NODE_ENV=development` per `.env`.
 
-```caddyfile
-# Exact /app → redirect to /app/ (without this, /app falls through to baal-agent 401)
-redir /app /app/
-
-# API routes — use "handle" (not handle_path) + strip_prefix
-handle /app/api/* {
-    uri strip_prefix /app        # /app/api/healthz → /api/healthz
-    reverse_proxy localhost:3001
-}
-handle /app/admin/* {
-    uri strip_prefix /app
-    reverse_proxy localhost:3001
-}
-handle /app/webhook/* {
-    uri strip_prefix /app
-    reverse_proxy localhost:3001
-}
-
-# Frontend — "handle" passes full URL; Vite base=/app expects /app/ paths
-handle /app/* {
-    reverse_proxy localhost:3002
-}
+## Deployment Pattern
+### Dev server (from agent VM):
+```bash
+ssh -i .ssh/id_ed25519 root@2602:294:0:66d:3:fa3e:5395:3001 'cd /opt/baal-agent/workspace/pwsats-local && git pull origin main && cd artifacts/api-server && pnpm build && cd ../predictions-with-sats-web && pnpm build && systemctl restart pwsats-api'
 ```
+> Frontend is served by Caddy from `dist/public` — no service restart needed for frontend-only changes.
 
-### Gotchas (learned the hard way)
+### Prod server (via jump through dev):
+```bash
+# From agent VM → dev → prod:
+ssh -i .ssh/id_ed25519 root@2602:294:0:66d:3:fa3e:5395:3001 '
+  ssh -i ~/.ssh/prd_key -p 24003 -o StrictHostKeyChecking=no root@37.114.37.140 "
+    cd /opt/Predictions-With-Sats && \
+    git pull origin main && \
+    cd artifacts/api-server && pnpm build && \
+    cd ../predictions-with-sats-web && pnpm build && \
+    systemctl restart pwsats-api && systemctl restart pwsats-web"
+'
+```
+- **pnpm install**: Only needed when new deps are added to package.json. Otherwise skip.
 
-1. **`handle` vs `handle_path`**: `handle_path /app/api/*` strips `/app/api/` before proxying.
-   Use `handle /app/api/*` + `uri strip_prefix /app` to control what the upstream receives.
+### DB migrations on prod:
+Manual ALTER TABLE via psql or `pnpm --filter @workspace/db db:migrate deploy` if using Prisma migrations.
 
-2. **Trailing slash**: `handle /app/*` does NOT match `/app` (no trailing slash).
-   → Add `redir /app /app/` at the top.
+## Key Modules
+### Sports WS Scores (`sports-ws-scores.ts`)
+- Connects to `wss://sports-api.polymarket.com/ws` (changed from `ws-gateway.polymarket.com`)
+- **BROKEN since ~May 2026**: Polymarket WS now only sends tennis data, not soccer/MLB/NHL
+- Connects/disconnects repeatedly, receives 0-10 messages per connection (tennis only)
+- Still kept running alongside ESPN fallback as insurance
 
-3. **Vite `base` option**: When `BASE_PATH=/app`, Vite generates all asset URLs with `/app/` prefix.
-   The Caddy handler must forward the URL **as-is** (use `handle`, not `handle_path`).
+### Poly Score Sync (`poly-score-sync.ts`) — ESPN fallback
+- Created: 2026-05-18, committed `ac7e8630`
+- Replaces unreliable Polymarket WS for non-tennis sports
+- Uses `getEspnMultiSportEvents()` from `espn-multi.ts` for NBA, NHL, MLB
+- Polls every 30 seconds, matches poly markets by team name + league
+- Only updates **live or finished** games (skips `upcoming`)
+- Fuzzy team name matching: handles "Cavaliers" ↔ "Cleveland Cavaliers"
+- League mapping: "Basketball" ↔ "NBA"
+- Logs: "Poly score sync: completed" (summary) and "Poly score sync: updated from ESPN" (per market)
+- **Limitation**: Soccer NOT covered by ESPN multi-sport endpoint. Soccer scores not updated.
 
-4. **PORT env collision**: Both API and Web default to reading `PORT` from env.
-   Start API first (PORT=3001), then Web with explicit PORT=3002.
-   `nohup env BASE_PATH=/app PORT=3002 pnpm --filter ... &`
+### Sports Pollers (`sports-pollers.ts`)
+- Separate from WS scores — handles payment collection and settlement
+- Runs on intervals: payment every 5s, settlement every 15min
 
-5. **Order matters in Caddy**: Handlers are evaluated top-to-bottom. Specific patterns
-   (`/app/api/*`) must come before general ones (`/app/*`).
+### Settlement (`sports-settlement.ts`)
+- Uses `isSettled` and `isLive` fields from Polymarket WS to trigger settlement
+- Sets `settled_at` and `status = 'settled'` in DB
 
-6. **Polymarket team IDs are integers, not strings**: `asString()` originally only
-   handled `typeof value === "string"`, so numeric team IDs from the Gamma API returned
-   null, causing ALL teams to be rejected by `pushTeams`. Fixed by also handling
-   `typeof value === "number"` in `asString()`.
+## Frontend Route Structure
+- `/app/*` → SPA frontend (Caddy serves `dist/public/index.html`)
+- `/api/*` → API server (Caddy reverse_proxy to localhost:3001)
+- `/app/api/*` → API server (strip_prefix /app, reverse_proxy to localhost:3001)
+- `/assets/*`, `/favicon.svg`, `/manifest.json`, `/opengraph.jpg` → Static files
 
-### Services
-- API: `cd Predictions-With-Sats && pnpm --filter @workspace/api-server run start`
-- Web: `cd Predictions-With-Sats && env BASE_PATH=/app PORT=3002 pnpm --filter @workspace/predictions-with-sats-web run dev`
-- Caddy: `systemctl reload caddy`
+## Known Issues
+- Polymarket REST API returns 429 (rate limit) for some tag queries — use WS instead
+- `sports-request-budget.ts` writes to `.runtime/` dir which may be on read-only FS on dev
+- `COINOS_JWT_TOKEN` expired — needs refresh for winner payouts
+- `ws` package must be explicitly installed in api-server deps (`pnpm add ws`) — transitive dep doesn't hoist properly on prod
+- Poly markets have no native "live" status (only `open`/`settled`). Frontend `polyToSportEvent()` currently maps all open markets as `"upcoming"` regardless of whether scores are available.
 
-### URLs
-- Frontend: `https://camera-lens-yellow-smart.2n6.me/app/`
-- API: `https://camera-lens-yellow-smart.2n6.me/app/api/...`
-- Baal agent: `https://camera-lens-yellow-smart.2n6.me/` (default `/`)
+## Today's Notes (2026-05-18)
+- Fixed prod `.env` DATABASE_URL from `pwsats_dev` → `pwsats_db` (was pointing to non-existent database)
+- Deployed fix for poly market LIVE status (commit 8c6ff72e) — reverted at user request (commit a3f2ef21)
+- **Poly settlement fix (commit 28a893c2)**: Added upsert (`ON CONFLICT (external_market_id) DO UPDATE`) to `syncPolySportsMarkets` INSERT to prevent PK collision. Also fixed sequence desync with `setval`.
+- **Manual settlements**: 4 markets deslisted/not resolving via Polymarket API settled manually: Nashville vs LAFC (home), Pumas vs Pachuca (home), Paranaense vs Flamengo (draw), Nashville vs DCU (unknown). No bets on any of these.
+- Updated all SSH access documentation with verified details
 
----
+## Communication Style
+- User prefers concise, direct technical communication (Portuguese)
+- Focus on what was done, what's working, what needs attention
 
-## Badge System
-
-Every market now shows a team badge (100% coverage across 452 markets).
-
-**Badge fallback chain** (in `polymarket-sports.ts`):
-1. `market.homeBadge` from DB (Polymarket official S3 URL) — 413 markets
-2. `leaguePresentation.leagueLogo` — for generic league display
-3. `generateTeamBadgeUrl(teamName)` — SVG data URI with colored circle + team initials — 39 markets
-4. `null` — never reached for markets with team names
-
-The SVG generator (`generateTeamBadgeUrl`) creates 64x64 circles with consistent team colors (via hash) and 2-3 letter team initials. Works for international leagues (Chinese Super League, J2 League, etc.) without needing external HTTP calls.
-
-The `/api/sports-poly/markets` endpoint serves from 15-minute in-memory cache. Cold start requires Polymarket sync (~200 HTTP calls + enrichment).
-
----
-
-## Sports Poly: NHL Logo System
-
-Polymarket's Gamma API for `?league=nhl` is unreliable — sometimes returns 36 real team entries with logos, sometimes returns 71 player prop entries (like "Alex DeBrincat"). The Polymarket Gateway always returns player props for NHL.
-
-**Current fix:** Hardcoded `NHL_TEAM_LOGOS` map (36 entries) with stable S3 URLs from `polymarket-upload.s3.us-east-2.amazonaws.com`. The badge enrichment chain is:
-
-1. `homeTeam?.logo` (from metadata)
-2. `cachedHomeBadge` (from background scraper)
-3. `nhlHomeBadge` (hardcoded NHL logos — **the working fix**)
-4. `generateTeamBadgeUrl` (SVG fallback)
-
-The player prop filter (`t.logo || (t.abbreviation has uppercase)`) removes 615 fake entries from the 2000-entry metadata. Thin leagues (< 10 entries) trigger a re-fetch from the Gamma API.
-
-File: `Predictions-With-Sats/artifacts/api-server/src/lib/polymarket-sports.ts`
-
----
-
-## Polymarket APIs Reference (from GitHub repos research, 2026-05-15)
-
-### Gamma API (CTF/original Polymarket) — our current source
-- `GET https://gamma-api.polymarket.com/teams?league={league}&limit=500`
-  - Returns teams with: `id, name, league, logo, abbreviation, alias, color, record`
-  - Has `color` (hex) but NOT `homeIcon`/`awayIcon`
-  - **NHL**: 36 real teams + 4 national teams, all with logos
-  - ⚠️ Intermittently returns player props instead of teams (unreliable)
-- `GET https://gamma-api.polymarket.com/sports` — 182 sport entries with `image` (league logo)
-- `GET https://gamma-api.polymarket.com/events` — events with `series[].image`/`series[].icon`
-
-### Polymarket US API (regulated) — SDK `polymarket-us-typescript`
-Base URLs: `gateway.polymarket.us` (public), `api.polymarket.us` (authenticated)
-
-- `GET /v1/sports` — 33 sports with `sport, image` (league logo URL), `series`, `resolution`
-  - Every sport has a league image: e.g., `league-images/nhl-new.png`, `league-images/EPL.png`
-- `GET /v1/events?active=true` — events with full team objects:
-  - Team fields: `id, name, abbreviation, league, record, logo, alias, safeName, homeIcon, awayIcon, colorPrimary`
-  - `homeIcon`/`awayIcon` are 320x320 cropped logos for scoreboard display (best quality)
-  - ⚠️ US API does NOT include NHL teams (NBA, NFL, MLB, UFC, etc. only)
-- `GET /v1/sports/teams/provider` — team lookup (valid provider values TBD, 404s without auth)
-- `GET /v1/series` — 51 series entries
-
-### Key S3 URL Patterns (polymarket-upload.s3.us-east-2.amazonaws.com)
-- `NHL+Team+Logos/{ABBR}.png` — NHL team logos (32 entries)
-- `NBA+Team+Logos/{ABBR}.png` — NBA team logos
-- `league-images/{league}.png` — Official league logos (nhl-new.png, nba-new.png, EPL.png)
-- `team_logos/soccer/{region}/{region}_{league}_{team}.png` — Soccer team logos
-- `us/{sport}/Polymarket_{Team-Name}_{R|L}@320x320.png` — Cropped homeIcon/awayIcon
-
-### Notes
-- Official SDK: `npm install polymarket-us` → `client.sports.teams({league:'nba'})` returns `Record<string, SportsTeam>`
-- All 68 public Polymarket repos are SDKs/CLOB clients — exchange frontend is private
-- NHL teams only exist on Gamma API; US API doesn't have them
+## ⚠️ Critical Rules
+1. **NÃO tome decisões sem consultar o usuário.** Sempre perguntar antes de implementar soluções, fazer deploy, ou mudar comportamento do app.
+2. **Soluções devem usar nativamente a API da Polymarket.** Não usar fontes externas como ESPN, APIs de terceiros, ou qualquer serviço que não já seja utilizado no app. Se a API da Polymarket não fornece algo, reportar ao usuário em vez de criar workaround.
