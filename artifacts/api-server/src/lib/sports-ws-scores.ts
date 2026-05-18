@@ -90,7 +90,9 @@ class SportsWsScores {
       }
 
       try {
-        this.handleMessage(JSON.parse(data));
+        const msg = JSON.parse(data);
+        logger.info({ league: msg.leagueAbbreviation, game: msg.gameId, home: msg.homeTeam, away: msg.awayTeam, score: msg.score }, "Sports WS scores: message received");
+        this.handleMessage(msg);
       } catch (err) {
         logger.warn({ err, raw: data.slice(0, 200) }, "Sports WS scores: parse error");
       }
