@@ -22,7 +22,7 @@ const MAX_CONCURRENT = 3;
 const REQUEST_DELAY_MS = 200;
 
 const GAME_OVER_PERIODS = new Set([
-  "FT", "VFT", "AET", "PEN", "FINAL", "Final", "AET", "ET", "OT", "SO", "Suspended",
+  "FT", "VFT", "AET", "PEN", "FINAL", "Final", "ET", "OT", "SO", "Suspended", "POST",
 ]);
 
 const LIVE_PERIODS = new Set([
