@@ -994,8 +994,7 @@ function getResolvedDirectWinner(
   const flaggedWinner = pairs.find((pair) => pair.winner === true);
   if (flaggedWinner) return flaggedWinner.label;
 
-  const pricedWinner = pairs.find((pair) => pair.price !== null && pair.price >= 99);
-  return pricedWinner?.label ?? null;
+  return null;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
