@@ -11,7 +11,7 @@
  */
 
 import { db, sportPolyMarketsTable } from "@workspace/db";
-import { eq, isNull, and } from "drizzle-orm";
+import { eq, isNull, and, asc } from "drizzle-orm";
 import { logger } from "./logger";
 
 const GAMMA_BASE = process.env.POLYMARKET_GAMMA_API_BASE ?? "https://gamma-api.polymarket.com";
@@ -109,6 +109,7 @@ class ScoresRestPoller {
         .select({
           id: sportPolyMarketsTable.id,
           sourceUrl: sportPolyMarketsTable.sourceUrl,
+          startsAt: sportPolyMarketsTable.startsAt,
         })
         .from(sportPolyMarketsTable)
         .where(
@@ -116,7 +117,8 @@ class ScoresRestPoller {
             eq(sportPolyMarketsTable.status, "open"),
             isNull(sportPolyMarketsTable.homeScore),
           ),
-        );
+        )
+        .orderBy(asc(sportPolyMarketsTable.startsAt));
 
       if (markets.length === 0) return;
       await this.fetchAndApplyBatch(markets, "open");
