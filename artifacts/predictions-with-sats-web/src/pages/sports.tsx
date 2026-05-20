@@ -51,7 +51,7 @@ interface PolyMarket {
   question: string;
   subtitle: string | null;
   sourceUrl: string | null;
-  status: "open" | "settled";
+  status: "open" | "settled" | "live";
   outcome: string | null;
   resolvedValue: string | null;
   settledAt: string | null;
@@ -72,6 +72,7 @@ function polyToSportEvent(m: PolyMarket): SportEvent {
   else if (rawOutcome === "draw") outcome = "draw";
 
   const isSettled = m.status === "settled";
+  const isLive = m.status === "live";
 
   return {
     id: String(m.id),
@@ -85,7 +86,7 @@ function polyToSportEvent(m: PolyMarket): SportEvent {
     league: m.league,
     sport: m.sport,
     startsAt: m.startsAt,
-    status: isSettled ? "finished" : "upcoming",
+    status: isSettled ? "finished" : isLive ? "live" : "upcoming",
     elapsed: null,
     homeScore: m.homeScore,
     awayScore: m.awayScore,
