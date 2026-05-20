@@ -60,7 +60,7 @@ interface SportsPolyMarket {
   question: string;
   subtitle: string | null;
   sourceUrl: string | null;
-  status: "open" | "settled";
+  status: "open" | "live" | "settled";
   outcome: string | null;
   resolvedValue: string | null;
   settledAt: string | null;
@@ -1234,7 +1234,7 @@ export function SportsPoly() {
 
   const openMarkets = (markets ?? []).filter((market) => market.status === "open");
   const settledMarkets = (markets ?? []).filter((market) => market.status === "settled");
-  const sortedOpenMarkets = [...openMarkets].sort(
+  const sortedOpenMarkets = [...liveMarkets, ...openMarkets].sort(
     (left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime(),
   );
   const sortedSettledMarkets = [...settledMarkets].sort(

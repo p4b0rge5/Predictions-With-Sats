@@ -9,7 +9,7 @@ import { startSportsPollers } from "./lib/sports-pollers";
 import { startSportsPolyPollers } from "./lib/sports-poly-pollers";
 import { startWeatherPollers } from "./lib/weather-pollers";
 import { checkCoinosTokenHealth } from "./lib/coinos";
-import wsScores from "./lib/sports-ws-scores";
+import scoresPoller from "./lib/scores-rest-poller";
 
 const rawPort = process.env["PORT"];
 
@@ -44,14 +44,14 @@ app.listen(port, (err) => {
   startSportsPollers();
   startSportsPolyPollers();
   startWeatherPollers();
-  wsScores.start();
+  scoresPoller.start();
   // Check Coinos token on startup; re-check every hour
   checkCoinosTokenHealth().catch(() => {});
   setInterval(() => checkCoinosTokenHealth().catch(() => {}), 60 * 60 * 1000);
 
   // Graceful shutdown
   const shutdown = () => {
-    wsScores.stop();
+    scoresPoller.stop();
     process.exit(0);
   };
   process.on("SIGTERM", shutdown);

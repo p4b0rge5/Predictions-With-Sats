@@ -1,4 +1,9 @@
-import { db, sportPolyBetsTable, sportPolyMarketsTable, type SportPolyOutcomeRecord } from "@workspace/db";
+import {
+  db,
+  sportPolyBetsTable,
+  sportPolyMarketsTable,
+  type SportPolyOutcomeRecord,
+} from "@workspace/db";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import {
@@ -23,17 +28,39 @@ function normalizeMarketOutcomes(raw: unknown): SportPolyOutcomeRecord[] {
     if (!item || typeof item !== "object") return [];
 
     const candidate = item as Partial<SportPolyOutcomeRecord>;
-    if (typeof candidate.key !== "string" || typeof candidate.label !== "string") return [];
+    if (
+      typeof candidate.key !== "string" ||
+      typeof candidate.label !== "string"
+    )
+      return [];
 
-    return [{
-      key: candidate.key,
-      label: candidate.label,
-      price: typeof candidate.price === "number" && Number.isFinite(candidate.price) ? candidate.price : null,
-      poolSats: typeof candidate.poolSats === "number" && Number.isFinite(candidate.poolSats) ? candidate.poolSats : 0,
-      isWinner: typeof candidate.isWinner === "boolean" ? candidate.isWinner : null,
-      sourceMarketId: typeof candidate.sourceMarketId === "string" ? candidate.sourceMarketId : undefined,
-      sortOrder: typeof candidate.sortOrder === "number" && Number.isFinite(candidate.sortOrder) ? candidate.sortOrder : undefined,
-    }];
+    return [
+      {
+        key: candidate.key,
+        label: candidate.label,
+        price:
+          typeof candidate.price === "number" &&
+          Number.isFinite(candidate.price)
+            ? candidate.price
+            : null,
+        poolSats:
+          typeof candidate.poolSats === "number" &&
+          Number.isFinite(candidate.poolSats)
+            ? candidate.poolSats
+            : 0,
+        isWinner:
+          typeof candidate.isWinner === "boolean" ? candidate.isWinner : null,
+        sourceMarketId:
+          typeof candidate.sourceMarketId === "string"
+            ? candidate.sourceMarketId
+            : undefined,
+        sortOrder:
+          typeof candidate.sortOrder === "number" &&
+          Number.isFinite(candidate.sortOrder)
+            ? candidate.sortOrder
+            : undefined,
+      },
+    ];
   });
 }
 
@@ -47,16 +74,77 @@ function mergeOutcomePools(
 
   return incoming.map((outcome) => ({
     ...outcome,
-    poolSats: existingByKey.get(outcome.sourceMarketId ?? outcome.key)?.poolSats ?? 0,
+    poolSats:
+      existingByKey.get(outcome.sourceMarketId ?? outcome.key)?.poolSats ?? 0,
   }));
 }
 
-function getWinningOutcome(market: typeof sportPolyMarketsTable.$inferSelect): string | null {
+function getWinningOutcome(
+  market: typeof sportPolyMarketsTable.$inferSelect,
+): string | null {
   return market.winningOutcome ?? null;
+}
+/** Periods that indicate the game is in progress (not final). */ const IN_PLAY_PERIODS =
+  new Set([
+    "1H",
+    "1st",
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",
+    "2H",
+    "2nd",
+    "3rd",
+    "4th",
+    "5th",
+    "6th",
+    "7th",
+    "8th",
+    "9th",
+    "10th",
+    "11th",
+    "12th",
+    "13th",
+    "14th",
+    "15th",
+    "HT",
+    "BTH",
+    "BT",
+    "ET",
+    "INT",
+    "LIVE",
+    "IN",
+    "Top",
+    "Bot",
+    "END",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+  ]);
+/** Detect if a market should be live based on period + scores. */ function isInPlay(
+  period: string | null | undefined,
+  homeScore: number | null | undefined,
+  awayScore: number | null | undefined,
+): boolean {
+  if (!period) return false;
+  const p = typeof period === "string" ? period.trim().toUpperCase() : "";
+  if (/^FT$|^VFT$|^FINAL$|^FULL$/.test(p)) return false;
+  if (homeScore === null && awayScore === null) return false;
+  return IN_PLAY_PERIODS.has(p);
 }
 
 // Kick off sync but NEVER block the caller unless `block=true`.
-export async function getOrSyncSportsPolyMarkets({ force = false, block = false } = {}): Promise<void> {
+export async function getOrSyncSportsPolyMarkets({
+  force = false,
+  block = false,
+} = {}): Promise<void> {
   if (!force && Date.now() - lastSuccessfulSyncAt < SYNC_TTL_MS) return;
   if (activeSync) {
     if (force && block) return activeSync;
@@ -66,17 +154,28 @@ export async function getOrSyncSportsPolyMarkets({ force = false, block = false 
   activeSync = (async () => {
     const externalMarkets = await fetchPolymarketSportsMarkets();
     latestPolymarketRelevance = new Map(
-      externalMarkets.map((market, index) => [market.externalMarketId, market.relevanceRank ?? index]),
+      externalMarkets.map((market, index) => [
+        market.externalMarketId,
+        market.relevanceRank ?? index,
+      ]),
     );
 
     for (const externalMarket of externalMarkets) {
       const [existing] = await db
         .select()
         .from(sportPolyMarketsTable)
-        .where(eq(sportPolyMarketsTable.externalMarketId, externalMarket.externalMarketId))
+        .where(
+          eq(
+            sportPolyMarketsTable.externalMarketId,
+            externalMarket.externalMarketId,
+          ),
+        )
         .limit(1);
 
-      const mergedOutcomes = mergeOutcomePools(externalMarket.outcomes, normalizeMarketOutcomes(existing?.outcomes));
+      const mergedOutcomes = mergeOutcomePools(
+        externalMarket.outcomes,
+        normalizeMarketOutcomes(existing?.outcomes),
+      );
       const values = {
         provider: externalMarket.provider,
         externalMarketId: externalMarket.externalMarketId,
@@ -92,10 +191,33 @@ export async function getOrSyncSportsPolyMarkets({ force = false, block = false 
         subtitle: externalMarket.subtitle,
         sourceUrl: externalMarket.sourceUrl,
         outcomes: mergedOutcomes,
-        winningOutcome: externalMarket.winningOutcome,
-        resolvedValue: externalMarket.resolvedValue,
-        status: externalMarket.winningOutcome ? "settled" : externalMarket.status,
-        settledAt: externalMarket.winningOutcome ? (externalMarket.settledAt ?? existing?.settledAt ?? new Date()) : null,
+        winningOutcome:
+          existing?.status === "settled" || existing?.status === "live"
+            ? (existing.winningOutcome ?? externalMarket.winningOutcome)
+            : externalMarket.winningOutcome,
+        resolvedValue:
+          existing?.status === "settled" || existing?.status === "live"
+            ? (existing.resolvedValue ?? externalMarket.resolvedValue)
+            : externalMarket.resolvedValue,
+        status:
+          existing?.status === "settled"
+            ? "settled"
+            : externalMarket.winningOutcome
+              ? "settled"
+              : externalMarket.status === "live"
+                ? "live"
+                : existing?.status === "live"
+                  ? "live"
+                  : isInPlay(
+                        externalMarket.period ?? existing?.period,
+                        externalMarket.homeScore ?? existing?.homeScore,
+                        externalMarket.awayScore ?? existing?.awayScore,
+                      )
+                    ? "live"
+                    : externalMarket.status,
+        settledAt: externalMarket.winningOutcome
+          ? (externalMarket.settledAt ?? new Date())
+          : (existing?.settledAt ?? null),
         homeScore: externalMarket.homeScore ?? existing?.homeScore ?? null,
         awayScore: externalMarket.awayScore ?? existing?.awayScore ?? null,
       } as const;
@@ -126,7 +248,10 @@ export async function getOrSyncSportsPolyMarkets({ force = false, block = false 
             poolSats: o.poolSats,
           })),
         }).catch((err) =>
-          logger.warn({ err, marketId: newMarket.id }, "Nostr publish failed for new sports-poly market"),
+          logger.warn(
+            { err, marketId: newMarket.id },
+            "Nostr publish failed for new sports-poly market",
+          ),
         );
       }
     }
@@ -189,24 +314,28 @@ export async function listSportsPolyMarkets(
     .orderBy(sportPolyMarketsTable.startsAt, sportPolyMarketsTable.eventName);
 
   const sorted = [...markets]
-    .filter((market) =>
-      market.startsAt >= windowStart &&
-      market.startsAt < windowEnd &&
-      market.externalMarketId.startsWith("group:"),
+    .filter(
+      (market) =>
+        market.startsAt >= windowStart &&
+        market.startsAt < windowEnd &&
+        market.externalMarketId.startsWith("group:"),
     )
     .sort((left, right) => {
-      if (left.status !== right.status) return left.status === "open" ? -1 : 1;
+      const order = { open: 0, live: 1, settled: 2 };
+      if ((order[left.status] ?? 3) !== (order[right.status] ?? 3))
+        return (order[left.status] ?? 3) - (order[right.status] ?? 3);
       if (left.startsAt.getTime() !== right.startsAt.getTime()) {
         return left.startsAt.getTime() - right.startsAt.getTime();
       }
       return left.eventName.localeCompare(right.eventName);
     });
 
-  const openMarkets = sorted.filter((market) =>
-    market.status === "open" &&
-    market.startsAt >= activeStart,
+  const openMarkets = sorted.filter(
+    (market) => market.status === "open" && market.startsAt >= activeStart,
   );
-  const settledMarkets = sorted.filter((market) => market.status === "settled");
+  const settledMarkets = sorted.filter(
+    (market) => market.status === "settled" || market.status === "live",
+  );
 
   return [...openMarkets, ...settledMarkets].map((market) => ({
     ...market,
@@ -235,7 +364,12 @@ export async function settleSportsPolyMarket(marketId: number): Promise<void> {
   const paidBets = await db
     .select()
     .from(sportPolyBetsTable)
-    .where(and(eq(sportPolyBetsTable.marketId, marketId), eq(sportPolyBetsTable.status, "paid")));
+    .where(
+      and(
+        eq(sportPolyBetsTable.marketId, marketId),
+        eq(sportPolyBetsTable.status, "paid"),
+      ),
+    );
 
   if (paidBets.length === 0) {
     await db
@@ -253,7 +387,10 @@ export async function settleSportsPolyMarket(marketId: number): Promise<void> {
   const winnerBets = paidBets.filter((bet) => bet.direction === winningOutcome);
   const totalPool = paidBets.reduce((sum, bet) => sum + bet.amountSats, 0);
   const payablePool = Math.floor(totalPool * (1 - PLATFORM_FEE));
-  const totalWinnerStake = winnerBets.reduce((sum, bet) => sum + bet.amountSats, 0);
+  const totalWinnerStake = winnerBets.reduce(
+    (sum, bet) => sum + bet.amountSats,
+    0,
+  );
 
   for (const bet of paidBets) {
     const isWinner = bet.direction === winningOutcome && totalWinnerStake > 0;
@@ -266,7 +403,12 @@ export async function settleSportsPolyMarket(marketId: number): Promise<void> {
       .set({
         status: isWinner ? "won" : "lost",
         payoutSats,
-        ...(isWinner ? { withdrawToken: bet.withdrawToken ?? randomUUID(), withdrawStatus: "unclaimed" } : {}),
+        ...(isWinner
+          ? {
+              withdrawToken: bet.withdrawToken ?? randomUUID(),
+              withdrawStatus: "unclaimed",
+            }
+          : {}),
       })
       .where(eq(sportPolyBetsTable.id, bet.id));
   }
@@ -274,7 +416,12 @@ export async function settleSportsPolyMarket(marketId: number): Promise<void> {
   await db
     .update(sportPolyBetsTable)
     .set({ status: "expired" })
-    .where(and(eq(sportPolyBetsTable.marketId, marketId), eq(sportPolyBetsTable.status, "pending")));
+    .where(
+      and(
+        eq(sportPolyBetsTable.marketId, marketId),
+        eq(sportPolyBetsTable.status, "pending"),
+      ),
+    );
 
   await db
     .update(sportPolyMarketsTable)
@@ -335,5 +482,9 @@ export function getOutcomeForSportsPolyMarket(
   market: typeof sportPolyMarketsTable.$inferSelect,
   outcomeKey: string,
 ): SportPolyOutcomeRecord | null {
-  return normalizeMarketOutcomes(market.outcomes).find((outcome) => outcome.key === outcomeKey) ?? null;
+  return (
+    normalizeMarketOutcomes(market.outcomes).find(
+      (outcome) => outcome.key === outcomeKey,
+    ) ?? null
+  );
 }
