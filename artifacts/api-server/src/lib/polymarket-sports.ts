@@ -471,8 +471,6 @@ function getYesInfo(raw: PolymarketMarketLike): { yesPrice: number | null; resol
   const resolvedTruth =
     yes.winner === true ? true :
     no.winner === true ? false :
-    yes.price !== null && yes.price >= 99 ? true :
-    no.price !== null && no.price >= 99 ? false :
     null;
 
   return {
