@@ -2067,11 +2067,12 @@ export function Sports() {
           return ev.sport === sportName;
         });
         const upcoming = filtered.filter(e => e.status === "upcoming").sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+        const live = filtered.filter(e => e.status === "live").sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
         const finished = filtered.filter(e => e.status === "finished").sort((a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime());
 
         const nextData = {
           upcoming,
-          live: [],
+          live,
           finished,
           suspended: false,
         };
