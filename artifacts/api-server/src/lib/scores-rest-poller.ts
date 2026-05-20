@@ -6,12 +6,12 @@
  *
  * Strategy:
  * - Live markets (status='live'): poll every 30s
- * - Open markets without score yet: poll every 2min
+ * - Open markets (all): poll every 2min
  * - 1s timeout per request, parallel batches of 3
  */
 
 import { db, sportPolyMarketsTable } from "@workspace/db";
-import { eq, isNull, and, asc } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { logger } from "./logger";
 
 const GAMMA_BASE = process.env.POLYMARKET_GAMMA_API_BASE ?? "https://gamma-api.polymarket.com";
@@ -22,7 +22,7 @@ const MAX_CONCURRENT = 3;
 const REQUEST_DELAY_MS = 200;
 
 const GAME_OVER_PERIODS = new Set([
-  "FT", "VFT", "AET", "PEN", "FINAL", "Final", "ET", "OT", "SO", "Suspended", "POST",
+  "FT", "VFT", "AET", "PEN", "FINAL", "Final", "ET", "OT", "SO", "Suspended",
 ]);
 
 const LIVE_PERIODS = new Set([
@@ -112,12 +112,7 @@ class ScoresRestPoller {
           startsAt: sportPolyMarketsTable.startsAt,
         })
         .from(sportPolyMarketsTable)
-        .where(
-          and(
-            eq(sportPolyMarketsTable.status, "open"),
-            isNull(sportPolyMarketsTable.homeScore),
-          ),
-        )
+        .where(eq(sportPolyMarketsTable.status, "open"))
         .orderBy(asc(sportPolyMarketsTable.startsAt));
 
       if (markets.length === 0) return;
