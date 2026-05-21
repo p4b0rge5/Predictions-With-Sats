@@ -1233,6 +1233,7 @@ export function SportsPoly() {
   });
 
   const openMarkets = (markets ?? []).filter((market) => market.status === "open");
+  const liveMarkets = (markets ?? []).filter((market) => market.status === "live");
   const settledMarkets = (markets ?? []).filter((market) => market.status === "settled");
   const sortedOpenMarkets = [...liveMarkets, ...openMarkets].sort(
     (left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime(),
