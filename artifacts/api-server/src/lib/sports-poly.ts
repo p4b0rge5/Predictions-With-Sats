@@ -67,22 +67,47 @@ function normalizeMarketOutcomes(raw: unknown): SportPolyOutcomeRecord[] {
 function mergeOutcomePools(
   incoming: ExternalSportPolyMarket["outcomes"],
   existing: SportPolyOutcomeRecord[],
+  winningOutcome: string | null | undefined,
 ): SportPolyOutcomeRecord[] {
   const existingByKey = new Map(
     existing.map((outcome) => [outcome.sourceMarketId ?? outcome.key, outcome]),
   );
 
-  return incoming.map((outcome) => ({
-    ...outcome,
-    poolSats:
-      existingByKey.get(outcome.sourceMarketId ?? outcome.key)?.poolSats ?? 0,
-  }));
+  return incoming.map((outcome) => {
+    const prev = existingByKey.get(outcome.sourceMarketId ?? outcome.key);
+    // Preserve isWinner from DB if already set; otherwise derive from winningOutcome.
+    // Polymarket always sends null for isWinner.
+    const isWinner =
+      prev?.isWinner === true
+        ? true
+        : typeof outcome.isWinner === "boolean"
+          ? outcome.isWinner
+        : winningOutcome !== null && winningOutcome === outcome.key
+          ? true
+          : null;
+    return {
+      ...outcome,
+      poolSats: prev?.poolSats ?? 0,
+      isWinner,
+    };
+  });
 }
 
 function getWinningOutcome(
   market: typeof sportPolyMarketsTable.$inferSelect,
 ): string | null {
   return market.winningOutcome ?? null;
+}
+
+/** Derive the winning outcome from scores when Polymarket hasn't populated it. */
+function deriveOutcomeFromScores(
+  homeScore: number | null | undefined,
+  awayScore: number | null | undefined,
+): string | null {
+  if (homeScore == null || awayScore == null) return null;
+  if (homeScore > awayScore) return "home";
+  if (awayScore > homeScore) return "away";
+  return "draw";
 }
 /** Periods that indicate the game is in progress (not final). */ const IN_PLAY_PERIODS =
   new Set([
@@ -128,15 +153,22 @@ function getWinningOutcome(
     "9",
     "10",
   ]);
-/** Detect if a market should be live based on period + scores. */ function isInPlay(
+/** Detect if a period indicates the game is finished (FT, FINAL, etc.). */
+function isGameOverPeriod(period: string | null | undefined): boolean {
+  if (!period) return false;
+  const p = typeof period === "string" ? period.trim().toUpperCase() : "";
+  return /^FT$|^VFT$|^FINAL$|^FULL$/.test(p);
+}
+/** Detect if a market should be live based on period + scores. */
+function isInPlay(
   period: string | null | undefined,
   homeScore: number | null | undefined,
   awayScore: number | null | undefined,
 ): boolean {
   if (!period) return false;
-  const p = typeof period === "string" ? period.trim().toUpperCase() : "";
-  if (/^FT$|^VFT$|^FINAL$|^FULL$/.test(p)) return false;
+  if (isGameOverPeriod(period)) return false;
   if (homeScore === null && awayScore === null) return false;
+  const p = typeof period === "string" ? period.trim().toUpperCase() : "";
   return IN_PLAY_PERIODS.has(p);
 }
 
@@ -172,10 +204,48 @@ export async function getOrSyncSportsPolyMarkets({
         )
         .limit(1);
 
+      const period = externalMarket.period ?? existing?.period ?? null;
+      const homeScore = externalMarket.homeScore ?? existing?.homeScore ?? null;
+      const awayScore = externalMarket.awayScore ?? existing?.awayScore ?? null;
+
+      // If Polymarket didn't provide winningOutcome but the game is finished (FT/FINAL)
+      // and we have both scores, derive the winner from scores.
+      const scoreDerivedWinner =
+        !externalMarket.winningOutcome && isGameOverPeriod(period)
+          ? deriveOutcomeFromScores(homeScore, awayScore)
+          : null;
+
+      // Preserve existing winningOutcome for settled/live markets; fall back to
+      // Polymarket's value or the score-derived value.
+      const resolvedWinningOutcome =
+        existing?.status === "settled" || existing?.status === "live"
+          ? (existing.winningOutcome ?? externalMarket.winningOutcome ?? scoreDerivedWinner)
+          : (externalMarket.winningOutcome ?? scoreDerivedWinner);
+
+      // Determine whether this game is "settled" (has a known winner or game-over period).
+      const isSettled = !!(
+        existing?.status === "settled"
+        || externalMarket.winningOutcome
+        || scoreDerivedWinner
+      );
+
+      // Determine whether this game is live (in progress, not settled).
+      const isLive = !isSettled && (
+        externalMarket.status === "live"
+        || existing?.status === "live"
+        || isInPlay(period, homeScore, awayScore)
+      );
+
       const mergedOutcomes = mergeOutcomePools(
         externalMarket.outcomes,
         normalizeMarketOutcomes(existing?.outcomes),
+        resolvedWinningOutcome,
       );
+      const resolvedStatus = isSettled ? "settled" : isLive ? "live" : externalMarket.status;
+      const resolvedSettledAt = isSettled
+        ? (existing?.settledAt ?? externalMarket.settledAt ?? new Date())
+        : (existing?.settledAt ?? null);
+
       const values = {
         provider: externalMarket.provider,
         externalMarketId: externalMarket.externalMarketId,
@@ -191,35 +261,15 @@ export async function getOrSyncSportsPolyMarkets({
         subtitle: externalMarket.subtitle,
         sourceUrl: externalMarket.sourceUrl,
         outcomes: mergedOutcomes,
-        winningOutcome:
-          existing?.status === "settled" || existing?.status === "live"
-            ? (existing.winningOutcome ?? externalMarket.winningOutcome)
-            : externalMarket.winningOutcome,
+        winningOutcome: resolvedWinningOutcome,
         resolvedValue:
           existing?.status === "settled" || existing?.status === "live"
             ? (existing.resolvedValue ?? externalMarket.resolvedValue)
             : externalMarket.resolvedValue,
-        status:
-          existing?.status === "settled"
-            ? "settled"
-            : externalMarket.winningOutcome
-              ? "settled"
-              : externalMarket.status === "live"
-                ? "live"
-                : existing?.status === "live"
-                  ? "live"
-                  : isInPlay(
-                        externalMarket.period ?? existing?.period,
-                        externalMarket.homeScore ?? existing?.homeScore,
-                        externalMarket.awayScore ?? existing?.awayScore,
-                      )
-                    ? "live"
-                    : externalMarket.status,
-        settledAt: externalMarket.winningOutcome
-          ? (externalMarket.settledAt ?? new Date())
-          : (existing?.settledAt ?? null),
-        homeScore: externalMarket.homeScore ?? existing?.homeScore ?? null,
-        awayScore: externalMarket.awayScore ?? existing?.awayScore ?? null,
+        status: resolvedStatus,
+        settledAt: resolvedSettledAt,
+        homeScore,
+        awayScore,
       } as const;
 
       if (existing) {
