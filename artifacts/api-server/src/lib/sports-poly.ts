@@ -204,7 +204,7 @@ export async function getOrSyncSportsPolyMarkets({
             ? "settled"
             : externalMarket.winningOutcome
               ? "settled"
-              : externalMarket.status === "live"
+              : (externalMarket.status as string) === "live"
                 ? "live"
                 : existing?.status === "live"
                   ? "live"
@@ -343,7 +343,7 @@ export async function listSportsPolyMarkets(
   // Merge and sort: live first, then open (newest first), then settled (newest first)
   const all = [...openMarkets, ...settledMarkets];
   all.sort((left, right) => {
-    const tier = { live: 0, open: 1, settled: 2 };
+    const tier: Record<string, number> = { live: 0, open: 1, settled: 2 };
     if ((tier[left.status] ?? 3) !== (tier[right.status] ?? 3))
       return (tier[left.status] ?? 3) - (tier[right.status] ?? 3);
     if (left.startsAt.getTime() !== right.startsAt.getTime()) {
