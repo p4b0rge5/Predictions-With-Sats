@@ -220,6 +220,7 @@ interface PolymarketMarketLike {
   outcomes?: unknown;
   outcomePrices?: unknown;
   tokens?: unknown;
+  closed?: unknown;
   startDate?: unknown;
   startTime?: unknown;
   eventStartTime?: unknown;
@@ -451,13 +452,30 @@ function getTokenPairs(raw: PolymarketMarketLike): Array<{ label: string; price:
   const labels = tryParseJsonArray(raw.outcomes)
     .map((value) => asString(value))
     .filter((value): value is string => value !== null);
-  const prices = tryParseJsonArray(raw.outcomePrices);
+  const prices = tryParseJsonArray(raw.outcomePrices) as (string | number | null | undefined)[];
+
+  // For closed/resolved markets, tokens is null. Use outcomePrices to determine winner:
+  // the outcome with price "1" (100%) is the winner.
+  const isClosed = raw.closed === true || raw.closed === "true";
+  const winnerIndex = isClosed ? findWinnerIndexFromPrices(prices) : -1;
 
   return labels.map((label, index) => ({
     label,
     price: normalizePercent(prices[index]),
-    winner: null,
+    winner: winnerIndex >= 0 ? index === winnerIndex ? true : false : null,
   }));
+}
+
+/** Find the index of the winning outcome from outcomePrices. The winning outcome has price "1" (100%). */
+function findWinnerIndexFromPrices(prices: (string | number | null | undefined)[]): number {
+  for (let i = 0; i < prices.length; i++) {
+    const p = prices[i];
+    // outcomePrices can be string "1" or number 1
+    if (p === "1" || p === 1 || (typeof p === "string" && parseFloat(p) >= 0.999)) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 function getYesInfo(raw: PolymarketMarketLike): { yesPrice: number | null; resolvedTruth: boolean | null } | null {
