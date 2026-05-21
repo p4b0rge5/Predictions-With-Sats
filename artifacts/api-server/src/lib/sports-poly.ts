@@ -340,14 +340,15 @@ export async function listSportsPolyMarkets(
   const settledMarkets = [...settledResults]
     .filter((market) => market.externalMarketId.startsWith("group:"));
 
-  // Merge and sort: open first, then settled
+  // Merge and sort: live first, then open (newest first), then settled (newest first)
   const all = [...openMarkets, ...settledMarkets];
   all.sort((left, right) => {
-    const order = { open: 0, live: 1, settled: 2 };
-    if ((order[left.status] ?? 3) !== (order[right.status] ?? 3))
-      return (order[left.status] ?? 3) - (order[right.status] ?? 3);
+    const tier = { live: 0, open: 1, settled: 2 };
+    if ((tier[left.status] ?? 3) !== (tier[right.status] ?? 3))
+      return (tier[left.status] ?? 3) - (tier[right.status] ?? 3);
     if (left.startsAt.getTime() !== right.startsAt.getTime()) {
-      return left.startsAt.getTime() - right.startsAt.getTime();
+    // Newest first within each tier
+      return right.startsAt.getTime() - left.startsAt.getTime();
     }
     return left.eventName.localeCompare(right.eventName);
   });
