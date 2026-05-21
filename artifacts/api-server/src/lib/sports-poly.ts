@@ -296,48 +296,63 @@ export async function listSportsPolyMarkets(
   }
 
   const activeStart = new Date(Date.now() - 5 * 86_400_000);
+  const settledSince = new Date(Date.now() - 7 * 86_400_000);
 
-  // Build query conditions
-  const conditions = [
+  // Open/live markets filtered by startsAt window
+  const openConditions = [
     gte(sportPolyMarketsTable.startsAt, windowStart),
     lte(sportPolyMarketsTable.startsAt, windowEnd),
   ];
 
+  // Settled markets filtered by settledAt (last 7 days)
+  const settledConditions = [
+    eq(sportPolyMarketsTable.status, "settled"),
+    gte(sportPolyMarketsTable.settledAt, settledSince),
+  ];
+
   if (sportFilter) {
-    conditions.push(eq(sportPolyMarketsTable.sport, sportFilter));
+    openConditions.push(eq(sportPolyMarketsTable.sport, sportFilter));
+    settledConditions.push(eq(sportPolyMarketsTable.sport, sportFilter));
   }
 
-  const markets = await db
-    .select()
-    .from(sportPolyMarketsTable)
-    .where(and(...conditions))
-    .orderBy(sportPolyMarketsTable.startsAt, sportPolyMarketsTable.eventName);
+  // Fetch both sets in parallel
+  const [openResults, settledResults] = await Promise.all([
+    db
+      .select()
+      .from(sportPolyMarketsTable)
+      .where(and(...openConditions))
+      .orderBy(sportPolyMarketsTable.startsAt, sportPolyMarketsTable.eventName),
+    db
+      .select()
+      .from(sportPolyMarketsTable)
+      .where(and(...settledConditions))
+      .orderBy(sportPolyMarketsTable.settledAt)
+      .limit(200),
+  ]);
 
-  const sorted = [...markets]
-    .filter(
-      (market) =>
-        market.startsAt >= windowStart &&
-        market.startsAt < windowEnd &&
-        market.externalMarketId.startsWith("group:"),
-    )
-    .sort((left, right) => {
-      const order = { open: 0, live: 1, settled: 2 };
-      if ((order[left.status] ?? 3) !== (order[right.status] ?? 3))
-        return (order[left.status] ?? 3) - (order[right.status] ?? 3);
-      if (left.startsAt.getTime() !== right.startsAt.getTime()) {
-        return left.startsAt.getTime() - right.startsAt.getTime();
-      }
-      return left.eventName.localeCompare(right.eventName);
+  const openMarkets = [...openResults]
+    .filter((market) => market.externalMarketId.startsWith("group:"))
+    .filter((market) => {
+      if (market.status === "settled") return false;
+      return market.status === "open" && market.startsAt >= activeStart;
     });
 
-  const openMarkets = sorted.filter(
-    (market) => market.status === "open" && market.startsAt >= activeStart,
-  );
-  const settledMarkets = sorted.filter(
-    (market) => market.status === "settled" || market.status === "live",
-  );
+  const settledMarkets = [...settledResults]
+    .filter((market) => market.externalMarketId.startsWith("group:"));
 
-  return [...openMarkets, ...settledMarkets].map((market) => ({
+  // Merge and sort: open first, then settled
+  const all = [...openMarkets, ...settledMarkets];
+  all.sort((left, right) => {
+    const order = { open: 0, live: 1, settled: 2 };
+    if ((order[left.status] ?? 3) !== (order[right.status] ?? 3))
+      return (order[left.status] ?? 3) - (order[right.status] ?? 3);
+    if (left.startsAt.getTime() !== right.startsAt.getTime()) {
+      return left.startsAt.getTime() - right.startsAt.getTime();
+    }
+    return left.eventName.localeCompare(right.eventName);
+  });
+
+  return all.map((market) => ({
     ...market,
     sport: normalizeStoredSport(
       market.sport,
