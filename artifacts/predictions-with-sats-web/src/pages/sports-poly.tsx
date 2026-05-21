@@ -844,7 +844,6 @@ function SportsPolyMarketCard({
             {market.homeScore !== null && market.awayScore !== null ? (
               <span className="text-xl font-black font-mono text-foreground">{market.homeScore}</span>
             ) : null}
-            <span className="text-[9px] text-muted-foreground font-mono">HOME</span>
           </div>
           <div className="flex flex-col items-center gap-0.5">
             <span className="text-base font-bold font-mono text-muted-foreground">VS</span>
@@ -861,7 +860,6 @@ function SportsPolyMarketCard({
             {market.homeScore !== null && market.awayScore !== null ? (
               <span className="text-xl font-black font-mono text-foreground">{market.awayScore}</span>
             ) : null}
-            <span className="text-[9px] text-muted-foreground font-mono">AWAY</span>
           </div>
         </div>
       ) : (
