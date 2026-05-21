@@ -138,7 +138,7 @@ router.get("/sports-poly/markets", async (req, res): Promise<void> => {
         awayScore: market.awayScore ?? null,
         period: market.period ?? null,
       };
-    });
+    }) as any[];
 
     // Fast path: if all markets already have DB-stored badges, skip enrichment
     const allHaveBadges = normalized.length > 0 && normalized.every(
