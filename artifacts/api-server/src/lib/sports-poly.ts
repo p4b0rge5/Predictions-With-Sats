@@ -298,9 +298,9 @@ export async function listSportsPolyMarkets(
   const activeStart = new Date(Date.now() - 5 * 86_400_000);
   const settledSince = new Date(Date.now() - 7 * 86_400_000);
 
-  // Open/live markets filtered by startsAt window
+  // Open + live markets filtered by extended startsAt window (5 days back to catch live games that started yesterday)
   const openConditions = [
-    gte(sportPolyMarketsTable.startsAt, windowStart),
+    gte(sportPolyMarketsTable.startsAt, new Date(windowStart.getTime() - 5 * 86_400_000)),
     lte(sportPolyMarketsTable.startsAt, windowEnd),
   ];
 
@@ -334,7 +334,7 @@ export async function listSportsPolyMarkets(
     .filter((market) => market.externalMarketId.startsWith("group:"))
     .filter((market) => {
       if (market.status === "settled") return false;
-      return market.status === "open" && market.startsAt >= activeStart;
+      return (market.status === "open" || market.status === "live") && market.startsAt >= activeStart;
     });
 
   const settledMarkets = [...settledResults]
