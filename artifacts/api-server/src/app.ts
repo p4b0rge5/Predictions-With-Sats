@@ -47,6 +47,11 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
+// Serve the frontend for all other routes (SPA fallback)
+app.use((_req, res) => {
+  res.sendFile("index.html", { root: "../predictions-with-sats-web/dist/public" });
+});
+
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (
     err instanceof SyntaxError &&

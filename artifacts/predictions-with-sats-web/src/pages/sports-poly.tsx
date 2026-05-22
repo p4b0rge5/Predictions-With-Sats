@@ -1225,7 +1225,7 @@ export function SportsPoly() {
     refetch,
   } = useQuery({
     queryKey: ["/api/sports-poly/markets", activeCategory],
-    queryFn: () => fetchSportsPolyMarkets(activeCategory, "today"),
+    queryFn: () => fetchSportsPolyMarkets(activeCategory, "week"),
     refetchInterval: 60_000,
     placeholderData: (previous) => previous,
   });

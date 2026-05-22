@@ -4,7 +4,7 @@ import {
   sportPolyMarketsTable,
   type SportPolyOutcomeRecord,
 } from "@workspace/db";
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import {
   fetchPolymarketSportsMarkets,
@@ -208,19 +208,26 @@ export async function getOrSyncSportsPolyMarkets({
       const homeScore = externalMarket.homeScore ?? existing?.homeScore ?? null;
       const awayScore = externalMarket.awayScore ?? existing?.awayScore ?? null;
 
-      // If Polymarket didn't provide winningOutcome but the game is finished (FT/FINAL)
-      // and we have both scores, derive the winner from scores.
-      const scoreDerivedWinner =
-        !externalMarket.winningOutcome && isGameOverPeriod(period)
-          ? deriveOutcomeFromScores(homeScore, awayScore)
-          : null;
+      // If the game is finished (FT/FINAL) and we have both scores, derive the winner from scores.
+      // This is used as a fallback when Polymarket didn't provide winningOutcome or it's missing.
+      const scoreDerivedWinner = isGameOverPeriod(period)
+        ? deriveOutcomeFromScores(homeScore, awayScore)
+        : null;
 
-      // Preserve existing winningOutcome for settled/live markets; fall back to
-      // Polymarket's value or the score-derived value.
+      // For settled/live markets, preserve existing winningOutcome if present.
+      // If missing, fall back to Polymarket's value, then to score-derived value.
+      // For settled markets specifically, always ensure we have a winningOutcome if scores exist.
+      const needsWinningOutcome = existing?.status === "settled" && !existing.winningOutcome;
       const resolvedWinningOutcome =
         existing?.status === "settled" || existing?.status === "live"
           ? (existing.winningOutcome ?? externalMarket.winningOutcome ?? scoreDerivedWinner)
           : (externalMarket.winningOutcome ?? scoreDerivedWinner);
+
+      // If this is a settled market with no winningOutcome but we have scores and game is over,
+      // force the score-derived winner to be used.
+      const finalWinningOutcome = needsWinningOutcome && scoreDerivedWinner
+        ? scoreDerivedWinner
+        : resolvedWinningOutcome;
 
       // Determine whether this game is "settled" (has a known winner or game-over period).
       const isSettled = !!(
@@ -231,7 +238,7 @@ export async function getOrSyncSportsPolyMarkets({
 
       // Determine whether this game is live (in progress, not settled).
       const isLive = !isSettled && (
-        externalMarket.status === "live"
+        externalMarket.status === "open" && (period || (homeScore !== null && awayScore !== null))
         || existing?.status === "live"
         || isInPlay(period, homeScore, awayScore)
       );
@@ -239,9 +246,11 @@ export async function getOrSyncSportsPolyMarkets({
       const mergedOutcomes = mergeOutcomePools(
         externalMarket.outcomes,
         normalizeMarketOutcomes(existing?.outcomes),
-        resolvedWinningOutcome,
+        finalWinningOutcome,
       );
       const resolvedStatus = isSettled ? "settled" : isLive ? "live" : externalMarket.status;
+      
+      // Ensure settledAt is set for settled markets that don't have it
       const resolvedSettledAt = isSettled
         ? (existing?.settledAt ?? externalMarket.settledAt ?? new Date())
         : (existing?.settledAt ?? null);
@@ -261,7 +270,7 @@ export async function getOrSyncSportsPolyMarkets({
         subtitle: externalMarket.subtitle,
         sourceUrl: externalMarket.sourceUrl,
         outcomes: mergedOutcomes,
-        winningOutcome: resolvedWinningOutcome,
+        winningOutcome: finalWinningOutcome,
         resolvedValue:
           existing?.status === "settled" || existing?.status === "live"
             ? (existing.resolvedValue ?? externalMarket.resolvedValue)
@@ -308,6 +317,7 @@ export async function getOrSyncSportsPolyMarkets({
 
     lastSuccessfulSyncAt = Date.now();
     await settleResolvedSportsPolyMarkets();
+    await fixIncompleteSettledMarkets();
   })()
     .catch((err) => {
       logger.warn({ err }, "Sports Poly market sync failed");
@@ -394,8 +404,10 @@ export async function listSportsPolyMarkets(
   const all = [...openMarkets, ...settledMarkets];
   all.sort((left, right) => {
     const tier = { live: 0, open: 1, settled: 2 };
-    if ((tier[left.status] ?? 3) !== (tier[right.status] ?? 3))
-      return (tier[left.status] ?? 3) - (tier[right.status] ?? 3);
+    const leftTier = left.status === "live" ? 0 : tier[left.status as "open" | "settled"] ?? 3;
+    const rightTier = right.status === "live" ? 0 : tier[right.status as "open" | "settled"] ?? 3;
+    if (leftTier !== rightTier)
+      return leftTier - rightTier;
     if (left.startsAt.getTime() !== right.startsAt.getTime()) {
     // Newest first within each tier
       return right.startsAt.getTime() - left.startsAt.getTime();
@@ -511,6 +523,55 @@ export async function settleResolvedSportsPolyMarkets(): Promise<void> {
     await settleSportsPolyMarket(market.id).catch((err) =>
       logger.warn({ err, marketId: market.id }, "Sports Poly settlement error"),
     );
+  }
+}
+
+// Fix settled markets that have status="settled" but missing winningOutcome or settledAt
+export async function fixIncompleteSettledMarkets(): Promise<void> {
+  const incompleteMarkets = await db
+    .select()
+    .from(sportPolyMarketsTable)
+    .where(
+      and(
+        eq(sportPolyMarketsTable.status, "settled"),
+        or(
+          isNull(sportPolyMarketsTable.winningOutcome),
+          isNull(sportPolyMarketsTable.settledAt),
+        ),
+      ),
+    );
+
+  for (const market of incompleteMarkets) {
+    // Try to derive winningOutcome from scores if available
+    const scoreDerivedWinner = deriveOutcomeFromScores(market.homeScore, market.awayScore);
+    
+    if (scoreDerivedWinner) {
+      await db
+        .update(sportPolyMarketsTable)
+        .set({
+          winningOutcome: market.winningOutcome ?? scoreDerivedWinner,
+          settledAt: market.settledAt ?? new Date(),
+        })
+        .where(eq(sportPolyMarketsTable.id, market.id));
+      
+      logger.info(
+        { marketId: market.id, event: market.eventName, winner: scoreDerivedWinner },
+        "Fixed incomplete settled market",
+      );
+    } else {
+      // If we can't derive from scores, at least set settledAt if missing
+      if (!market.settledAt) {
+        await db
+          .update(sportPolyMarketsTable)
+          .set({ settledAt: new Date() })
+          .where(eq(sportPolyMarketsTable.id, market.id));
+        
+        logger.info(
+          { marketId: market.id, event: market.eventName },
+          "Set settledAt for incomplete market (no winner derived)",
+        );
+      }
+    }
   }
 }
 

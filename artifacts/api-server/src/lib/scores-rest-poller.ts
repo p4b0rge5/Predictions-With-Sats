@@ -116,6 +116,25 @@ class ScoresRestPoller {
         .orderBy(asc(sportPolyMarketsTable.startsAt));
 
       if (markets.length === 0) return;
+      
+      // First, mark markets as "live" if their startsAt is in the past and no scores yet
+      // This handles cases where the API doesn't provide real-time scores but the game has started
+      const pastStarts = markets.filter(m => m.startsAt < new Date());
+      for (const m of pastStarts) {
+        try {
+          await db
+            .update(sportPolyMarketsTable)
+            .set({ status: "live" })
+            .where(eq(sportPolyMarketsTable.id, m.id));
+          logger.info(
+            { marketId: m.id, startsAt: m.startsAt },
+            "Sports REST scores: marked as live (start time passed)",
+          );
+        } catch (err) {
+          logger.error({ err, marketId: m.id }, "Sports REST scores: failed to mark as live");
+        }
+      }
+      
       await this.fetchAndApplyBatch(markets, "open");
     } catch (err) {
       logger.error({ err }, "Sports REST scores: open fetch failed");
