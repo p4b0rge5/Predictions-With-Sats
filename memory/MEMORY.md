@@ -5,6 +5,14 @@
 - **NO local clone on this agent server.** Repository stays only on dev server and prod. Never clone on this agent VM.
 - **Current HEAD**: `b4e16d14` (fix: add ws dependency to api-server package.json) — reverted from fb8d4ecc on 2026-05-18
 
+## Known Issues & Fixes
+
+### Polymarket "resolvedBy" without "closed: true" (2026-05-24)
+- Some leagues (Brasileirão B, `bra2`) have `resolvedBy` set on markets but `closed: false` in the API response. No `score` field either.
+- Fix in `polymarket-sports.ts` line 572: `const isClosed = raw.closed === true || raw.closed === "true" || !!asString(raw.resolvedBy)` — treat any non-empty `resolvedBy` as resolved.
+- Also added `resolvedBy?: unknown` to `PolymarketMarketLike` interface.
+- Settlement now works for these leagues via `outcomePrices` convergence (winner = highest price).
+
 ## Server Access
 
 ### Dev Server

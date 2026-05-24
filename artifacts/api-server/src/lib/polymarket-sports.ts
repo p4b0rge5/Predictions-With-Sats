@@ -12,7 +12,12 @@ const SPORTS_TAG_SLUG = process.env.POLYMARKET_SPORTS_TAG_SLUG ?? "sports";
 const SPORTS_ROOT_TAG_ID = process.env.POLYMARKET_SPORTS_TAG_ID?.trim() || null;
 const PAGE_LIMIT = 100;
 const MAX_ACTIVE_PAGES = 30;
-const MAX_CLOSED_PAGES = 5;
+const MAX_CLOSED_PAGES = 20;
+const CLOSED_PAGES_PER_SYNC = 1;
+const CLOSED_CYCLE_RESET_MS = 6 * 60 * 60 * 1000; // Reset every 6 hours
+
+// Rate limiting for active fetch: process tags sequentially with delay
+const ACTIVE_TAG_DELAY_MS = 500;
 const FUTURE_DAYS = 5;
 const MARKET_FETCH_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -346,6 +351,7 @@ interface PolymarketMarketLike {
   icon?: unknown;
   teamAID?: unknown;
   teamBID?: unknown;
+  resolvedBy?: unknown;
   tags?: unknown;
   events?: unknown;
 }
@@ -563,7 +569,9 @@ function getTokenPairs(raw: PolymarketMarketLike): Array<{ label: string; price:
 
   // For closed/resolved markets, tokens is null. Use outcomePrices to determine winner:
   // the outcome with price "1" (100%) is the winner.
-  const isClosed = raw.closed === true || raw.closed === "true";
+  // Some leagues (e.g. Brasileirão B) have resolvedBy set but closed still false.
+  const resolvedBy = asString(raw.resolvedBy) || null;
+  const isClosed = raw.closed === true || raw.closed === "true" || !!resolvedBy;
   const winnerIndex = isClosed ? findWinnerIndexFromPrices(prices) : -1;
 
   return labels.map((label, index) => ({
@@ -1197,6 +1205,20 @@ let marketFetchCache:
       value: ExternalSportPolyMarket[];
     }
   | null = null;
+
+// Persistent closed-market pagination state across syncs
+let closedFetchState: {
+  offset: number;
+  lastResetAt: number;
+} = { offset: 0, lastResetAt: Date.now() };
+
+function maybeResetClosedFetchState(): void {
+  if (Date.now() - closedFetchState.lastResetAt > CLOSED_CYCLE_RESET_MS) {
+    closedFetchState.offset = 0;
+    closedFetchState.lastResetAt = Date.now();
+    logger.info("Reset closed market fetch offset after 6-hour cycle");
+  }
+}
 
 const OFFICIAL_METADATA_TTL_MS = 24 * 60 * 60 * 1000;
 const TEAM_PAGE_LIMIT = 500;
@@ -2133,8 +2155,8 @@ export async function fetchPolymarketSportsMarkets(): Promise<ExternalSportPolyM
 
   const scopedTagIds = tagIds.length > 0 ? tagIds : [null];
 
-  // Fetch active markets in parallel per tagId to avoid blocking the event loop
-  const activePromises = scopedTagIds.map(async (tagId: string | null) => {
+  // Fetch active markets sequentially per tagId to avoid rate limiting
+  for (const tagId of scopedTagIds) {
     for (let page = 0; page < MAX_ACTIVE_PAGES; page += 1) {
       const offset = page * PAGE_LIMIT;
       let batch: unknown[] | null;
@@ -2155,14 +2177,21 @@ export async function fetchPolymarketSportsMarkets(): Promise<ExternalSportPolyM
       collectBatch(batch);
       if (batch.length < PAGE_LIMIT) break;
     }
-  });
 
-  await Promise.allSettled(activePromises);
+    // Delay between tags to stay under rate limit
+    if (ACTIVE_TAG_DELAY_MS > 0) {
+      await new Promise((r) => setTimeout(r, ACTIVE_TAG_DELAY_MS));
+    }
+  }
 
-  // Fetch closed markets in parallel per tagId to avoid blocking the event loop
+  // Fetch closed markets with incremental pagination across syncs
+  maybeResetClosedFetchState();
+  const closedBaseOffset = closedFetchState.offset;
+  let reachedEnd = false;
+
   const closedPromises = scopedTagIds.map(async (tagId: string | null) => {
-    for (let page = 0; page < MAX_CLOSED_PAGES; page += 1) {
-      const offset = page * PAGE_LIMIT;
+    for (let page = 0; page < CLOSED_PAGES_PER_SYNC; page += 1) {
+      const offset = closedBaseOffset + page * PAGE_LIMIT;
       let batch: unknown[] | null;
 
       try {
@@ -2172,17 +2201,42 @@ export async function fetchPolymarketSportsMarkets(): Promise<ExternalSportPolyM
           ascending: false,
         });
       } catch (err) {
-        logger.warn({ err, page, tagId }, "Failed to fetch closed Polymarket sports markets");
+        logger.warn({ err, page, tagId, offset }, "Failed to fetch closed Polymarket sports markets");
         break;
       }
 
-      if (!batch || batch.length === 0) break;
+      if (!batch || batch.length === 0) {
+        reachedEnd = true;
+        break;
+      }
       collectBatch(batch);
-      if (batch.length < PAGE_LIMIT) break;
+      if (batch.length < PAGE_LIMIT) {
+        reachedEnd = true;
+        break;
+      }
     }
   });
 
   await Promise.allSettled(closedPromises);
+
+  // Advance the offset for next sync
+  closedFetchState.offset += CLOSED_PAGES_PER_SYNC * PAGE_LIMIT;
+
+  // If we reached the end, wrap around to start
+  if (reachedEnd) {
+    closedFetchState.offset = 0;
+    closedFetchState.lastResetAt = Date.now();
+    logger.info("Closed market fetch reached end, resetting offset");
+  } else if (closedFetchState.offset >= MAX_CLOSED_PAGES * PAGE_LIMIT) {
+    closedFetchState.offset = 0;
+    closedFetchState.lastResetAt = Date.now();
+    logger.info("Closed market fetch hit max offset, resetting");
+  } else {
+    logger.info({
+      nextOffset: closedFetchState.offset,
+      maxOffset: MAX_CLOSED_PAGES * PAGE_LIMIT,
+    }, "Closed market fetch offset advanced");
+  }
 
   const groupedMarkets = Array.from(grouped.values())
     .filter(hasSupportedMatchOutcomes)
