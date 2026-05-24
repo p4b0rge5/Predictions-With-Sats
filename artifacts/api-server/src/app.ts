@@ -1,7 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
-import router from "./routes";
+import router, { lnurlMetadataRouter } from "./routes";
 import { logger } from "./lib/logger";
 
 declare global {
@@ -46,6 +46,10 @@ app.use(
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+
+// NIP-57 LNURL metadata endpoint (must be at root level, before SPA fallback)
+app.use(cors());
+app.use(lnurlMetadataRouter);
 
 // Serve the frontend for all other routes (SPA fallback)
 app.use((_req, res) => {

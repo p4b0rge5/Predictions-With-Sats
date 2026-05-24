@@ -23,6 +23,7 @@ import { db, betsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
 import { isAlbyInvoicePaid } from "./alby";
+import { handleZapPayment } from "./zap-bet-handler";
 
 const POLL_INTERVAL_MS = 5_000;
 const MAX_POLL_AGE_MS = 60 * 60 * 1000; // stop polling after 1 hour
@@ -101,6 +102,11 @@ async function pollPendingBets(): Promise<void> {
     }
 
     if (settled) {
+      // Check if this is a zap payment — create the bet if so
+      handleZapPayment(bet.paymentHash, bet.paymentRequest).catch((err) => {
+        logger.warn({ err, paymentHash: bet.paymentHash }, "Zap payment handler error (non-fatal)");
+      });
+
       await db
         .update(betsTable)
         .set({ status: "paid", paidAt: new Date() })

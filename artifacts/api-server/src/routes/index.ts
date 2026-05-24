@@ -9,6 +9,7 @@ import sportsRouter from "./sports";
 import sportsPolyRouter from "./sports-poly";
 import weatherRouter from "./weather";
 import nostrRouter from "./nostr";
+import zapRouter, { getLnurlMetadataRoute } from "./lnurl-zap";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,10 @@ router.use(sportsRouter);
 router.use(sportsPolyRouter);
 router.use(weatherRouter);
 router.use("/admin/nostr", nostrRouter);
+// NIP-57 zap receiver routes
+router.use("/lnurl-zap", zapRouter);
 
 export default router;
+
+// LNURL metadata route (must be mounted at root, not under /api/)
+export const lnurlMetadataRouter = getLnurlMetadataRoute();

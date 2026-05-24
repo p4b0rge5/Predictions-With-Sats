@@ -15,6 +15,7 @@ export const sportBetsTable = pgTable("sport_bets", {
   paymentHash: text("payment_hash").notNull().unique(),
   paymentRequest: text("payment_request").notNull(),
   verifyUrl: text("verify_url"),
+  zapRequestId: text("zap_request_id"),
   status: text("status").notNull().default("pending"),
   payoutSats: bigint("payout_sats", { mode: "number" }),
   withdrawToken: text("withdraw_token").unique(),

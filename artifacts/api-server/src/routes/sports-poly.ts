@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
 import { bech32 } from "bech32";
 import { db, sportPolyBetsTable, sportPolyMarketsTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, gte, isNull, lte, or, sql, sum } from "drizzle-orm";
 import { createInvoice } from "../lib/alby";
 import { coinosPayInvoice } from "../lib/coinos";
 import { validateExactInvoiceAmount } from "../lib/lightning-invoice";
@@ -206,6 +206,98 @@ router.get("/sports-poly/markets", async (req, res): Promise<void> => {
       return;
     }
     res.json([]);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Markets stats (aggregated counts, pool sats, score coverage)
+// ---------------------------------------------------------------------------
+
+const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let statsCache: Record<string, { data: unknown; expiresAt: number }> = {};
+
+router.get("/sports-poly/markets/stats", async (req, res): Promise<void> => {
+  const { force, sport, league } = req.query as {
+    force?: string;
+    sport?: string;
+    league?: string;
+  };
+  const forceRefresh = force === "1" || force === "true";
+
+  // Cache key includes filters
+  const cacheKey = `stats:${sport ?? "all"}:${league ?? "all"}`;
+  if (!forceRefresh && statsCache && statsCache[cacheKey] && statsCache[cacheKey].expiresAt > Date.now()) {
+    res.json(statsCache[cacheKey].data);
+    return;
+  }
+
+  try {
+    const conditions: import("drizzle-orm").SQLWrapper[] = [sql`external_market_id LIKE 'group:%'`];
+
+    if (sport) {
+      conditions.push(eq(sportPolyMarketsTable.sport, sport));
+    }
+    if (league) {
+      conditions.push(sql`LOWER(${sportPolyMarketsTable.league}) LIKE ${'%' + league.toLowerCase() + '%'} `);
+    }
+
+    const whereClause = and(...conditions);
+
+    // Overall counts
+    const [overall] = await db
+      .select({
+        total: count().mapWith(Number),
+        open: sql<number>`count(*) FILTER (WHERE ${sportPolyMarketsTable.status} = 'open')`.mapWith(Number),
+        live: sql<number>`count(*) FILTER (WHERE ${sportPolyMarketsTable.status} = 'live')`.mapWith(Number),
+        settled: sql<number>`count(*) FILTER (WHERE ${sportPolyMarketsTable.status} = 'settled')`.mapWith(Number),
+        withScore: sql<number>`count(*) FILTER (WHERE ${sportPolyMarketsTable.homeScore} IS NOT NULL)`.mapWith(Number),
+      })
+      .from(sportPolyMarketsTable)
+      .where(whereClause);
+
+    // League breakdown
+    const leagueRows = await db
+      .select({
+        league: sportPolyMarketsTable.league,
+        sport: sportPolyMarketsTable.sport,
+        total: count().mapWith(Number),
+        open: sql<number>`count(*) FILTER (WHERE ${sportPolyMarketsTable.status} = 'open')`.mapWith(Number),
+        live: sql<number>`count(*) FILTER (WHERE ${sportPolyMarketsTable.status} = 'live')`.mapWith(Number),
+        settled: sql<number>`count(*) FILTER (WHERE ${sportPolyMarketsTable.status} = 'settled')`.mapWith(Number),
+        withScore: sql<number>`count(*) FILTER (WHERE ${sportPolyMarketsTable.homeScore} IS NOT NULL)`.mapWith(Number),
+      })
+      .from(sportPolyMarketsTable)
+      .where(whereClause)
+      .groupBy(sportPolyMarketsTable.league, sportPolyMarketsTable.sport)
+      .orderBy(sql`count(*) DESC`);
+
+    const totalMarkets = overall.total ?? 0;
+    const result = {
+      totalMarkets,
+      openMarkets: overall.open ?? 0,
+      liveMarkets: overall.live ?? 0,
+      settledMarkets: overall.settled ?? 0,
+      scoreCoverage: {
+        total: totalMarkets,
+        withScore: overall.withScore ?? 0,
+        percentage: totalMarkets > 0 ? Math.round((overall.withScore ?? 0) / totalMarkets * 100) : 0,
+      },
+      leagueBreakdown: leagueRows.map(r => ({
+        league: r.league,
+        sport: r.sport,
+        total: r.total,
+        open: r.open,
+        live: r.live,
+        settled: r.settled,
+        withScore: r.withScore,
+      })),
+    };
+
+    statsCache[cacheKey] = { data: result, expiresAt: Date.now() + STATS_CACHE_TTL_MS };
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "GET /api/sports-poly/markets/stats error");
+    res.status(500).json({ error: "Failed to compute stats" });
   }
 });
 

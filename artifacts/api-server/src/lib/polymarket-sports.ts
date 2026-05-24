@@ -12,7 +12,7 @@ const SPORTS_TAG_SLUG = process.env.POLYMARKET_SPORTS_TAG_SLUG ?? "sports";
 const SPORTS_ROOT_TAG_ID = process.env.POLYMARKET_SPORTS_TAG_ID?.trim() || null;
 const PAGE_LIMIT = 100;
 const MAX_ACTIVE_PAGES = 30;
-const MAX_CLOSED_PAGES = 2;
+const MAX_CLOSED_PAGES = 5;
 const FUTURE_DAYS = 5;
 const MARKET_FETCH_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -137,7 +137,6 @@ const LEAGUE_PRESENTATION_BY_CODE: Record<string, { label: string }> = {
   criclcl: { label: "Legends League Cricket" },
   cricpsl: { label: "Pakistan Super League" },
   // More cricket
-  abb: { label: "Big Bash League" },
   cricbbl: { label: "Big Bash League" },
   cricsm: { label: "Super Smash" },
   cricss: { label: "Super Smash" },

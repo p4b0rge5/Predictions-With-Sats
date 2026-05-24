@@ -2,3 +2,4 @@
 // Each file calls registerSeed(name, fn) to register itself
 
 import "./001-example-template";
+import "./002-add-zap-request-id";

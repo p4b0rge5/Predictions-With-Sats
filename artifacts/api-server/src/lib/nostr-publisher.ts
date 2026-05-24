@@ -9,6 +9,7 @@
  */
 
 import { publishNostrEvent } from "./nostr";
+import { registerZappableMarket } from "./zap-bet-handler";
 import { logger } from "./logger";
 
 // ---------------------------------------------------------------------------
@@ -54,8 +55,9 @@ export async function publishSportMarketCreated(market: {
       : `🟢 ${market.homeTeam}\n🔵 ${market.awayTeam}`;
 
     const betOptions = hasDraw ? "Home, Draw or Away" : "Home or Away";
+    const zapHint = hasDraw ? "Reply with 'home', 'draw', or 'away' to bet" : "Reply with 'home' or 'away' to bet";
 
-    const text = `⚡ New market!\n\n${market.homeTeam} vs ${market.awayTeam}\n\n${outcomes}\n\n🏆 ${market.league}\n📅 ${dateStr} at ${timeStr} UTC${total > 0 ? `\n💰 Pool: ${total.toLocaleString()} sats` : ""}\n\nBet ${betOptions} with Bitcoin Lightning\n\npwsats.com`;
+    const text = `⚡ New market!\n\n${market.homeTeam} vs ${market.awayTeam}\n\n${outcomes}\n\n🏆 ${market.league}\n📅 ${dateStr} at ${timeStr} UTC${total > 0 ? `\n💰 Pool: ${total.toLocaleString()} sats` : ""}\n\n⚡ Zap this post to bet with Bitcoin Lightning\n💬 ${zapHint}\n\npwsats.com`;
 
     const tags = [
       ["t", "pwsats"],
@@ -64,7 +66,10 @@ export async function publishSportMarketCreated(market: {
       ["t", market.sport.toLowerCase().replace(/[\s/]+/g, "_")],
     ];
 
-    await publishNostrEvent(text, tags, 1);
+    const result = await publishNostrEvent(text, tags, 1);
+    if (result.eventId) {
+      registerZappableMarket(result.eventId, market.id, "sport");
+    }
   } catch (err) {
     logger.warn({ err, marketId: market.id }, "Failed to publish sport market to Nostr");
   }
@@ -166,7 +171,14 @@ export async function publishSportsPolyMarketCreated(market: {
       betOptions = "Home or Away";
     }
 
-    const text = `⚡ New market!\n\n${home} vs ${away}\n\n${outcomesText}\n\n🏆 ${market.league}\n📅 ${dateStr} at ${timeStr} UTC\n\nBet ${betOptions} with Bitcoin Lightning\n\npwsats.com`;
+    const outcomeKeys = market.outcomes
+      ? market.outcomes.map((o) => o.key.toLowerCase())
+      : [home.toLowerCase(), away.toLowerCase()];
+    const zapHint = market.outcomes
+      ? `Reply with one of: ${outcomeKeys.join(", ")}`
+      : `Reply with '${home.toLowerCase()}' or '${away.toLowerCase()}' to bet`;
+
+    const text = `⚡ New market!\n\n${home} vs ${away}\n\n${outcomesText}\n\n🏆 ${market.league}\n📅 ${dateStr} at ${timeStr} UTC\n\n⚡ Zap this post to bet with Bitcoin Lightning\n💬 ${zapHint}\n\npwsats.com`;
 
     const tags = [
       ["t", "pwsats"],
@@ -175,7 +187,10 @@ export async function publishSportsPolyMarketCreated(market: {
       ["t", market.sport.toLowerCase().replace(/[\s/]+/g, "_")],
     ];
 
-    await publishNostrEvent(text, tags, 1);
+    const result = await publishNostrEvent(text, tags, 1);
+    if (result.eventId) {
+      registerZappableMarket(result.eventId, market.id, "sport_poly");
+    }
   } catch (err) {
     logger.warn({ err, marketId: market.id }, "Failed to publish sports-poly market to Nostr");
   }
@@ -220,7 +235,10 @@ export async function publishWeatherMarketCreated(market: {
     const text = `⚡ New weather market!\n\n📍 ${market.city}\n\n${market.question}\n\n${outcomesText}${total > 0 ? `\n💰 Pool: ${total.toLocaleString()} sats` : ""}\n\nBet ${betOptions} with Bitcoin Lightning\n\npwsats.com`;
 
     const tags = [["t", "pwsats"], ["t", "bitcoin"], ["t", "lightning"], ["t", "weather"]];
-    await publishNostrEvent(text, tags, 1);
+    const result = await publishNostrEvent(text, tags, 1);
+    if (result.eventId) {
+      registerZappableMarket(result.eventId, market.id, "weather");
+    }
   } catch (err) {
     logger.warn({ err, marketId: market.id }, "Failed to publish weather market to Nostr");
   }

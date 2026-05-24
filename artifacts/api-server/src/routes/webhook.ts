@@ -4,6 +4,7 @@ import { db, betsTable, webhookEventsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getConfig } from "../lib/config";
 import { logger } from "../lib/logger";
+import { handleZapPayment } from "../lib/zap-bet-handler";
 
 const router: IRouter = Router();
 
@@ -120,6 +121,11 @@ router.post("/webhook/alby", async (req, res): Promise<void> => {
     res.json({ ok: true });
     return;
   }
+
+  // Check if this is a zap payment — create the bet if so
+  handleZapPayment(paymentHash, bet.paymentRequest).catch((err) => {
+    logger.warn({ err, paymentHash }, "Zap payment handler error (non-fatal)");
+  });
 
   await db
     .update(betsTable)

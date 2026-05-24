@@ -11,7 +11,7 @@
  */
 
 import { db, sportPolyMarketsTable } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
+import { and, eq, asc, isNull } from "drizzle-orm";
 import { logger } from "./logger";
 
 const GAMMA_BASE = process.env.POLYMARKET_GAMMA_API_BASE ?? "https://gamma-api.polymarket.com";
