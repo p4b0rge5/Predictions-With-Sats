@@ -50,13 +50,18 @@ interface EventScore {
 class ScoresRestPoller {
   private liveTimer: ReturnType<typeof setInterval> | null = null;
   private openTimer: ReturnType<typeof setInterval> | null = null;
+  private settledTimer: ReturnType<typeof setInterval> | null = null;
   private running = false;
   private lastOpenFetch = 0;
+  private lastSettledFetch = 0;
 
   start(): void {
     if (this.liveTimer) return;
     this.running = true;
     logger.info("Sports REST scores poller: starting");
+
+    // One-time backfill for settled markets that never got a live score
+    this.fetchSettledScores().catch(() => {});
 
     this.fetchLiveScores().catch(() => {});
 
@@ -68,6 +73,10 @@ class ScoresRestPoller {
       this.fetchOpenScores().catch(() => {});
     }, OPEN_POLL_MS);
 
+    this.settledTimer = setInterval(() => {
+      this.fetchSettledScores().catch(() => {});
+    }, 10 * 60 * 1000); // every 10 min — rare, for newly-settled games
+
     logger.info(
       { livePollMs: LIVE_POLL_MS, openPollMs: OPEN_POLL_MS },
       "Sports REST scores poller: timers configured",
@@ -78,6 +87,7 @@ class ScoresRestPoller {
     this.running = false;
     if (this.liveTimer) { clearInterval(this.liveTimer); this.liveTimer = null; }
     if (this.openTimer) { clearInterval(this.openTimer); this.openTimer = null; }
+    if (this.settledTimer) { clearInterval(this.settledTimer); this.settledTimer = null; }
     logger.info("Sports REST scores poller: stopped");
   }
 
@@ -95,6 +105,33 @@ class ScoresRestPoller {
       await this.fetchAndApplyBatch(markets, "live");
     } catch (err) {
       logger.error({ err }, "Sports REST scores: live fetch failed");
+    }
+  }
+
+  private async fetchSettledScores(): Promise<void> {
+    if (!this.running) return;
+    const now = Date.now();
+    if (now - this.lastSettledFetch < 10 * 60 * 1000) return;
+    this.lastSettledFetch = now;
+
+    try {
+      const markets = await db
+        .select({
+          id: sportPolyMarketsTable.id,
+          sourceUrl: sportPolyMarketsTable.sourceUrl,
+        })
+        .from(sportPolyMarketsTable)
+        .where(
+          and(
+            eq(sportPolyMarketsTable.status, "settled"),
+            isNull(sportPolyMarketsTable.homeScore),
+          ),
+        );
+
+      if (markets.length === 0) return;
+      await this.fetchAndApplyBatch(markets, "settled");
+    } catch (err) {
+      logger.error({ err }, "Sports REST scores: settled fetch failed");
     }
   }
 
