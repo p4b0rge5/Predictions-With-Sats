@@ -13,7 +13,7 @@ const SPORTS_ROOT_TAG_ID = process.env.POLYMARKET_SPORTS_TAG_ID?.trim() || null;
 const PAGE_LIMIT = 100;
 const MAX_ACTIVE_PAGES = 30;
 const MAX_CLOSED_PAGES = 20;
-const CLOSED_PAGES_PER_SYNC = 1;
+const CLOSED_PAGES_PER_SYNC = 5;
 const CLOSED_CYCLE_RESET_MS = 6 * 60 * 60 * 1000; // Reset every 6 hours
 
 // Rate limiting for active fetch: process tags sequentially with delay
@@ -2184,40 +2184,40 @@ export async function fetchPolymarketSportsMarkets(): Promise<ExternalSportPolyM
     }
   }
 
-  // Fetch closed markets with incremental pagination across syncs
+  // Fetch closed markets — use root Sports tag (id=1) because sub-tags like
+  // Soccer (4086) don't return closed markets individually. The root Sports tag
+  // covers all sport sub-tags via related_tags.
+  const closedTagId = SPORTS_ROOT_TAG_ID || "1";
+
   maybeResetClosedFetchState();
   const closedBaseOffset = closedFetchState.offset;
   let reachedEnd = false;
 
-  const closedPromises = scopedTagIds.map(async (tagId: string | null) => {
-    for (let page = 0; page < CLOSED_PAGES_PER_SYNC; page += 1) {
-      const offset = closedBaseOffset + page * PAGE_LIMIT;
-      let batch: unknown[] | null;
+  for (let page = 0; page < CLOSED_PAGES_PER_SYNC; page += 1) {
+    const offset = closedBaseOffset + page * PAGE_LIMIT;
+    let batch: unknown[] | null;
 
-      try {
-        batch = await fetchSportsMarketBatch(tagId, offset, {
-          closed: true,
-          order: "volume",
-          ascending: false,
-        });
-      } catch (err) {
-        logger.warn({ err, page, tagId, offset }, "Failed to fetch closed Polymarket sports markets");
-        break;
-      }
-
-      if (!batch || batch.length === 0) {
-        reachedEnd = true;
-        break;
-      }
-      collectBatch(batch);
-      if (batch.length < PAGE_LIMIT) {
-        reachedEnd = true;
-        break;
-      }
+    try {
+      batch = await fetchSportsMarketBatch(closedTagId, offset, {
+        closed: true,
+        order: "volume",
+        ascending: false,
+      });
+    } catch (err) {
+      logger.warn({ err, page, tagId: closedTagId, offset }, "Failed to fetch closed Polymarket sports markets");
+      break;
     }
-  });
 
-  await Promise.allSettled(closedPromises);
+    if (!batch || batch.length === 0) {
+      reachedEnd = true;
+      break;
+    }
+    collectBatch(batch);
+    if (batch.length < PAGE_LIMIT) {
+      reachedEnd = true;
+      break;
+    }
+  }
 
   // Advance the offset for next sync
   closedFetchState.offset += CLOSED_PAGES_PER_SYNC * PAGE_LIMIT;
