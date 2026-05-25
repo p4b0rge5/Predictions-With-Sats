@@ -12,7 +12,7 @@ const SPORTS_TAG_SLUG = process.env.POLYMARKET_SPORTS_TAG_SLUG ?? "sports";
 const SPORTS_ROOT_TAG_ID = process.env.POLYMARKET_SPORTS_TAG_ID?.trim() || null;
 const PAGE_LIMIT = 100;
 const MAX_ACTIVE_PAGES = 30;
-const MAX_CLOSED_PAGES = 60; // 6000 markets, enough to cover all closed sports markets
+const MAX_CLOSED_PAGES = 65; // 6500 markets — covers all closed sports markets including deep ones
 const CLOSED_PAGES_PER_SYNC = 10;
 const CLOSED_CYCLE_RESET_MS = 6 * 60 * 60 * 1000; // Reset every 6 hours
 
@@ -2200,7 +2200,7 @@ export async function fetchPolymarketSportsMarkets(): Promise<ExternalSportPolyM
     try {
       batch = await fetchSportsMarketBatch(closedTagId, offset, {
         closed: true,
-        order: "close_date",
+        order: "volume",
         ascending: false,
       });
     } catch (err) {
